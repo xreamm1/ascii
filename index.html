@@ -214,11 +214,14 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Настройки Firebase для сетевой игры (консоль Firebase → Project settings → Your apps).
-// Для Realtime Database без входа по аккаунту хватает адреса базы и id проекта.
+// Они не секретные: базу защищают правила на сервере Firebase.
 // Если поставить здесь null, останется только одиночная игра
 const FIREBASE_CONFIG = {
-  projectId: "ascii-baseplate",
+  apiKey: "AIzaSyCh8O2khgr9xlCsrsI0qhii6wDc7kVHHQ8",
+  authDomain: "ascii-baseplate.firebaseapp.com",
   databaseURL: "https://ascii-baseplate-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "ascii-baseplate",
+  appId: "1:817593932706:web:0092777a1cedd49452b0fb",
 };
 
 // Цвета палитры
