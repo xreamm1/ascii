@@ -128,9 +128,6 @@
   }
   #game .act { cursor: pointer; }
   #game .act:hover { background: #fff; color: #000; }
-  /* Темы: инверсия (чёрные символы на белом, как в терминале) и зелёный монитор */
-  body.theme-invert { filter: invert(1); }
-  body.theme-green { filter: grayscale(1) sepia(1) hue-rotate(65deg) saturate(6) brightness(0.95); }
   /* Пока открыто меню, игровой интерфейс прячем */
   body.in-menu #hotbar, body.in-menu #touch, body.in-menu #crosshair, body.in-menu #chat { display: none; }
 
@@ -153,7 +150,6 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
       "firebase/app": "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js",
       "firebase/database": "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js",
       "firebase/auth": "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"
@@ -169,7 +165,6 @@
 <pre id="lobby"></pre>
 <pre id="admin"></pre>
 <pre id="game"></pre>
-<input id="mapFile" type="file" accept=".json,application/json" hidden>
 <pre id="announce"></pre>
 <div id="labels"></div>
 <pre id="menu"></pre>
@@ -211,7 +206,6 @@
 </div>
 <script type="module">
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Настройки Firebase для сетевой игры (консоль Firebase → Project settings → Your apps).
 // Они не секретные: базу защищают правила на сервере Firebase.
@@ -238,7 +232,7 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Краска", "Динамит"];
+const HOTBAR = ["Блок", "Доска", "Текст", null, null];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -262,9 +256,6 @@ const CROUCH_SPEED = 0.45; // присевший идёт медленнее —
 const FLY_SPEED = 8;       // полёт разработчика: скорость вверх-вниз
 const FREECAM_SPEED = 12;  // скорость свободной камеры
 const THIRD_DIST = 4;      // вид от третьего лица: на столько блоков камера позади игрока
-const FUSE_TIME = 3;       // динамит взрывается через столько секунд
-const BLAST_RADIUS = 3.5;  // и убирает всё в таком радиусе
-const DAY_LENGTH = 6 * 60 * 1000;  // сутки длятся 6 минут; время общее для всех игроков
 const DEV_NICK = "xreamm"; // ник разработчика: с ним спрашивается пароль
 const DEV_EMAIL = "xreamm@ascii-baseplate.game";  // аккаунт разработчика в Firebase Authentication
 const STEP = 0.3;          // на такую высоту можно зайти без прыжка (доски, пандусы)
@@ -390,7 +381,6 @@ function material(tex, c) {
 }
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-const TNT_RED = 0xff2020;
 const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина задаётся масштабом по Z
 
 const blocks = new Map();  // "x,y,z" → меш блока
@@ -406,11 +396,8 @@ let idCount = 0;
 // Все изменения мира проходят через edit() — так их легко повторить у других игроков.
 // Изменение — это объект: { op: "block", x, y, z, c }, { op: "unblock", x, y, z },
 // { op: "plank", id, ends: [ax, ay, az, bx, by, bz], c }, { op: "unplank", id },
-// { op: "text", id, p: [x, y, z], q: [поворот кватернионом], text, c } или { op: "untext", id }.
-// У блока может быть вид k: "tnt" — динамит.
-// replace — заменить уже стоящий предмет (так работает перекраска)
-function edit(e, replace = false) {
-  if (replace) removeSolid(e.op === "block" ? blocks.get(key(e.x, e.y, e.z)) : planks.get(e.id) || texts.get(e.id), true);
+// { op: "text", id, p: [x, y, z], q: [поворот кватернионом], text, c } или { op: "untext", id }
+function edit(e) {
   if (e.op === "text" && !texts.has(e.id)) {
     const mesh = textMesh(String(e.text).slice(0, 40), e.c);
     mesh.position.fromArray(e.p);
@@ -421,8 +408,7 @@ function edit(e, replace = false) {
   }
   if (e.op === "untext") removeSolid(texts.get(e.id));
   if (e.op === "block" && !blocks.has(key(e.x, e.y, e.z))) {
-    // Динамит — просто красный блок; материал у каждого свой, чтобы он мог мигать отдельно
-    const mesh = new THREE.Mesh(boxGeo, e.k === "tnt" ? new THREE.MeshLambertMaterial({ color: TNT_RED }) : material(brickTex, e.c));
+    const mesh = new THREE.Mesh(boxGeo, material(brickTex, e.c));
     mesh.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     addSolid(mesh, e);
     blocks.set(key(e.x, e.y, e.z), mesh);
@@ -437,11 +423,10 @@ function edit(e, replace = false) {
   if (e.op === "unplank") removeSolid(planks.get(e.id));
 }
 
-// Своё изменение: применяем у себя и рассылаем остальным игрокам (в одиночной игре — сохраняем)
-function share(e, replace = false) {
-  edit(e, replace);
+// Своё изменение: применяем у себя и рассылаем остальным игрокам
+function share(e) {
+  edit(e);
   online?.sendEdits([e]);
-  if (!online && inGame) saveLater();
 }
 
 function addSolid(mesh, e) {
@@ -451,13 +436,11 @@ function addSolid(mesh, e) {
   scene.add(mesh);
 }
 
-// quiet — без взрыва (динамит перекрасили или карту очистили)
-function removeSolid(mesh, quiet = false) {
+function removeSolid(mesh) {
   if (!mesh) return;
   scene.remove(mesh);
   solids.splice(solids.indexOf(mesh), 1);
   const e = mesh.userData.edit;
-  if (e.k === "tnt" && !quiet) explode(mesh.position);
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
@@ -707,7 +690,7 @@ function updateGhosts() {
   const [r, g, b] = COLORS[color].rgb;
   ghostMat.color.setRGB(r / 255, g / 255, b / 255);
 
-  const cell = hit && ["Блок", "Динамит"].includes(HOTBAR[slot]) ? blockCell(hit) : null;
+  const cell = hit && HOTBAR[slot] === "Блок" ? blockCell(hit) : null;
   ghostBlock.visible = !!cell;
   if (cell) ghostBlock.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
 
@@ -729,31 +712,15 @@ function use(action, screen) {
   if (action === "remove") {
     if (plankStart) plankStart = null;
     else if (hit && hit.object !== plate) {
-      const e = hit.object.userData.edit;
-      if (e.k === "tnt") detonate(e.x, e.y, e.z);  // динамит от удара сразу взрывается
-      else share(undo(e));
+      share(undo(hit.object.userData.edit));
     }
     drawHotbar();
     return;
   }
 
-  const item = HOTBAR[slot];
-  if (item === "Блок" && hit) {
+  if (HOTBAR[slot] === "Блок" && hit) {
     const cell = blockCell(hit);
     if (cell) share({ op: "block", x: cell[0], y: cell[1], z: cell[2], c: color });
-  }
-  // Динамит: ставится как блок и взрывается через FUSE_TIME секунд
-  if (item === "Динамит" && hit) {
-    const cell = blockCell(hit);
-    if (cell) {
-      share({ op: "block", x: cell[0], y: cell[1], z: cell[2], c: 0, k: "tnt" });
-      fuses.push({ x: cell[0], y: cell[1], z: cell[2], t: FUSE_TIME });
-    }
-  }
-  // Краскопульт: перекрашивает блок, доску или надпись под прицелом в выбранный цвет
-  if (item === "Краска" && hit && hit.object !== plate) {
-    const e = hit.object.userData.edit;
-    if (!e.k && e.c !== color) share({ ...e, c: color }, true);
   }
   // Текст: запоминаем, куда ставить, и спрашиваем, что написать
   if (HOTBAR[slot] === "Текст") {
@@ -798,8 +765,6 @@ addEventListener("keydown", e => {
   }
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "KeyP" && !e.repeat) toggleAdmin();
-  if (e.code === "KeyM" && !e.repeat) toggleGameMenu();
-  if (e.code === "KeyL" && !e.repeat) toggleFlashlight();
   if (e.code === "Enter" && !menuOpen) openChat();
   // Esc — пауза: открытое меню закрывает, а в игре отпускает мышь (пауза откроется сама, см. ниже)
   if (e.code === "Escape" && !e.repeat) {
@@ -975,9 +940,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Краска": "▒~▒~", "Динамит": "TNT!" };
-// У динамита свой цвет, у остальных предметов — выбранный в палитре
-const ICON_COLORS = { "Динамит": "rgb(255,40,40)" };
+const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa " };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -986,7 +949,7 @@ function rgb(c) {
 function drawHotbar() {
   const slots = HOTBAR.map((item, i) => {
     const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
-    const icon = item ? `<span style="color:${ICON_COLORS[item] || rgb(color)}">${ICONS[item]}</span>` : "    ";
+    const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
     const style = i === slot ? "" : ' style="color:#666"';
     return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${i + 1}${h}${h}${br}</span>`;
   });
@@ -1316,75 +1279,24 @@ async function signIn() {
   return user.uid;
 }
 
-// ---------- Фигурка игрока: человечек из маленьких кубиков-«пикселей» ----------
-// Большая круглая голова, туловище, руки и ноги. Каждая часть — это шар или палочка,
-// собранные из кубиков, а кубики склеены в одну геометрию, чтобы рисовалось быстро
-
-const VOX = 0.07;  // размер одного «пикселя» фигурки
-
-// Набор кубиков nx × ny × nz; keep(u, v, w) решает, оставить ли кубик (u, v, w — от -1 до 1).
-// Фигура стоит на нуле по высоте и отцентрована по ширине и глубине
-function voxels(nx, ny, nz, keep = () => true) {
-  const parts = [];
-  for (let i = 0; i < nx; i++)
-    for (let j = 0; j < ny; j++)
-      for (let k = 0; k < nz; k++) {
-        const u = (i + 0.5) / nx * 2 - 1, v = (j + 0.5) / ny * 2 - 1, w = (k + 0.5) / nz * 2 - 1;
-        if (!keep(u, v, w)) continue;
-        const b = new THREE.BoxGeometry(VOX, VOX, VOX);
-        b.translate((i - nx / 2 + 0.5) * VOX, (j + 0.5) * VOX, (k - nz / 2 + 0.5) * VOX);
-        parts.push(b);
-      }
-  return mergeGeometries(parts);
-}
-const ball = (u, v, w) => u * u + v * v + w * w <= 1.05;
-// Вешает часть вниз от точки крепления (плечо, бедро) — так её удобно качать при ходьбе
-const hanging = g => { g.computeBoundingBox(); return g.translate(0, -g.boundingBox.max.y, 0); };
-
-const figureParts = {
-  head: voxels(9, 9, 9, ball),
-  torso: voxels(6, 8, 4, (u, v, w) => u * u * 0.8 + w * w * 0.8 <= 1.15 - 0.25 * v * v),
-  arm: hanging(mergeGeometries([voxels(2, 7, 2), voxels(3, 3, 3, ball).translate(0, -0.18, 0)])),
-  leg: hanging(mergeGeometries([voxels(3, 9, 3).translate(0, 0.14, 0), voxels(3, 2, 5).translate(0, 0, -0.07)])),
-};
+const avatarBody = new THREE.BoxGeometry(0.6, 1.2, 0.35);
+const avatarHead = new THREE.BoxGeometry(0.45, 0.45, 0.45);
+const avatarEyes = new THREE.BoxGeometry(0.3, 0.08, 0.02);
+const eyesMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const labels = document.getElementById("labels");
 
 // Фигурка другого игрока: туловище и голова его цвета, глаза показывают, куда он смотрит
 function makeFigure(mat) {
+  const body = new THREE.Mesh(avatarBody, mat);
+  const head = new THREE.Mesh(avatarHead, mat);
+  const eyes = new THREE.Mesh(avatarEyes, eyesMat);
+  body.position.y = 0.6;
+  head.position.y = 1.45;
+  eyes.position.set(0, 1.5, -0.235);
   const group = new THREE.Group();
-  const part = (geo, x, y) => {
-    const pivot = new THREE.Group();
-    const m = new THREE.Mesh(geo, mat);
-    m.castShadow = true;
-    pivot.add(m);
-    pivot.position.set(x, y, 0);
-    group.add(pivot);
-    return pivot;
-  };
-  part(figureParts.torso, 0, 0.66);
-  part(figureParts.head, 0, 1.18);
-  // Руки и ноги крепятся к плечам и бёдрам: при ходьбе они качаются вокруг этих точек
-  group.userData.limbs = {
-    armL: part(figureParts.arm, -0.27, 1.16), armR: part(figureParts.arm, 0.27, 1.16),
-    legL: part(figureParts.leg, -0.08, 0.77), legR: part(figureParts.leg, 0.08, 0.77),
-  };
-  group.userData.walk = { phase: 0, amp: 0, last: new THREE.Vector3() };
+  for (const m of [body, head, eyes]) { m.castShadow = true; group.add(m); }
   scene.add(group);
   return group;
-}
-
-// Шаги: чем быстрее фигурка движется, тем сильнее машет руками и ногами; стоит — опускает
-function animateFigure(group, dt) {
-  const { limbs, walk } = group.userData;
-  const speed = dt > 0 ? group.position.distanceTo(walk.last) / dt : 0;
-  walk.last.copy(group.position);
-  walk.amp += (Math.min(1, speed / 4) - walk.amp) * Math.min(1, dt * 8);
-  walk.phase += speed * dt * 2.4;
-  const swing = Math.sin(walk.phase) * 0.7 * walk.amp;
-  limbs.legL.rotation.x = swing;
-  limbs.legR.rotation.x = -swing;
-  limbs.armL.rotation.x = -swing * 0.8;
-  limbs.armR.rotation.x = swing * 0.8;
 }
 
 function avatar(id) {
@@ -1435,7 +1347,12 @@ const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.id;
 const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
-  const { db, ref, get, set, push, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast } = await loadFirebase();
+  const { db, ref, get, set, push, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp } = await loadFirebase();
+  // Часы на устройствах расходятся, поэтому время сообщений берём у сервера:
+  // serverOffset — насколько часы этого устройства отстают от часов сервера
+  let serverOffset = 0;
+  onValue(ref(db, ".info/serverTimeOffset"), s => serverOffset = s.val() || 0);
+  const serverNow = () => Date.now() + serverOffset;
   // Если правила базы ещё старые и бан не прочитать — просто входим
   const banned = await get(ref(db, `bans/${code}/${me}`)).then(s => s.exists(), () => false);
   if (banned) return leave("тебя забанили в этом лобби");
@@ -1449,7 +1366,6 @@ async function joinLobby(code, me) {
 
   const world = ref(db, `world/${code}`);
   onChildAdded(world, s => { try { edit(s.val()); } catch {} });
-  onChildChanged(world, s => { try { edit(s.val(), true); } catch {} });  // перекрасили
   onChildRemoved(world, s => { try { edit(undo(s.val())); } catch {} });
 
   const players = ref(db, `players/${code}`);
@@ -1461,7 +1377,7 @@ async function joinLobby(code, me) {
   // Показываем только свежие сообщения, старые уже исчезли бы сами
   onChildAdded(query(ref(db, `chat/${code}`), limitToLast(10)), s => {
     const m = s.val();
-    if (Date.now() - m.t < CHAT_TIME) addChat(`${devPrefix(m.dev === true)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
+    if (serverNow() - m.t < CHAT_TIME) addChat(`${devPrefix(m.dev === true)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
   });
 
   // Разработчик кикнул или забанил — выходим в главное меню
@@ -1471,7 +1387,7 @@ async function joinLobby(code, me) {
   // Объявление разработчика — крупно сверху экрана
   onValue(ref(db, `announce/${code}`), s => {
     const a = s.val();
-    if (a && Date.now() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80));
+    if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80));
   });
 
   online = {
@@ -1485,11 +1401,13 @@ async function joinLobby(code, me) {
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
     },
-    sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: Date.now(), dev: isDev }),
+    sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: serverTimestamp(), dev: isDev }),
     // Только для разработчика: правила базы не дадут сделать это никому другому
     kick: id => set(ref(db, `kicks/${code}/${id}`), true),
     ban: id => set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }),
-    announce: text => set(ref(db, `announce/${code}`), { text, t: Date.now() }),
+    // Если правила базы не дают записать — говорим об этом, а не молчим
+    announce: text => set(ref(db, `announce/${code}`), { text, t: serverTimestamp() })
+      .catch(() => addChat("* объявление не отправилось: обнови правила базы в Firebase")),
   };
 }
 
@@ -1563,23 +1481,27 @@ adminEl.addEventListener("click", e => {
 
 // Плавно двигаем чужие фигурки к последним присланным позициям, ставим ники над головами
 // и 8 раз в секунду шлём свою позицию
+// Ник над головой фигурки: точка над головой → координаты на экране.
+// За спиной, за краем экрана или далеко ник прячем
+function placeLabel(label, pos, visible) {
+  const p = pos.clone();
+  p.y += 2.0;
+  const far = p.distanceTo(camera.position) > 40;
+  p.project(camera);
+  const screen = renderer.domElement.getBoundingClientRect();
+  label.style.display = !visible || far || p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1 ? "none" : "block";
+  label.style.left = screen.left + (p.x + 1) / 2 * screen.width + "px";
+  label.style.top = screen.top + (1 - p.y) / 2 * screen.height + "px";
+}
+
 function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
-  const screen = renderer.domElement.getBoundingClientRect();
   for (const a of others.values()) {
     a.group.position.lerp(a.target, k);
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
-    animateFigure(a.group, dt);
 
-    // Точка над головой → координаты на экране; за спиной или за краем экрана ник прячем
-    const p = a.group.position.clone();
-    p.y += 2.0;
-    const far = p.distanceTo(camera.position) > 40;
-    p.project(camera);
-    a.label.style.display = far || p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1 ? "none" : "block";
-    a.label.style.left = screen.left + (p.x + 1) / 2 * screen.width + "px";
-    a.label.style.top = screen.top + (1 - p.y) / 2 * screen.height + "px";
+    placeLabel(a.label, a.group.position, true);
   }
   poseTimer += dt;
   if (online && poseTimer > 1 / 8) {
@@ -1712,7 +1634,6 @@ function startGame(code, name, me) {
   menuEl.style.display = "none";
   document.body.classList.remove("in-menu");
   yaw = 0;
-  if (!code) loadSavedMap();
   if (code) {
     // Код видно, чтобы позвать друзей
     lobbyEl.textContent = `${name} · код ${code}` + (isDev ? (TOUCH ? " · разработчик" : " · P — админ-меню") : "");
@@ -1732,195 +1653,33 @@ try {
 } catch {}
 drawMenu();
 
-// ---------- Динамит ----------
-
-const fuses = [];   // свой динамит, который скоро взорвётся: { x, y, z, t }
-const sparks = [];  // искры от взрывов
-const sparkGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
-const sparkMats = [0xffffff, 0xffe060, 0xff8020].map(c => new THREE.MeshBasicMaterial({ color: c }));
-
-// Взрыв: убираем всё в радиусе. Другой динамит рядом не исчезает, а тоже вот-вот взорвётся
-function detonate(x, y, z) {
-  const center = new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5);
-  for (const m of solids.slice(1)) {
-    if (m.position.distanceTo(center) > BLAST_RADIUS) continue;
-    const e = m.userData.edit;
-    const isOrigin = e.op === "block" && e.x === x && e.y === y && e.z === z;
-    if (e.k === "tnt" && !isOrigin) {
-      if (!fuses.some(f => f.x === e.x && f.y === e.y && f.z === e.z)) fuses.push({ x: e.x, y: e.y, z: e.z, t: 0.25 });
-    } else {
-      share(undo(e));
-    }
-  }
-}
-
-// Картинка взрыва (у всех, кто видит, как пропал динамит): разлетаются яркие искры —
-// в ASCII это звёздочки, точки и решётки — и вспышка света. Рядом стоящего подбрасывает
-function explode(pos) {
-  for (let i = 0; i < 45; i++) {
-    const m = new THREE.Mesh(sparkGeo, sparkMats[i % 3]);
-    m.position.copy(pos);
-    const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).normalize().multiplyScalar(4 + Math.random() * 6);
-    const life = 0.7 + Math.random() * 0.7;
-    sparks.push({ m, v, life, max: life });
-    scene.add(m);
-  }
-  const flash = new THREE.PointLight(0xffd080, 60 * Math.PI, 14, 1.5);
-  flash.position.copy(pos);
-  scene.add(flash);
-  sparks.push({ light: flash, life: 0.4, max: 0.4 });
-  if (pos.distanceTo(new THREE.Vector3(px, feet + 1, pz)) < BLAST_RADIUS + 1) { vy = 9; onGround = false; }
-}
-
-function updateSparks(dt) {
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i];
-    s.life -= dt;
-    if (s.m) {
-      s.v.y -= 12 * dt;
-      s.m.position.addScaledVector(s.v, dt);
-      s.m.scale.setScalar(Math.max(0.01, s.life / s.max));
-    } else {
-      s.light.intensity = 60 * Math.PI * Math.max(0, s.life / s.max);
-    }
-    if (s.life <= 0) {
-      scene.remove(s.m || s.light);
-      sparks.splice(i, 1);
-    }
-  }
-}
-
-function updateFuses(dt) {
-  for (let i = fuses.length - 1; i >= 0; i--) {
-    const f = fuses[i];
-    f.t -= dt;
-    const mesh = blocks.get(key(f.x, f.y, f.z));
-    if (!mesh || mesh.userData.edit.k !== "tnt") { fuses.splice(i, 1); continue; }  // кто-то убрал
-    // Пока горит фитиль, динамит мигает белым, и всё чаще к взрыву
-    mesh.material.color.set(Math.sin(f.t * (8 + (FUSE_TIME - f.t) * 6)) > 0 ? 0xffffff : TNT_RED);
-    if (f.t <= 0) {
-      fuses.splice(i, 1);
-      detonate(f.x, f.y, f.z);
-    }
-  }
-}
-
-// ---------- Смена дня и ночи: солнце ходит по кругу, днём светло, ночью темно ----------
-// Фон всегда чёрный. Время берётся из часов компьютера, поэтому у всех игроков оно одно и то же
-
-const hemi = scene.children.find(o => o.isHemisphereLight);
-const smooth01 = (a, b, v) => Math.min(1, Math.max(0, (v - a) / (b - a)));
-
-function updateDayNight() {
-  const a = (Date.now() % DAY_LENGTH) / DAY_LENGTH * Math.PI * 2;
-  const height = Math.sin(a);  // солнце над горизонтом: 1 — полдень, -1 — полночь
-  sun.position.set(SIZE / 2 + Math.cos(a) * 60, height * 60, SIZE / 2 + 20);
-  const light = smooth01(-0.1, 0.35, height);
-  sun.intensity = Math.PI * light;
-  hemi.intensity = Math.PI * (0.08 + 0.52 * light);
-}
-
-// ---------- Фонарик (L): светит туда, куда смотришь ----------
-
-const flashlight = new THREE.SpotLight(0xfff4dd, 0, 28, 0.45, 0.45, 1.2);
-scene.add(flashlight, flashlight.target);
-let flashlightOn = false;
-function toggleFlashlight() {
-  flashlightOn = !flashlightOn;
-  if (panel === gameEl) drawGameMenu();
-}
-function updateFlashlight() {
-  flashlight.intensity = flashlightOn ? 40 * Math.PI : 0;
-  flashlight.position.copy(camera.position);
-  flashlight.target.position.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()));
-}
-
-// Своя фигурка — видна, когда смотришь со стороны (вид от 3-го лица или свободная камера)
+// Своя фигурка с ником — видна, когда смотришь со стороны (вид от 3-го лица или свободная камера)
 const selfMat = new THREE.MeshLambertMaterial();
 const selfFigure = makeFigure(selfMat);
+const selfLabel = document.createElement("pre");
+selfLabel.className = "nick";
+labels.append(selfLabel);
 function updateSelfFigure(dt) {
   selfFigure.visible = camMode !== "first" && inGame;
   selfFigure.position.set(px, feet, pz);
   selfFigure.rotation.y = yaw;
   selfFigure.scale.y = crouching ? 0.7 : 1;
-  animateFigure(selfFigure, dt);
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
+
+  selfLabel.textContent = devPrefix(isDev) + nick;
+  selfLabel.classList.toggle("dev", isDev);
+  selfLabel.style.color = `rgb(${r},${g},${b})`;
+  placeLabel(selfLabel, selfFigure.position, selfFigure.visible);
 }
 
 function updateWorld(dt) {
-  updateFuses(dt);
-  updateSparks(dt);
-  updateDayNight();
-  updateFlashlight();
   updateSelfFigure(dt);
 }
 
-// ---------- Карты: сохранение и загрузка ----------
-// В одиночной игре карта сама сохраняется в браузере. Ещё её можно скачать файлом
-// и открыть у себя или у друга (в лобби — построится для всех)
-
-const allEdits = () => solids.slice(1).map(m => m.userData.edit);
-let saveTimer = 0;
-function saveLater() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try { localStorage.setItem("map", JSON.stringify(allEdits())); } catch {}
-  }, 1000);
-}
-function loadSavedMap() {
-  try { for (const e of JSON.parse(localStorage.getItem("map") || "[]")) edit(e); } catch {}
-}
-
-function downloadMap() {
-  const blob = new Blob([JSON.stringify({ game: "ascii-baseplate", items: allEdits() })], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "ascii-map.json";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-// Из файла берём только то, что умеет строить игра
-const mapFile = document.getElementById("mapFile");
-mapFile.addEventListener("change", async () => {
-  const file = mapFile.files[0];
-  mapFile.value = "";
-  if (!file) return;
-  try {
-    const items = JSON.parse(await file.text()).items.slice(0, 3000);
-    let n = 0;
-    for (const e of items) {
-      if (!["block", "plank", "text"].includes(e?.op)) continue;
-      try { share(e); n++; } catch {}
-    }
-    addChat(`* карта загружена: ${n} предметов`);
-  } catch {
-    addChat("* не получилось открыть файл карты");
-  }
-});
-
-function clearMap() {
-  for (const m of solids.slice(1)) {
-    const e = m.userData.edit;
-    removeSolid(m, true);
-    online?.sendEdits([undo(e)]);
-  }
-  fuses.length = 0;
-  if (!online) saveLater();
-}
-
-// ---------- Меню игры (M или кнопка МЕНЮ): карта, вид, фонарик, выход ----------
+// ---------- Пауза (Esc или кнопка МЕНЮ) ----------
 
 const gameEl = document.getElementById("game");
-const THEMES = ["обычная", "инверсия", "терминал"];
-let theme = 0;
-try { theme = Number(localStorage.getItem("theme")) || 0; } catch {}
-function applyTheme() {
-  document.body.classList.toggle("theme-invert", theme === 1);
-  document.body.classList.toggle("theme-green", theme === 2);
-}
-applyTheme();
 
 function drawGameMenu() {
   const W = 34;
@@ -1929,22 +1688,12 @@ function drawGameMenu() {
     return "║ " + (act ? `<span class="act" data-a="${act}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
   };
   const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
-  const canClear = !online || isDev;  // общую карту лобби может очистить только разработчик
-  const rows = ["╔" + title("ПАУЗА", "═") + "╗",
+  gameEl.innerHTML = ["╔" + title("ПАУЗА", "═") + "╗",
     row("[ продолжить ]", "resume"),
-    "╟" + title("КАРТА", "─") + "╢",
-    row(online ? "карта лобби хранится на сервере" : "карта сохраняется сама"),
-    row("[ скачать карту файлом ]", "download"),
-    row("[ открыть карту из файла ]", "open")];
-  if (canClear) rows.push(row("[ очистить карту ]", "clear"));
-  rows.push("╟" + title("ВИД", "─") + "╢",
-    row(`[ тема: ${THEMES[theme]} ]`, "theme"),
-    row(`[ фонарик: ${flashlightOn ? "ВКЛ" : "выкл"} ]${TOUCH ? "" : "  (L)"}`, "light"),
-    "╟" + title("", "─") + "╢",
     row("[ выйти в главное меню ]", "exit"),
+    "╟" + title("", "─") + "╢",
     row(TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"),
-    "╚" + title("", "═") + "╝");
-  gameEl.innerHTML = rows.join("\n");
+    "╚" + title("", "═") + "╝"].join("\n");
 }
 function toggleGameMenu() { togglePanel(gameEl, drawGameMenu); }
 
@@ -1955,19 +1704,8 @@ document.addEventListener("pointerlockchange", () => {
 
 gameEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
-  if (!a) return;
-  if (a === "resume") return toggleGameMenu();
-  if (a === "download") downloadMap();
-  if (a === "open") mapFile.click();
-  if (a === "clear") ask("ОЧИСТИТЬ? НАПИШИ ДА", "", 3).then(t => t?.toLowerCase() === "да" && clearMap());
-  if (a === "theme") {
-    theme = (theme + 1) % THEMES.length;
-    try { localStorage.setItem("theme", theme); } catch {}
-    applyTheme();
-  }
-  if (a === "light") toggleFlashlight();
+  if (a === "resume") toggleGameMenu();
   if (a === "exit") leave("");
-  drawGameMenu();
 });
 
 // ---------- Главный цикл ----------
