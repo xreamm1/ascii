@@ -262,6 +262,7 @@ function fitPlank(mesh, a, b) {
 function addPlank(a, b) {
   const mesh = new THREE.Mesh(plankGeo, material(woodTex, color));
   fitPlank(mesh, a, b);
+  if (hitsPlank(mesh, px, feet, pz)) return;  // нельзя ставить доску внутрь себя
   mesh.castShadow = mesh.receiveShadow = true;
   planks.push(mesh);
   solids.push(mesh);
@@ -295,6 +296,39 @@ function hitsBlock(x, f, z) {
   return false;
 }
 
+// Пересекает ли отрезок a → a+d коробку с центром в нуле и полуразмерами half
+function segmentHitsBox(a, d, half) {
+  let t0 = 0, t1 = 1;
+  for (const k of ["x", "y", "z"]) {
+    if (Math.abs(d[k]) < 1e-9) {
+      if (Math.abs(a[k]) > half[k]) return false;
+      continue;
+    }
+    let ta = (-half[k] - a[k]) / d[k], tb = (half[k] - a[k]) / d[k];
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+// Пересекается ли тело игрока с доской. Тело — вертикальный отрезок от колен (feet + STEP,
+// чтобы на низкие доски можно было заходить) до макушки. Переводим его в систему координат
+// доски, где она — обычная коробка, и расширяем коробку на толщину игрока
+const invQ = new THREE.Quaternion();
+function hitsPlank(mesh, x, f, z) {
+  invQ.copy(mesh.quaternion).invert();
+  const a = new THREE.Vector3(x, f + STEP, z).sub(mesh.position).applyQuaternion(invQ);
+  const d = new THREE.Vector3(0, HEIGHT - STEP, 0).applyQuaternion(invQ);
+  const half = new THREE.Vector3(PLANK_W / 2 + RADIUS, PLANK_T / 2, mesh.scale.z / 2 + RADIUS);
+  return segmentHitsBox(a, d, half);
+}
+
+function hitsSolid(x, f, z) {
+  return hitsBlock(x, f, z) || planks.some(p => hitsPlank(p, x, f, z));
+}
+
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
 const downRay = new THREE.Raycaster();
 function groundHeight(x, f, z) {
@@ -319,16 +353,18 @@ function update(dt) {
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
   const step = MOVE_SPEED * dt;
-  // По каждой оси отдельно — так можно скользить вдоль стены
-  if (!hitsBlock(px + mx * step, feet, pz)) px += mx * step;
-  if (!hitsBlock(px, feet, pz + mz * step)) pz += mz * step;
+  // По каждой оси отдельно — так можно скользить вдоль стены.
+  // Если уже застрял (например, упал вплотную к краю доски), даём выйти
+  const stuck = hitsSolid(px, feet, pz);
+  if (stuck || !hitsSolid(px + mx * step, feet, pz)) px += mx * step;
+  if (stuck || !hitsSolid(px, feet, pz + mz * step)) pz += mz * step;
 
   // Прыжок и гравитация
   if (keys.Space && onGround) vy = JUMP_SPEED;
   vy -= GRAVITY * dt;
   const prevFeet = feet;
   feet += vy * dt;
-  if (vy > 0 && hitsBlock(px, feet, pz)) { feet = prevFeet; vy = 0; }  // ударился головой
+  if (vy > 0 && hitsSolid(px, feet, pz)) { feet = prevFeet; vy = 0; }  // ударился головой
 
   const ground = groundHeight(px, prevFeet, pz);
   onGround = feet <= ground;
@@ -552,11 +588,14 @@ const root = document.documentElement;
 const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen;
 if (!requestFullscreen) document.querySelector('[data-action="fullscreen"]').style.display = "none";
 
-function toggleFullscreen() {
+async function toggleFullscreen() {
   if (document.fullscreenElement || document.webkitFullscreenElement) {
+    screen.orientation?.unlock?.();
     (document.exitFullscreen || document.webkitExitFullscreen).call(document);
   } else {
-    requestFullscreen.call(root);
+    await requestFullscreen.call(root);
+    // Поворот в альбомную ориентацию работает только в полноэкранном режиме
+    try { await screen.orientation.lock("landscape"); } catch {}
   }
 }
 
