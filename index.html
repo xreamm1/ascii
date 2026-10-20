@@ -68,7 +68,13 @@
     background: #000;
     border: none;
     outline: none;
+    /* Без этого Safari на iPhone не даёт печатать: у страницы выделение текста выключено */
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: auto;
   }
+  #ask .btn { cursor: pointer; }
+  #ask .btn:hover { background: #fff; color: #000; }
 
   #chat {
     left: 16px;
@@ -133,7 +139,7 @@
   <pre id="askTop"></pre>
   <div class="row"><pre>║ </pre><input id="askInput" enterkeyhint="done" autocomplete="off"><pre> ║</pre></div>
   <pre>╟────────────────────────────────╢
-║ Enter — готово   Esc — отмена  ║
+║ <span class="btn" data-a="ok">[ ГОТОВО ]</span>          <span class="btn" data-a="cancel">[ ОТМЕНА ]</span> ║
 ╚════════════════════════════════╝</pre>
 </div>
 <div id="touch">
@@ -675,12 +681,25 @@ addEventListener("keydown", e => {
   }
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "Enter" && !menuOpen) openChat();
+  if (e.code === "Escape") document.exitPointerLock();  // при захвате клавиатуры Esc сам мышь не отпускает
 });
 addEventListener("keyup", e => keys[e.code] = false);
 
+// Захват клавиатуры: в полноэкранном режиме Chrome и Edge отдают игре даже Ctrl+W,
+// поэтому присед на Ctrl не закрывает вкладку. Выйти из полного экрана — зажать Esc
+async function lockKeyboard() {
+  if (TOUCH || !navigator.keyboard?.lock) return;
+  try {
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    await navigator.keyboard.lock();
+  } catch {}
+}
+
 // Клик по экрану захватывает мышь; камера крутится полностью, вверх и вниз до упора
 renderer.domElement.addEventListener("click", () => {
-  if (inGame && !menuOpen && !typing && !TOUCH) renderer.domElement.requestPointerLock();
+  if (!inGame || menuOpen || typing || TOUCH) return;
+  lockKeyboard();
+  renderer.domElement.requestPointerLock();
 });
 
 function turn(dx, dy, speed) {
@@ -913,6 +932,12 @@ askInput.addEventListener("keydown", e => {
   e.stopPropagation();  // клавиши — в окошко, а не в игру
   if (e.key === "Enter") closeAsk(askInput.value.trim() || null);
   if (e.key === "Escape") closeAsk(null);
+});
+
+// Кнопки [ ГОТОВО ] и [ ОТМЕНА ] — на телефоне Enter на клавиатуре срабатывает не всегда
+askBox.addEventListener("click", e => {
+  const a = e.target.closest(".btn")?.dataset.a;
+  if (a && typing) closeAsk(a === "ok" ? askInput.value.trim() || null : null);
 });
 
 // Ник запоминается в браузере, чтобы не вводить его каждый раз
@@ -1365,7 +1390,10 @@ function startGame(code, name) {
     lobbyEl.textContent = `${name} · код ${code}`;  // код видно, чтобы позвать друзей
     joinLobby(code).catch(() => addChat("* не удалось подключиться к лобби"));
   }
-  if (!TOUCH) renderer.domElement.requestPointerLock();
+  if (!TOUCH) {
+    lockKeyboard();
+    renderer.domElement.requestPointerLock();
+  }
 }
 
 drawMenu();
