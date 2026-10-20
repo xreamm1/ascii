@@ -108,6 +108,13 @@
   }
   #admin .act { cursor: pointer; }
   #admin .act:hover { background: #fff; color: #000; }
+  #hint {
+    left: 50%;
+    top: 60%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    display: none;
+  }
   #announce {
     left: 50%;
     top: 18%;
@@ -166,6 +173,7 @@
 <pre id="admin"></pre>
 <pre id="game"></pre>
 <pre id="announce"></pre>
+<pre id="hint">кликни по экрану, чтобы продолжить</pre>
 <div id="labels"></div>
 <pre id="menu"></pre>
 <div id="ask">
@@ -789,7 +797,7 @@ async function lockKeyboard() {
 renderer.domElement.addEventListener("click", () => {
   if (!inGame || menuOpen || typing || TOUCH) return;
   lockKeyboard();
-  renderer.domElement.requestPointerLock();
+  lockMouse();
 });
 
 function turn(dx, dy, speed) {
@@ -985,11 +993,11 @@ function togglePanel(el, draw) {
   panel = panel === el ? null : el;
   menuOpen = !!panel;
   if (panel) {
-    document.exitPointerLock();
+    if (document.pointerLockElement) document.exitPointerLock();  // лишний вызов вызывает ложное событие
     draw();
     panel.style.display = "block";
   } else if (!TOUCH) {
-    renderer.domElement.requestPointerLock();
+    lockMouse();
   }
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
@@ -1016,7 +1024,7 @@ let askDone = null;
 function ask(title, value = "", maxLength = 40, secret = false) {
   typing = true;
   for (const k in keys) keys[k] = false;  // чтобы игрок не продолжил идти сам
-  document.exitPointerLock();
+  if (document.pointerLockElement) document.exitPointerLock();  // лишний вызов вызывает ложное событие
   const t = ` ${title} `;
   askTop.textContent = "╔" + t.padStart(17 + t.length / 2, "═").padEnd(32, "═") + "╗";
   askInput.value = value;
@@ -1032,7 +1040,7 @@ function closeAsk(result) {
   askBox.style.display = "none";
   askInput.blur();
   askDone(result);
-  if (!TOUCH && !menuOpen && inGame) renderer.domElement.requestPointerLock();
+  if (!TOUCH && !menuOpen && inGame) lockMouse();
 }
 
 askInput.addEventListener("keydown", e => {
@@ -1384,6 +1392,7 @@ async function joinLobby(code, me) {
   const kick = ref(db, `kicks/${code}/${me}`);
   onValue(kick, s => { if (s.val()) remove(kick).finally(() => leave("тебя кикнул разработчик")); });
   onValue(ref(db, `bans/${code}/${me}`), s => { if (s.val()) leave("тебя забанили в этом лобби"); });
+  onValue(ref(db, `lobbyInfo/${code}/name`), s => { if (!s.exists()) leave("лобби удалено разработчиком"); });
   // Объявление разработчика — крупно сверху экрана
   onValue(ref(db, `announce/${code}`), s => {
     const a = s.val();
@@ -1452,7 +1461,7 @@ function drawAdmin() {
     row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"),
     row(`сейчас: ${views[camMode]}`)];
   if (online) {
-    rows.push(row("[ объявление ]", "announce"), "╟" + title("ИГРОКИ", "─") + "╢");
+    rows.push(row("[ объявление ]", "announce"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     if (!others.size) rows.push(row("в лобби больше никого"));
     for (const [id, a] of others) {
       const name = a.nick.slice(0, 14).padEnd(14);
@@ -1474,6 +1483,7 @@ adminEl.addEventListener("click", e => {
     if (camMode === "free") freePos.copy(camera.position);
   }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
+  if (a === "dellobby" && lobbyCode) confirmDeleteLobby(lobbyCode);
   if (a.startsWith("kick:")) { online?.kick(a.slice(5)); addChat(`* ${others.get(a.slice(5))?.nick} кикнут`); }
   if (a.startsWith("ban:")) { online?.ban(a.slice(4)); addChat(`* ${others.get(a.slice(4))?.nick} забанен в лобби`); }
   drawAdmin();
@@ -1549,7 +1559,13 @@ function drawMenu() {
     } else {
       rows.push(line("[ СОЗДАТЬ ЛОББИ ]", "create"), line("[ ВОЙТИ ПО КОДУ ]", "code"), "╟" + title("ЛОББИ", "─") + "╢");
       if (!lobbyList.length) rows.push(line("пока пусто — создай своё лобби"));
-      for (const l of lobbyList) rows.push(line(`${l.code}  ${l.name.slice(0, 22).padEnd(22)} ${l.players} чел.`, "join:" + l.code));
+      const canDelete = nick.toLowerCase() === DEV_NICK;  // сервер всё равно проверит пароль
+      for (const l of lobbyList) {
+        const text = `${l.code}  ${l.name.slice(0, canDelete ? 18 : 22).padEnd(canDelete ? 18 : 22)} ${l.players} чел.`;
+        if (!canDelete) { rows.push(line(text, "join:" + l.code)); continue; }
+        rows.push("║ " + `<span class="item" data-act="join:${esc(l.code)}">${esc(text)}</span> ` +
+          `<span class="item" data-act="del:${esc(l.code)}">[x]</span>` + " ".repeat(MW - 5 - text.length) + "║");
+      }
     }
     if (menuNote) rows.push(line(), line(menuNote));
     rows.push("╟" + title("", "─") + "╢", line("[ НАЗАД ]", "back"), "╚" + title("") + "╝");
@@ -1567,6 +1583,7 @@ menuEl.addEventListener("click", e => {
   if (act === "create") createLobby().catch(err => showNote(err.message.length < 38 ? err.message : "не удалось создать лобби"));
   if (act === "code") ask("КОД ЛОББИ", "", 4).then(c => c && enterLobby(c));
   if (act.startsWith("join:")) enterLobby(act.slice(5));
+  if (act.startsWith("del:")) confirmDeleteLobby(act.slice(4));
   drawMenu();
 });
 
@@ -1611,6 +1628,27 @@ async function createLobby() {
   startGame(code, name, me);
 }
 
+// Удаляет лобби целиком: название, игроков, постройки, чат, кики, баны и объявление.
+// Правила базы разрешают это только аккаунту разработчика
+async function deleteLobby(code) {
+  await signIn();
+  if (!isDev) throw new Error("удалять лобби может только разработчик");
+  const { db, ref, update } = await loadFirebase();
+  const gone = {};
+  for (const part of ["lobbyInfo", "players", "world", "chat", "kicks", "bans", "announce"]) gone[`${part}/${code}`] = null;
+  await update(ref(db), gone);
+}
+
+// Спрашиваем подтверждение — удалённое лобби не вернуть
+function confirmDeleteLobby(code) {
+  return ask(`УДАЛИТЬ ${code}? НАПИШИ ДА`, "", 3).then(t => {
+    if (t?.toLowerCase() !== "да") return;
+    return deleteLobby(code).then(
+      () => showNote(`лобби ${code} удалено`),
+      err => (inGame ? addChat : showNote)(err.message.length < 38 ? err.message : "не удалось удалить лобби"));
+  });
+}
+
 async function enterLobby(code) {
   code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!code) return;
@@ -1627,8 +1665,11 @@ async function enterLobby(code) {
 }
 
 // code не задан — одиночная игра
+let lobbyCode = null;  // код лобби, в котором сейчас игра (null — одиночная игра)
+
 function startGame(code, name, me) {
   inGame = true;
+  lobbyCode = code || null;
   stopLobbyList?.();
   stopLobbyList = null;
   menuEl.style.display = "none";
@@ -1642,7 +1683,7 @@ function startGame(code, name, me) {
   }
   if (!TOUCH) {
     lockKeyboard();
-    renderer.domElement.requestPointerLock();
+    lockMouse();
   }
 }
 
@@ -1699,8 +1740,21 @@ function toggleGameMenu() { togglePanel(gameEl, drawGameMenu); }
 
 // Мышь освободилась (Esc, переключение окна) — ставим игру на паузу
 document.addEventListener("pointerlockchange", () => {
+  hintEl.style.display = "none";
   if (!document.pointerLockElement && inGame && !menuOpen && !typing && !TOUCH) toggleGameMenu();
 });
+
+// Браузер не всегда отдаёт мышь сразу (например, после Esc ему нужен клик) — тогда подсказываем
+const hintEl = document.getElementById("hint");
+function showHint() {
+  if (inGame && !menuOpen && !typing && !TOUCH) hintEl.style.display = "block";
+}
+document.addEventListener("pointerlockerror", showHint);
+
+// Захватить мышь для поворота камеры; если браузер отказал — показать подсказку
+function lockMouse() {
+  renderer.domElement.requestPointerLock()?.catch?.(showHint);
+}
 
 gameEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
