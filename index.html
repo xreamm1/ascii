@@ -513,8 +513,8 @@ function groundHeight(x, f, z) {
 }
 
 function update(dt) {
-  // Присед: пока держишь C — ниже и медленнее. Встать можно, только если над головой свободно
-  if (keys.KeyC) crouching = true;
+  // Присед: пока держишь C или Ctrl — ниже и медленнее. Встать можно, только если над головой свободно
+  if (keys.KeyC || keys.ControlLeft || keys.ControlRight) crouching = true;
   else if (crouching && !hitsSolid(px, feet, pz, HEIGHT)) crouching = false;
   bodyH = crouching ? CROUCH_HEIGHT : HEIGHT;
   eye += ((crouching ? CROUCH_EYE : EYE) - eye) * Math.min(1, dt * 12);  // камера опускается плавно
@@ -533,8 +533,11 @@ function update(dt) {
   // По каждой оси отдельно — так можно скользить вдоль стены.
   // Если уже застрял (например, упал вплотную к краю доски), даём выйти
   const stuck = hitsSolid(px, feet, pz);
-  if (stuck || !hitsSolid(px + mx * step, feet, pz)) px += mx * step;
-  if (stuck || !hitsSolid(px, feet, pz + mz * step)) pz += mz * step;
+  // Присевший не падает с края, как в Майнкрафте: шаг, после которого под ногами
+  // не останется опоры (ниже, чем можно просто шагнуть), не делаем
+  const safe = (x, z) => !(crouching && onGround) || groundHeight(x, feet, z) >= feet - STEP;
+  if ((stuck || !hitsSolid(px + mx * step, feet, pz)) && safe(px + mx * step, pz)) px += mx * step;
+  if ((stuck || !hitsSolid(px, feet, pz + mz * step)) && safe(px, pz + mz * step)) pz += mz * step;
 
   // Прыжок и гравитация
   if (keys.Space && onGround) vy = JUMP_SPEED;
@@ -664,6 +667,7 @@ function selectSlot(n) {
 
 addEventListener("keydown", e => {
   if (typing || !inGame) return;
+  if (e.ctrlKey) e.preventDefault();  // Ctrl — присед, а не сочетания браузера вроде Ctrl+S или Ctrl+D
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
