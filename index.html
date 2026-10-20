@@ -59,6 +59,7 @@
   @media (pointer: coarse) {
     pre { font-size: 13px; }
     #touch { display: block; }
+    #crosshair { display: none; }  /* на телефоне строят касанием, прицел не нужен */
   }
 </style>
 <script type="importmap">
@@ -70,16 +71,13 @@
 <pre id="hotbar"></pre>
 <pre id="palette"></pre>
 <div id="touch">
-  <pre class="button" data-action="color"  style="bottom: 250px">┌─────────┐
+  <pre class="button" data-action="fullscreen" style="top: 16px">┌─────────┐
+│  ЭКРАН  │
+└─────────┘</pre>
+  <pre class="button" data-action="color"  style="bottom: 150px">┌─────────┐
 │  ЦВЕТ   │
 └─────────┘</pre>
-  <pre class="button" data-action="remove" style="bottom: 200px">┌─────────┐
-│ УБРАТЬ  │
-└─────────┘</pre>
-  <pre class="button" data-action="place"  style="bottom: 150px">┌─────────┐
-│ СТАВИТЬ │
-└─────────┘</pre>
-  <pre class="button" data-action="jump"   style="bottom: 100px">┌─────────┐
+  <pre class="button" data-action="jump"   style="bottom: 90px">┌─────────┐
 │ ПРЫЖОК  │
 └─────────┘</pre>
   <pre id="stick">  .---.
@@ -111,12 +109,14 @@ const HOTBAR = ["Блок", "Доска", null, null, null];
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 const SIZE = 64;           // размер плиты в блоках
-const CELL_W = 5;          // ширина одного символа в пикселях (меньше — детальнее)
-const CELL_H = 8;          // высота одного символа в пикселях
+const CELL_W = 4;          // ширина одного символа в пикселях (меньше — детальнее)
+const CELL_H = 7;          // высота одного символа в пикселях
 const MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
 const STICK_RADIUS = 50;   // радиус джойстика в пикселях
+const TAP_MOVE = 10;       // если палец сдвинулся больше — это не нажатие, а движение
+const HOLD_TIME = 500;     // столько миллисекунд держать палец, чтобы убрать блок
 const RADIUS = 0.3;        // половина ширины игрока
 const HEIGHT = 1.75;       // рост игрока
 const EYE = 1.5;           // высота глаз
@@ -129,8 +129,10 @@ const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
 const NEAR = 0.1, FAR = 150;
 
-// Символы от самого тёмного к самому яркому
-const RAMP = " .`',:;-~=+*░xo#%@▒▓█";
+// Символы для заливки. Порядок не важен: при запуске каждый измеряется по количеству
+// "чернил" и раскладывается по SHADES ступеням яркости
+const CHARS = " .'`^\",:;Il!i><~+?][}{1)(tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$░▒▓█";
+const SHADES = 64;
 // Символы для контуров — по направлению грани
 const EDGES = "|\\-/";
 
@@ -347,19 +349,20 @@ aimRay.far = REACH;
 // Можно ли сейчас управлять: мышь захвачена (или это телефон) и палитра закрыта
 const playing = () => !menuOpen && (TOUCH || !!document.pointerLockElement);
 
-// Что под прицелом: точка, нормаль поверхности и объект
-function aim() {
-  aimRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+// Что под точкой экрана (по умолчанию — под прицелом в центре): точка, нормаль поверхности и объект.
+// screen — координаты от -1 до 1, как у WebGL
+function aim(screen = new THREE.Vector2(0, 0)) {
+  aimRay.setFromCamera(screen, camera);
   const hit = aimRay.intersectObjects(solids)[0];
   if (!hit) return null;
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
   return { point: hit.point, normal, object: hit.object };
 }
 
-// Точка доски: там, куда смотрит прицел, а если там пусто — в воздухе перед глазами
+// Точка доски: куда попал луч из aim(), а если там пусто — в воздухе на этом луче
 function plankPoint(hit) {
   if (hit) return hit.point.clone();
-  return camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(AIR_DIST).add(camera.position);
+  return aimRay.ray.at(AIR_DIST, new THREE.Vector3());
 }
 
 // Клетка, куда встанет новый блок: соседняя с поверхностью под прицелом
@@ -374,7 +377,8 @@ function blockCell(hit) {
 }
 
 function updateGhosts() {
-  const on = playing();
+  // На телефоне строят касанием в любое место экрана, поэтому подсказки под прицелом не показываем
+  const on = playing() && !TOUCH;
   const hit = on ? aim() : null;
   const [r, g, b] = COLORS[color].rgb;
   ghostMat.color.setRGB(r / 255, g / 255, b / 255);
@@ -385,15 +389,17 @@ function updateGhosts() {
 
   const plankMode = on && HOTBAR[slot] === "Доска";
   const point = plankMode ? plankPoint(hit) : null;
-  ghostPoint.visible = plankMode;
-  if (plankMode) ghostPoint.position.copy(plankStart || point);
+  ghostPoint.visible = plankMode || !!plankStart;
+  if (ghostPoint.visible) ghostPoint.position.copy(plankStart || point);
   ghostPlank.visible = plankMode && !!plankStart;
   if (ghostPlank.visible) fitPlank(ghostPlank, plankStart, point);
 }
 
-// Действие предметом: "place" — ЛКМ, "remove" — ПКМ
-function use(action) {
-  const hit = aim();
+// Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
+// screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
+function use(action, screen) {
+  if (menuOpen) return;
+  const hit = aim(screen);
 
   // Убрать блок или доску под прицелом (или отменить начатую доску)
   if (action === "remove") {
@@ -459,15 +465,32 @@ addEventListener("mousedown", e => {
 addEventListener("contextmenu", e => e.preventDefault());
 
 // ---------- Управление на телефоне ----------
-// Левая половина экрана — джойстик для ходьбы, правая — поворот камеры пальцем
+// Левая половина экрана — джойстик для ходьбы, правая — поворот камеры пальцем.
+// Короткое нажатие в любом месте ставит предмет туда, удержание — убирает то, что под пальцем.
 
 const stickEl = document.getElementById("stick");
 const knobEl = document.getElementById("knob");
 let moveTouch = null, lookTouch = null;  // какой палец что делает
+let press = null;  // палец, который пока может оказаться нажатием или удержанием
+
+// Координаты касания → точка экрана от -1 до 1
+function screenPoint(t) {
+  const r = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2((t.clientX - r.left) / r.width * 2 - 1, -((t.clientY - r.top) / r.height * 2 - 1));
+}
 
 addEventListener("touchstart", e => {
   for (const t of e.changedTouches) {
     if (t.target.closest(".button, #hotbar, #palette")) continue;
+    if (!press) {
+      const screen = screenPoint(t);
+      press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
+      press.timer = setTimeout(() => {
+        press.held = true;
+        use("remove", screen);
+        navigator.vibrate?.(30);
+      }, HOLD_TIME);
+    }
     if (t.clientX < innerWidth / 2 && !moveTouch) {
       moveTouch = { id: t.identifier, x: t.clientX, y: t.clientY };
       for (const el of [stickEl, knobEl]) {
@@ -484,6 +507,11 @@ addEventListener("touchstart", e => {
 addEventListener("touchmove", e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
+    // Палец заметно сдвинулся — значит, это ходьба или поворот, а не нажатие
+    if (press && t.identifier === press.id && Math.hypot(t.clientX - press.x, t.clientY - press.y) > TAP_MOVE) {
+      clearTimeout(press.timer);
+      press.moved = true;
+    }
     if (moveTouch && t.identifier === moveTouch.id) {
       let dx = t.clientX - moveTouch.x, dy = t.clientY - moveTouch.y;
       const len = Math.hypot(dx, dy);
@@ -503,6 +531,11 @@ addEventListener("touchmove", e => {
 
 function touchEnd(e) {
   for (const t of e.changedTouches) {
+    if (press && t.identifier === press.id) {
+      clearTimeout(press.timer);
+      if (!press.moved && !press.held && e.type === "touchend") use("place", press.screen);
+      press = null;
+    }
     if (moveTouch && t.identifier === moveTouch.id) {
       moveTouch = null;
       stick.x = stick.y = 0;
@@ -514,6 +547,19 @@ function touchEnd(e) {
 addEventListener("touchend", touchEnd);
 addEventListener("touchcancel", touchEnd);
 
+// Полный экран (на iPhone браузер его не поддерживает — там кнопка скрыта)
+const root = document.documentElement;
+const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen;
+if (!requestFullscreen) document.querySelector('[data-action="fullscreen"]').style.display = "none";
+
+function toggleFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else {
+    requestFullscreen.call(root);
+  }
+}
+
 // Кнопки справа: прыжок держится, пока палец на кнопке
 for (const button of document.querySelectorAll("#touch .button")) {
   const action = button.dataset.action;
@@ -521,8 +567,8 @@ for (const button of document.querySelectorAll("#touch .button")) {
     e.preventDefault();
     button.classList.add("active");
     if (action === "jump") keys.Space = true;
-    if (action === "place" || action === "remove") use(action);
     if (action === "color") togglePalette();
+    if (action === "fullscreen") toggleFullscreen();
   });
   button.addEventListener("touchend", () => {
     button.classList.remove("active");
@@ -608,8 +654,8 @@ const asciiMat = new THREE.ShaderMaterial({
     depthTex: { value: sceneTarget.depthTexture },
     fontTex: { value: fontTex },
     grid: { value: new THREE.Vector2() },
-    rampLen: { value: RAMP.length },
-    glyphs: { value: RAMP.length + EDGES.length },
+    rampLen: { value: SHADES },
+    glyphs: { value: SHADES + EDGES.length },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -682,29 +728,52 @@ function resize() {
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
   camera.updateProjectionMatrix();
 
-  const chars = RAMP + EDGES;
-  const cw = Math.round(CELL_W * dpr), ch = Math.round(CELL_H * dpr);
+  fontTex.image = buildFont(Math.round(CELL_W * dpr), Math.round(CELL_H * dpr));
+  fontTex.needsUpdate = true;
+}
+
+// Шрифт в одну строку: SHADES символов заливки от тёмного к яркому, потом символы контуров
+function buildFont(cw, ch) {
   const font = document.createElement("canvas");
-  font.width = cw * chars.length;
+  font.width = cw * (SHADES + EDGES.length);
   font.height = ch;
-  const ctx = font.getContext("2d");
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, font.width, font.height);
-  ctx.fillStyle = "#fff";
+  const ctx = font.getContext("2d", { willReadFrequently: true });
   ctx.font = Math.min(ch, cw / 0.6) + "px Consolas, 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (let i = 0; i < chars.length; i++) {
+
+  function draw(c, i) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(i * cw, 0, cw, ch);  // символ не вылезает за свою клетку
     ctx.clip();
-    if (chars[i] === "█") ctx.fillRect(i * cw, 0, cw, ch);  // сплошной блок без щелей
-    else ctx.fillText(chars[i], i * cw + cw / 2, ch / 2);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(i * cw, 0, cw, ch);
+    ctx.fillStyle = "#fff";
+    if (c === "█") ctx.fillRect(i * cw, 0, cw, ch);  // сплошной блок без щелей
+    else ctx.fillText(c, i * cw + cw / 2, ch / 2);
     ctx.restore();
   }
-  fontTex.image = font;
-  fontTex.needsUpdate = true;
+
+  // Сколько "чернил" у каждого символа: рисуем его и считаем среднюю яркость
+  const measured = [...CHARS].map(c => {
+    draw(c, 0);
+    const data = ctx.getImageData(0, 0, cw, ch).data;
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) sum += data[i];
+    return { c, ink: sum / (cw * ch * 255) };
+  });
+  const maxInk = Math.max(...measured.map(m => m.ink));
+
+  // В каждую ступень яркости кладём символ, у которого чернил ближе всего к нужному
+  for (let i = 0; i < SHADES; i++) {
+    const want = i / (SHADES - 1) * maxInk;
+    let best = measured[0];
+    for (const m of measured) if (Math.abs(m.ink - want) < Math.abs(best.ink - want)) best = m;
+    draw(best.c, i);
+  }
+  [...EDGES].forEach((c, i) => draw(c, SHADES + i));
+  return font;
 }
 addEventListener("resize", resize);
 resize();
