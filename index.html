@@ -47,6 +47,42 @@
   #palette .option { cursor: pointer; }
   #palette .option:hover { background: #333; }
 
+  /* Окошко ввода (ник, чат, текст) в ASCII-рамке */
+  #ask {
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+    background: #000;
+    color: #fff;
+    font: 16px/1 Consolas, "Courier New", monospace;
+    display: none;
+  }
+  #ask pre { position: static; font: inherit; }
+  #ask .row { display: flex; }
+  #ask input {
+    width: 30ch;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    background: #000;
+    border: none;
+    outline: none;
+  }
+
+  #chat {
+    left: 16px;
+    bottom: 90px;
+    max-width: 60ch;
+    white-space: pre-wrap;
+    pointer-events: none;
+  }
+  .nick {
+    transform: translate(-50%, -100%);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
   /* Управление для телефона: видно только на сенсорных экранах */
   #touch { display: none; }
   #touch .button { right: 16px; }
@@ -57,7 +93,7 @@
     pointer-events: none;
   }
   @media (pointer: coarse) {
-    pre { font-size: 13px; }
+    pre, #ask { font-size: 13px; }
     #touch { display: block; }
     #crosshair { display: none; }  /* на телефоне строят касанием, прицел не нужен */
   }
@@ -75,9 +111,21 @@
 <pre id="crosshair">+</pre>
 <pre id="hotbar"></pre>
 <pre id="palette"></pre>
+<pre id="chat"></pre>
+<div id="labels"></div>
+<div id="ask">
+  <pre id="askTop"></pre>
+  <div class="row"><pre>║ </pre><input id="askInput" enterkeyhint="done" autocomplete="off"><pre> ║</pre></div>
+  <pre>╟────────────────────────────────╢
+║ Enter — готово   Esc — отмена  ║
+╚════════════════════════════════╝</pre>
+</div>
 <div id="touch">
   <pre class="button" data-action="fullscreen" style="top: 16px">┌─────────┐
 │  ЭКРАН  │
+└─────────┘</pre>
+  <pre class="button" data-action="chat"   style="bottom: 210px">┌─────────┐
+│   ЧАТ   │
 └─────────┘</pre>
   <pre class="button" data-action="color"  style="bottom: 150px">┌─────────┐
 │  ЦВЕТ   │
@@ -108,14 +156,16 @@ const COLORS = [
   { name: "Розовый",    rgb: [255, 110, 200] },
 ];
 
-// Панель предметов: блок, доска, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", null, null, null];
+// Панель предметов: блок, доска, текст, остальные слоты пустые
+const HOTBAR = ["Блок", "Доска", "Текст", null, null];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 const SIZE = 64;           // размер плиты в блоках
-const CELL_W = 4;          // ширина одного символа в пикселях (меньше — детальнее)
-const CELL_H = 7;          // высота одного символа в пикселях
+// Размер одного символа в пикселях (меньше — детальнее). У телефона экран узкий,
+// поэтому символы там мельче — иначе их помещается в разы меньше, чем на компьютере
+const CELL_W = TOUCH ? 3 : 4;
+const CELL_H = TOUCH ? 5 : 7;
 const MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -132,6 +182,8 @@ const REACH = 8;           // как далеко можно строить
 const AIR_DIST = 4;        // точка доски в воздухе — на таком расстоянии перед глазами
 const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
+const TEXT_H = 0.6;        // высота надписи в блоках
+const CHAT_TIME = 15000;   // через столько миллисекунд сообщение чата исчезает
 const NEAR = 0.1, FAR = 150;
 
 // Символы для заливки. Порядок не важен: при запуске каждый измеряется по количеству
@@ -147,6 +199,8 @@ let px = SIZE / 2, pz = SIZE / 2, feet = 0;  // позиция (feet — выс�
 let vy = 0, onGround = true;
 let yaw = 0, pitch = 0;
 let slot = 0, color = 0, menuOpen = false;
+let typing = false;     // открыто окошко ввода — клавиши идут в него, а не в игру
+let nick = loadNick();
 let plankStart = null;  // первая точка доски, пока не выбрана вторая
 
 const keys = {};
@@ -242,16 +296,28 @@ const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина за
 
 const blocks = new Map();  // "x,y,z" → меш блока
 const planks = new Map();  // id доски → её меш
+const texts = new Map();   // id надписи → её меш
+const textGeo = new THREE.PlaneGeometry(1, 1);
 const solids = [plate];    // всё, во что можно целиться
 
 const key = (x, y, z) => `${x},${y},${z}`;
 const myId = Math.random().toString(36).slice(2, 10);  // чтобы id досок не совпали с чужими
-let plankCount = 0;
+let idCount = 0;
 
 // Все изменения мира проходят через edit() — так их легко повторить у других игроков.
 // Изменение — это объект: { op: "block", x, y, z, c }, { op: "unblock", x, y, z },
-// { op: "plank", id, ends: [ax, ay, az, bx, by, bz], c } или { op: "unplank", id }
+// { op: "plank", id, ends: [ax, ay, az, bx, by, bz], c }, { op: "unplank", id },
+// { op: "text", id, p: [x, y, z], q: [поворот кватернионом], text, c } или { op: "untext", id }
 function edit(e) {
+  if (e.op === "text" && !texts.has(e.id)) {
+    const mesh = textMesh(String(e.text).slice(0, 40), e.c);
+    mesh.position.fromArray(e.p);
+    mesh.quaternion.fromArray(e.q);
+    addSolid(mesh, e);
+    mesh.castShadow = false;
+    texts.set(e.id, mesh);
+  }
+  if (e.op === "untext") removeSolid(texts.get(e.id));
   if (e.op === "block" && !blocks.has(key(e.x, e.y, e.z))) {
     const mesh = new THREE.Mesh(boxGeo, material(brickTex, e.c));
     mesh.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
@@ -287,7 +353,55 @@ function removeSolid(mesh) {
   solids.splice(solids.indexOf(mesh), 1);
   const e = mesh.userData.edit;
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
-  else planks.delete(e.id);
+  if (e.op === "plank") planks.delete(e.id);
+  if (e.op === "text") texts.delete(e.id);
+}
+
+// Надпись: текст рисуется на canvas и натягивается на плоскость. Сам текст светится,
+// поэтому в ASCII он получается из ярких символов
+function textMesh(text, c) {
+  const h = 64;
+  const font = `bold ${h * 0.8}px Consolas, 'Courier New', monospace`;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.font = font;
+  canvas.width = Math.ceil(ctx.measureText(text).width) + 16;
+  canvas.height = h;
+  ctx.font = font;  // после смены размера canvas настройки сбрасываются
+  ctx.fillStyle = "#fff";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 8, h / 2);
+
+  const [r, g, b] = COLORS[c].rgb;
+  const mesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    color: new THREE.Color(r / 255, g / 255, b / 255),
+    transparent: true,
+    alphaTest: 0.3,
+    side: THREE.DoubleSide,
+  }));
+  mesh.scale.set(TEXT_H * canvas.width / canvas.height, TEXT_H, 1);
+  return mesh;
+}
+
+// Куда и как повернуть новую надпись: на стене — лицом наружу, на полу — лёжа,
+// низом к игроку, а в воздухе — стоя лицом к игроку
+function textPlacement(hit) {
+  const m = new THREE.Object3D();
+  if (hit && Math.abs(hit.normal.y) > 0.9) {
+    m.position.copy(hit.point).addScaledVector(hit.normal, 0.02);
+    m.rotation.set(-Math.PI / 2 * Math.sign(hit.normal.y), yaw, 0, "YXZ");
+  } else if (hit) {
+    m.position.copy(hit.point).addScaledVector(hit.normal, 0.02);
+    m.lookAt(m.position.clone().add(hit.normal));
+  } else {
+    m.position.copy(plankPoint(null));
+    m.rotation.set(0, yaw, 0);
+  }
+  return {
+    p: m.position.toArray().map(v => +v.toFixed(3)),
+    q: m.quaternion.toArray().map(v => +v.toFixed(4)),
+  };
 }
 
 // Кладёт доску между точками a и b (поверх поверхности, а не внутрь неё)
@@ -405,7 +519,7 @@ const aimRay = new THREE.Raycaster();
 aimRay.far = REACH;
 
 // Можно ли сейчас управлять: мышь захвачена (или это телефон) и палитра закрыта
-const playing = () => !menuOpen && (TOUCH || !!document.pointerLockElement);
+const playing = () => !menuOpen && !typing && (TOUCH || !!document.pointerLockElement);
 
 // Что под точкой экрана (по умолчанию — под прицелом в центре): точка, нормаль поверхности и объект.
 // screen — координаты от -1 до 1, как у WebGL
@@ -464,7 +578,7 @@ function use(action, screen) {
     if (plankStart) plankStart = null;
     else if (hit && hit.object !== plate) {
       const e = hit.object.userData.edit;
-      share(e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "unplank", id: e.id });
+      share(e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id });
     }
     drawHotbar();
     return;
@@ -473,6 +587,14 @@ function use(action, screen) {
   if (HOTBAR[slot] === "Блок" && hit) {
     const cell = blockCell(hit);
     if (cell) share({ op: "block", x: cell[0], y: cell[1], z: cell[2], c: color });
+  }
+  // Текст: запоминаем, куда ставить, и спрашиваем, что написать
+  if (HOTBAR[slot] === "Текст") {
+    const place = textPlacement(hit);
+    const c = color;
+    ask("ТЕКСТ", "", 40).then(text => {
+      if (text) share({ op: "text", id: `${myId}-${idCount++}`, ...place, text, c });
+    });
   }
   // Доска: первое нажатие — начало, второе — конец
   if (HOTBAR[slot] === "Доска") {
@@ -483,7 +605,7 @@ function use(action, screen) {
       fitPlank(ghostPlank, plankStart, point);
       if (plankStart.distanceTo(point) > 0.3 && !hitsPlank(ghostPlank, px, feet, pz)) {
         const ends = [...plankStart.toArray(), ...point.toArray()].map(v => +v.toFixed(3));
-        share({ op: "plank", id: `${myId}-${plankCount++}`, ends, c: color });
+        share({ op: "plank", id: `${myId}-${idCount++}`, ends, c: color });
       }
       plankStart = null;
     }
@@ -500,18 +622,20 @@ function selectSlot(n) {
 }
 
 addEventListener("keydown", e => {
+  if (typing) return;
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
     if (n >= 0 && n < HOTBAR.length) selectSlot(n);
   }
   if (e.code === "KeyF" && !e.repeat) togglePalette();
+  if (e.code === "Enter" && !menuOpen) openChat();
 });
 addEventListener("keyup", e => keys[e.code] = false);
 
 // Клик по экрану захватывает мышь; камера крутится полностью, вверх и вниз до упора
 renderer.domElement.addEventListener("click", () => {
-  if (!menuOpen && !TOUCH) renderer.domElement.requestPointerLock();
+  if (!menuOpen && !typing && !TOUCH) renderer.domElement.requestPointerLock();
 });
 
 function turn(dx, dy, speed) {
@@ -547,7 +671,7 @@ function screenPoint(t) {
 
 addEventListener("touchstart", e => {
   for (const t of e.changedTouches) {
-    if (t.target.closest(".button, #hotbar, #palette")) continue;
+    if (t.target.closest(".button, #hotbar, #palette, #ask")) continue;
     if (!press) {
       const screen = screenPoint(t);
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
@@ -638,6 +762,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "jump") keys.Space = true;
     if (action === "color") togglePalette();
     if (action === "fullscreen") toggleFullscreen();
+    if (action === "chat") openChat();
   });
   button.addEventListener("touchend", () => {
     button.classList.remove("active");
@@ -649,7 +774,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄" };
+const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa " };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -707,6 +832,78 @@ palette.addEventListener("click", e => {
 });
 
 drawHotbar();
+
+// ---------- Окошко ввода: ник, сообщение в чат, текст надписи ----------
+
+const askBox = document.getElementById("ask");
+const askTop = document.getElementById("askTop");
+const askInput = document.getElementById("askInput");
+let askDone = null;
+
+// Показывает окошко с заголовком и ждёт: вернёт введённую строку или null, если отменили
+function ask(title, value = "", maxLength = 40) {
+  typing = true;
+  for (const k in keys) keys[k] = false;  // чтобы игрок не продолжил идти сам
+  document.exitPointerLock();
+  const t = ` ${title} `;
+  askTop.textContent = "╔" + t.padStart(17 + t.length / 2, "═").padEnd(32, "═") + "╗";
+  askInput.value = value;
+  askInput.maxLength = maxLength;
+  askBox.style.display = "block";
+  askInput.focus();
+  return new Promise(resolve => askDone = resolve);
+}
+
+function closeAsk(result) {
+  typing = false;
+  askBox.style.display = "none";
+  askInput.blur();
+  askDone(result);
+  if (!TOUCH && !menuOpen) renderer.domElement.requestPointerLock();
+}
+
+askInput.addEventListener("keydown", e => {
+  e.stopPropagation();  // клавиши — в окошко, а не в игру
+  if (e.key === "Enter") closeAsk(askInput.value.trim() || null);
+  if (e.key === "Escape") closeAsk(null);
+});
+
+// Ник запоминается в браузере, чтобы не вводить его каждый раз
+function loadNick() {
+  try { return localStorage.getItem("nick") || ""; } catch { return ""; }
+}
+if (!nick) nick = "Игрок" + Math.floor(Math.random() * 1000);
+ask("ТВОЙ НИК", nick, 16).then(n => {
+  if (n) nick = n;
+  try { localStorage.setItem("nick", nick); } catch {}
+});
+
+// ---------- Чат ----------
+
+const chatEl = document.getElementById("chat");
+const chatLines = [];  // { line, time }
+
+function addChat(line) {
+  chatLines.push({ line, time: performance.now() });
+  if (chatLines.length > 8) chatLines.shift();
+  drawChat();
+}
+
+// textContent, а не innerHTML: чужие сообщения выводятся только как текст
+function drawChat() {
+  while (chatLines.length && performance.now() - chatLines[0].time > CHAT_TIME) chatLines.shift();
+  chatEl.textContent = chatLines.map(l => l.line).join("\n");
+}
+setInterval(drawChat, 1000);
+
+function openChat() {
+  if (typing) return;
+  ask("ЧАТ", "", 100).then(text => {
+    if (!text) return;
+    addChat(`${nick}: ${text}`);
+    online?.sendChat(text);
+  });
+}
 
 // ---------- ASCII-шейдер: сцена рисуется в маленькую картинку, каждый её пиксель — один символ ----------
 
@@ -873,46 +1070,79 @@ function avatar(id) {
   const group = new THREE.Group();
   for (const m of [body, head, eyes]) { m.castShadow = true; group.add(m); }
   scene.add(group);
-  const a = { group, mat, target: new THREE.Vector3(), yaw: 0, fresh: true };
+  // Ник над головой — обычный текст поверх картинки, чтобы читался чётко
+  const label = document.createElement("pre");
+  label.className = "nick";
+  labels.append(label);
+  const a = { group, mat, label, nick: "", target: new THREE.Vector3(), yaw: 0, fresh: true };
   others.set(id, a);
   return a;
 }
+
+const labels = document.getElementById("labels");
 
 import("trystero").then(({ joinRoom }) => {
   const room = joinRoom({ appId: "xreamm1-ascii-baseplate" }, "baseplate");
   const edits = room.makeAction("edits");
   const pose = room.makeAction("pose");
+  const chat = room.makeAction("chat");
 
   // Новичку отправляем всё, что уже построено
   room.onPeerJoin = id => edits.send(solids.slice(1).map(m => m.userData.edit), { target: id });
   room.onPeerLeave = id => {
-    scene.remove(others.get(id)?.group);
+    const a = others.get(id);
+    if (!a) return;
+    scene.remove(a.group);
+    a.label.remove();
     others.delete(id);
+    addChat(`* ${a.nick} вышел`);
   };
 
   edits.onMessage = list => list.forEach(e => { try { edit(e); } catch {} });
-  pose.onMessage = ([x, f, z, yaw, c], { peerId }) => {
+  pose.onMessage = ([x, f, z, yaw, c, name], { peerId }) => {
     const a = avatar(peerId);
     a.target.set(x, f, z);
     a.yaw = yaw;
     const [r, g, b] = (COLORS[c] || COLORS[0]).rgb;
     a.mat.color.setRGB(r / 255, g / 255, b / 255);
-    if (a.fresh) { a.group.position.copy(a.target); a.fresh = false; }
+    a.nick = String(name).slice(0, 16);
+    a.label.textContent = a.nick;
+    a.label.style.color = `rgb(${r},${g},${b})`;
+    if (a.fresh) {
+      a.group.position.copy(a.target);
+      a.fresh = false;
+      addChat(`* ${a.nick} зашёл`);
+    }
+  };
+  chat.onMessage = (text, { peerId }) => {
+    addChat(`${others.get(peerId)?.nick || "?"}: ${String(text).slice(0, 100)}`);
   };
 
   online = {
     sendEdits: list => edits.send(list),
-    sendPose: () => pose.send([px, feet, pz, yaw, color].map(v => +v.toFixed(2))),
+    sendPose: () => pose.send([...[px, feet, pz, yaw].map(v => +v.toFixed(2)), color, nick]),
+    sendChat: text => chat.send(text),
   };
 }).catch(err => console.warn("Онлайн недоступен:", err));
 
-// Плавно двигаем чужие фигурки к последним присланным позициям и 15 раз в секунду шлём свою
+// Плавно двигаем чужие фигурки к последним присланным позициям, ставим ники над головами
+// и 15 раз в секунду шлём свою позицию
 function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
+  const screen = renderer.domElement.getBoundingClientRect();
   for (const a of others.values()) {
     a.group.position.lerp(a.target, k);
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
+
+    // Точка над головой → координаты на экране; за спиной или за краем экрана ник прячем
+    const p = a.group.position.clone();
+    p.y += 2.0;
+    const far = p.distanceTo(camera.position) > 40;
+    p.project(camera);
+    a.label.style.display = far || p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1 ? "none" : "block";
+    a.label.style.left = screen.left + (p.x + 1) / 2 * screen.width + "px";
+    a.label.style.top = screen.top + (1 - p.y) / 2 * screen.height + "px";
   }
   poseTimer += dt;
   if (online && poseTimer > 1 / 15) {
