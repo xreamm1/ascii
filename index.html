@@ -63,7 +63,12 @@
   }
 </style>
 <script type="importmap">
-  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "trystero": "https://cdn.jsdelivr.net/npm/trystero@0.25.4/+esm"
+    }
+  }
 </script>
 </head>
 <body>
@@ -236,19 +241,53 @@ const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина задаётся масштабом по Z
 
 const blocks = new Map();  // "x,y,z" → меш блока
-const planks = [];         // меши досок
+const planks = new Map();  // id доски → её меш
 const solids = [plate];    // всё, во что можно целиться
 
 const key = (x, y, z) => `${x},${y},${z}`;
+const myId = Math.random().toString(36).slice(2, 10);  // чтобы id досок не совпали с чужими
+let plankCount = 0;
 
-function addBlock(x, y, z) {
-  const mesh = new THREE.Mesh(boxGeo, material(brickTex, color));
-  mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+// Все изменения мира проходят через edit() — так их легко повторить у других игроков.
+// Изменение — это объект: { op: "block", x, y, z, c }, { op: "unblock", x, y, z },
+// { op: "plank", id, ends: [ax, ay, az, bx, by, bz], c } или { op: "unplank", id }
+function edit(e) {
+  if (e.op === "block" && !blocks.has(key(e.x, e.y, e.z))) {
+    const mesh = new THREE.Mesh(boxGeo, material(brickTex, e.c));
+    mesh.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    addSolid(mesh, e);
+    blocks.set(key(e.x, e.y, e.z), mesh);
+  }
+  if (e.op === "plank" && !planks.has(e.id)) {
+    const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
+    fitPlank(mesh, new THREE.Vector3(...e.ends.slice(0, 3)), new THREE.Vector3(...e.ends.slice(3)));
+    addSolid(mesh, e);
+    planks.set(e.id, mesh);
+  }
+  if (e.op === "unblock") removeSolid(blocks.get(key(e.x, e.y, e.z)));
+  if (e.op === "unplank") removeSolid(planks.get(e.id));
+}
+
+// Своё изменение: применяем у себя и рассылаем остальным игрокам
+function share(e) {
+  edit(e);
+  online?.sendEdits([e]);
+}
+
+function addSolid(mesh, e) {
   mesh.castShadow = mesh.receiveShadow = true;
-  mesh.userData.cell = key(x, y, z);
-  blocks.set(mesh.userData.cell, mesh);
+  mesh.userData.edit = e;  // чем предмет был создан: нужно, чтобы его убрать и чтобы отправить новичкам
   solids.push(mesh);
   scene.add(mesh);
+}
+
+function removeSolid(mesh) {
+  if (!mesh) return;
+  scene.remove(mesh);
+  solids.splice(solids.indexOf(mesh), 1);
+  const e = mesh.userData.edit;
+  if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
+  else planks.delete(e.id);
 }
 
 // Кладёт доску между точками a и b (поверх поверхности, а не внутрь неё)
@@ -257,23 +296,6 @@ function fitPlank(mesh, a, b) {
   mesh.position.y += PLANK_T / 2;
   mesh.scale.set(1, 1, a.distanceTo(b));
   mesh.lookAt(b.x, b.y + PLANK_T / 2, b.z);
-}
-
-function addPlank(a, b) {
-  const mesh = new THREE.Mesh(plankGeo, material(woodTex, color));
-  fitPlank(mesh, a, b);
-  if (hitsPlank(mesh, px, feet, pz)) return;  // нельзя ставить доску внутрь себя
-  mesh.castShadow = mesh.receiveShadow = true;
-  planks.push(mesh);
-  solids.push(mesh);
-  scene.add(mesh);
-}
-
-function removeSolid(mesh) {
-  scene.remove(mesh);
-  solids.splice(solids.indexOf(mesh), 1);
-  if (mesh.userData.cell) blocks.delete(mesh.userData.cell);
-  else planks.splice(planks.indexOf(mesh), 1);
 }
 
 // Подсказки: прозрачный блок там, куда он встанет, и прозрачная доска при выборе второй точки
@@ -326,7 +348,7 @@ function hitsPlank(mesh, x, f, z) {
 }
 
 function hitsSolid(x, f, z) {
-  return hitsBlock(x, f, z) || planks.some(p => hitsPlank(p, x, f, z));
+  return hitsBlock(x, f, z) || [...planks.values()].some(p => hitsPlank(p, x, f, z));
 }
 
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
@@ -339,7 +361,7 @@ function groundHeight(x, f, z) {
         if (blocks.has(key(cx, cy, cz))) { g = Math.max(g, cy + 1); break; }
 
   downRay.set(new THREE.Vector3(x, f + STEP, z), new THREE.Vector3(0, -1, 0));
-  const hit = downRay.intersectObjects(planks)[0];
+  const hit = downRay.intersectObjects([...planks.values()])[0];
   if (hit) g = Math.max(g, f + STEP - hit.distance);
   return g;
 }
@@ -440,21 +462,29 @@ function use(action, screen) {
   // Убрать блок или доску под прицелом (или отменить начатую доску)
   if (action === "remove") {
     if (plankStart) plankStart = null;
-    else if (hit && hit.object !== plate) removeSolid(hit.object);
+    else if (hit && hit.object !== plate) {
+      const e = hit.object.userData.edit;
+      share(e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "unplank", id: e.id });
+    }
     drawHotbar();
     return;
   }
 
   if (HOTBAR[slot] === "Блок" && hit) {
     const cell = blockCell(hit);
-    if (cell) addBlock(...cell);
+    if (cell) share({ op: "block", x: cell[0], y: cell[1], z: cell[2], c: color });
   }
   // Доска: первое нажатие — начало, второе — конец
   if (HOTBAR[slot] === "Доска") {
     const point = plankPoint(hit);
     if (!plankStart) plankStart = point;
     else {
-      if (plankStart.distanceTo(point) > 0.3) addPlank(plankStart, point);
+      // Примеряем доску на подсказке: нельзя ставить её внутрь себя
+      fitPlank(ghostPlank, plankStart, point);
+      if (plankStart.distanceTo(point) > 0.3 && !hitsPlank(ghostPlank, px, feet, pz)) {
+        const ends = [...plankStart.toArray(), ...point.toArray()].map(v => +v.toFixed(3));
+        share({ op: "plank", id: `${myId}-${plankCount++}`, ends, c: color });
+      }
       plankStart = null;
     }
     drawHotbar();
@@ -817,6 +847,80 @@ function buildFont(cw, ch) {
 addEventListener("resize", resize);
 resize();
 
+// ---------- Онлайн: игроки соединяются напрямую друг с другом (WebRTC через Trystero) ----------
+// Сервер не нужен: публичные узлы только знакомят игроков, дальше данные идут напрямую.
+// Мир живёт, пока в игре кто-то есть: новичок получает его от тех, кто уже играет.
+
+let online = null;          // появится, когда библиотека загрузится
+const others = new Map();   // id игрока → его фигурка
+let poseTimer = 0;
+
+const avatarBody = new THREE.BoxGeometry(0.6, 1.2, 0.35);
+const avatarHead = new THREE.BoxGeometry(0.45, 0.45, 0.45);
+const avatarEyes = new THREE.BoxGeometry(0.3, 0.08, 0.02);
+const eyesMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+// Фигурка другого игрока: туловище и голова его цвета, глаза показывают, куда он смотрит
+function avatar(id) {
+  if (others.has(id)) return others.get(id);
+  const mat = new THREE.MeshLambertMaterial();
+  const body = new THREE.Mesh(avatarBody, mat);
+  const head = new THREE.Mesh(avatarHead, mat);
+  const eyes = new THREE.Mesh(avatarEyes, eyesMat);
+  body.position.y = 0.6;
+  head.position.y = 1.45;
+  eyes.position.set(0, 1.5, -0.235);
+  const group = new THREE.Group();
+  for (const m of [body, head, eyes]) { m.castShadow = true; group.add(m); }
+  scene.add(group);
+  const a = { group, mat, target: new THREE.Vector3(), yaw: 0, fresh: true };
+  others.set(id, a);
+  return a;
+}
+
+import("trystero").then(({ joinRoom }) => {
+  const room = joinRoom({ appId: "xreamm1-ascii-baseplate" }, "baseplate");
+  const edits = room.makeAction("edits");
+  const pose = room.makeAction("pose");
+
+  // Новичку отправляем всё, что уже построено
+  room.onPeerJoin = id => edits.send(solids.slice(1).map(m => m.userData.edit), { target: id });
+  room.onPeerLeave = id => {
+    scene.remove(others.get(id)?.group);
+    others.delete(id);
+  };
+
+  edits.onMessage = list => list.forEach(e => { try { edit(e); } catch {} });
+  pose.onMessage = ([x, f, z, yaw, c], { peerId }) => {
+    const a = avatar(peerId);
+    a.target.set(x, f, z);
+    a.yaw = yaw;
+    const [r, g, b] = (COLORS[c] || COLORS[0]).rgb;
+    a.mat.color.setRGB(r / 255, g / 255, b / 255);
+    if (a.fresh) { a.group.position.copy(a.target); a.fresh = false; }
+  };
+
+  online = {
+    sendEdits: list => edits.send(list),
+    sendPose: () => pose.send([px, feet, pz, yaw, color].map(v => +v.toFixed(2))),
+  };
+}).catch(err => console.warn("Онлайн недоступен:", err));
+
+// Плавно двигаем чужие фигурки к последним присланным позициям и 15 раз в секунду шлём свою
+function updateOnline(dt) {
+  const k = Math.min(1, dt * 12);
+  for (const a of others.values()) {
+    a.group.position.lerp(a.target, k);
+    const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
+    a.group.rotation.y += turn * k;
+  }
+  poseTimer += dt;
+  if (online && poseTimer > 1 / 15) {
+    poseTimer = 0;
+    online.sendPose();
+  }
+}
+
 // ---------- Главный цикл ----------
 
 let last = performance.now();
@@ -825,6 +929,7 @@ renderer.setAnimationLoop(now => {
   last = now;
   update(dt);
   updateGhosts();
+  updateOnline(dt);
 
   renderer.setRenderTarget(sceneTarget);
   renderer.render(scene, camera);
