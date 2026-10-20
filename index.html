@@ -162,10 +162,13 @@
 <script type="module">
 import * as THREE from "three";
 
-// Настройки Firebase для сетевой игры. Взять их можно в консоли Firebase:
-// Project settings → General → Your apps → SDK setup and configuration → Config.
-// Пока здесь null, работает только одиночная игра
-const FIREBASE_CONFIG = null;
+// Настройки Firebase для сетевой игры (консоль Firebase → Project settings → Your apps).
+// Для Realtime Database без входа по аккаунту хватает адреса базы и id проекта.
+// Если поставить здесь null, останется только одиночная игра
+const FIREBASE_CONFIG = {
+  projectId: "ascii-baseplate",
+  databaseURL: "https://ascii-baseplate-default-rtdb.europe-west1.firebasedatabase.app",
+};
 
 // Цвета палитры
 const COLORS = [
