@@ -17,10 +17,40 @@
     top: 50%;
     transform: translate(-50%, -50%);
   }
+  pre {
+    position: absolute;
+    margin: 0;
+    color: #fff;
+    font: 16px/1 Consolas, "Courier New", monospace;
+    user-select: none;
+  }
+  #crosshair {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  #hotbar {
+    left: 16px;
+    bottom: 16px;
+    pointer-events: none;
+  }
+  #palette {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: #000;
+    display: none;
+  }
+  #palette .option { cursor: pointer; }
+  #palette .option:hover { background: #333; }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
+<pre id="crosshair">+</pre>
+<pre id="hotbar"></pre>
+<pre id="palette"></pre>
 <script>
 // Карта: '#' — стена, '.' — свободно
 const MAP = [
@@ -39,25 +69,67 @@ const MAP = [
   "################",
 ];
 
+// Цвета палитры; стены из карты — белые (номер 0)
+const COLORS = [
+  { name: "Белый",      rgb: [255, 255, 255] },
+  { name: "Красный",    rgb: [255,  60,  60] },
+  { name: "Оранжевый",  rgb: [255, 150,  40] },
+  { name: "Жёлтый",     rgb: [255, 230,  60] },
+  { name: "Зелёный",    rgb: [ 70, 230,  90] },
+  { name: "Голубой",    rgb: [ 70, 220, 255] },
+  { name: "Синий",      rgb: [ 70, 110, 255] },
+  { name: "Фиолетовый", rgb: [190,  90, 255] },
+  { name: "Розовый",    rgb: [255, 110, 200] },
+];
+
+// Панель предметов: в первом слоте стена, остальные пустые
+const HOTBAR = ["Стена", null, null, null, null];
+
 const CELL_W = 7;        // ширина одного символа в пикселях (меньше — детальнее)
 const CELL_H = 12;       // высота одного символа в пикселях
 const FOV = 0.66;        // ширина обзора (длина вектора камеры)
 const MOVE_SPEED = 2.5;  // клеток в секунду
 const TURN_SPEED = 2.2;  // радиан в секунду
+const MOUSE_SPEED = 0.0025;  // радиан на пиксель движения мыши
 const RADIUS = 0.2;      // "толщина" игрока, чтобы не упираться носом в стену
+const REACH = 5;         // как далеко можно ставить и убирать стены
 
 // Символы от самого тёмного к самому яркому
 const RAMP = " .,:;-~=+*░#%@▒▓█";
 
+// Мир: в каждой клетке либо null (пусто), либо номер цвета стены
+const world = MAP.map(row => [...row].map(c => c === "#" ? 0 : null));
+
 // Игрок стартует в центре свободной клетки (1, 1), смотрит вправо
 let px = 1.5, py = 1.5, angle = 0;
-
-const keys = {};
-addEventListener("keydown", e => keys[e.code] = true);
-addEventListener("keyup", e => keys[e.code] = false);
+let slot = 0;       // выбранный слот панели
+let color = 0;      // выбранный цвет
+let menuOpen = false;
 
 function isWall(x, y) {
-  return MAP[Math.floor(y)][Math.floor(x)] === "#";
+  return world[Math.floor(y)][Math.floor(x)] !== null;
+}
+
+// DDA: шагаем по клеткам сетки вдоль луча, пока не упрёмся в стену.
+// prevX/prevY — последняя пустая клетка перед стеной (туда ставится новый блок).
+function castRay(rayX, rayY) {
+  let mapX = Math.floor(px), mapY = Math.floor(py);
+  let prevX = mapX, prevY = mapY;
+  const deltaX = Math.abs(1 / rayX), deltaY = Math.abs(1 / rayY);
+  const stepX = rayX < 0 ? -1 : 1, stepY = rayY < 0 ? -1 : 1;
+  let sideX = (rayX < 0 ? px - mapX : mapX + 1 - px) * deltaX;
+  let sideY = (rayY < 0 ? py - mapY : mapY + 1 - py) * deltaY;
+  let side = 0;
+
+  while (world[mapY][mapX] === null) {
+    prevX = mapX; prevY = mapY;
+    if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
+    else               { sideY += deltaY; mapY += stepY; side = 1; }
+  }
+
+  // Расстояние до стены перпендикулярно экрану (без эффекта "рыбьего глаза")
+  const dist = side === 0 ? sideX - deltaX : sideY - deltaY;
+  return { mapX, mapY, prevX, prevY, side, dist };
 }
 
 function update(dt) {
@@ -76,9 +148,111 @@ function update(dt) {
   if (!isWall(px, py + dy + Math.sign(dy) * RADIUS)) py += dy;
 }
 
-// ---------- WebGL: превращает сетку яркостей в символы прямо на видеокарте ----------
+// ---------- Управление ----------
 
 const canvas = document.getElementById("screen");
+const keys = {};
+
+addEventListener("keydown", e => {
+  keys[e.code] = true;
+  if (e.code.startsWith("Digit")) {
+    const n = Number(e.code.slice(5)) - 1;
+    if (n >= 0 && n < HOTBAR.length) { slot = n; drawHotbar(); }
+  }
+  if (e.code === "KeyF" && !e.repeat) {
+    if (menuOpen) closePalette(); else openPalette();
+  }
+});
+addEventListener("keyup", e => keys[e.code] = false);
+
+// Клик по экрану захватывает мышь, после этого ей можно поворачиваться
+canvas.addEventListener("click", () => {
+  if (!menuOpen) canvas.requestPointerLock();
+});
+addEventListener("mousemove", e => {
+  if (document.pointerLockElement === canvas) angle += e.movementX * MOUSE_SPEED;
+});
+addEventListener("contextmenu", e => e.preventDefault());
+
+// ЛКМ — поставить стену выбранного цвета, ПКМ — убрать стену
+addEventListener("mousedown", e => {
+  if (document.pointerLockElement !== canvas || HOTBAR[slot] !== "Стена") return;
+  const hit = castRay(Math.cos(angle), Math.sin(angle));
+  if (hit.dist > REACH) return;
+
+  if (e.button === 0) {
+    const inPlayerCell = hit.prevX === Math.floor(px) && hit.prevY === Math.floor(py);
+    if (!inPlayerCell) world[hit.prevY][hit.prevX] = color;
+  }
+  if (e.button === 2) {
+    const onBorder = hit.mapX === 0 || hit.mapY === 0 ||
+                     hit.mapX === MAP[0].length - 1 || hit.mapY === MAP.length - 1;
+    if (!onBorder) world[hit.mapY][hit.mapX] = null;
+  }
+});
+
+// ---------- ASCII-интерфейс: панель предметов и палитра ----------
+
+const hotbar = document.getElementById("hotbar");
+const palette = document.getElementById("palette");
+
+function rgb(c) {
+  return `rgb(${COLORS[c].rgb.join(",")})`;
+}
+
+function drawHotbar() {
+  const lines = ["", "", ""];
+  HOTBAR.forEach((item, i) => {
+    const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
+    const icon = item ? `<span style="color:${rgb(color)}">████</span>` : "    ";
+    const style = i === slot ? "" : ' style="color:#666"';
+    lines[0] += `<span${style}>${tl}${h.repeat(4)}${tr}</span>`;
+    lines[1] += `<span${style}>${v}</span>${icon}<span${style}>${v}</span>`;
+    lines[2] += `<span${style}>${bl}${h}${i + 1}${h}${h}${br}</span>`;
+  });
+  hotbar.innerHTML = (HOTBAR[slot] || "—") + "\n" + lines.join("\n");
+}
+
+function drawPalette() {
+  const W = 22;  // ширина внутри рамки
+  let html = "╔" + "═".repeat(W) + "╗\n";
+  html += "║" + "ПАЛИТРА".padStart(14).padEnd(W) + "║\n";
+  html += "╟" + "─".repeat(W) + "╢\n";
+  COLORS.forEach((c, i) => {
+    const text = ` ${i === color ? "►" : " "} ${c.name}`.padEnd(W - 4);
+    html += `║ <span class="option" data-color="${i}"><span style="color:${rgb(i)}">██</span>${text}</span> ║\n`;
+  });
+  html += "╟" + "─".repeat(W) + "╢\n";
+  html += "║" + " F — закрыть".padEnd(W) + "║\n";
+  html += "╚" + "═".repeat(W) + "╝";
+  palette.innerHTML = html;
+}
+
+function openPalette() {
+  menuOpen = true;
+  document.exitPointerLock();
+  drawPalette();
+  palette.style.display = "block";
+}
+
+function closePalette() {
+  menuOpen = false;
+  palette.style.display = "none";
+  canvas.requestPointerLock();
+}
+
+palette.addEventListener("click", e => {
+  const option = e.target.closest(".option");
+  if (!option) return;
+  color = Number(option.dataset.color);
+  drawHotbar();
+  closePalette();
+});
+
+drawHotbar();
+
+// ---------- WebGL: превращает сетку клеток в символы прямо на видеокарте ----------
+
 const gl = canvas.getContext("webgl");
 
 function shader(type, source) {
@@ -99,7 +273,7 @@ gl.attachShader(program, shader(gl.VERTEX_SHADER, `
 `));
 gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `
   precision highp float;
-  uniform sampler2D cellsTex;  // яркость каждой клетки экрана
+  uniform sampler2D cellsTex;  // клетки экрана: rgb — цвет, a — яркость
   uniform sampler2D fontTex;   // все символы RAMP в одну строку
   uniform vec2 grid;           // колонок и строк
   uniform float glyphs;        // сколько символов в RAMP
@@ -107,10 +281,10 @@ gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `
   void main() {
     vec2 cell = floor(uv * grid);
     vec2 inCell = fract(uv * grid);
-    float b = texture2D(cellsTex, (cell + 0.5) / grid).r;
-    float g = floor(b * (glyphs - 1.0) + 0.5);
+    vec4 c = texture2D(cellsTex, (cell + 0.5) / grid);
+    float g = floor(c.a * (glyphs - 1.0) + 0.5);
     float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, inCell.y)).r;
-    gl_FragColor = vec4(vec3(ink * (0.3 + 0.7 * b)), 1.0);  // дальше — темнее
+    gl_FragColor = vec4(c.rgb * ink * (0.3 + 0.7 * c.a), 1.0);  // дальше — темнее
   }
 `));
 gl.linkProgram(program);
@@ -146,7 +320,7 @@ function resize() {
   const cw = Math.round(CELL_W * dpr), ch = Math.round(CELL_H * dpr);
   cols = Math.floor(innerWidth / CELL_W);
   rows = Math.floor(innerHeight / CELL_H);
-  cells = new Uint8Array(cols * rows);
+  cells = new Uint8Array(cols * rows * 4);
 
   canvas.width = cols * cw;
   canvas.height = rows * ch;
@@ -180,7 +354,7 @@ function resize() {
 addEventListener("resize", resize);
 resize();
 
-// ---------- Raycasting: считаем яркость каждой клетки экрана ----------
+// ---------- Raycasting: считаем цвет и яркость каждой клетки экрана ----------
 
 function render() {
   const dirX = Math.cos(angle), dirY = Math.sin(angle);
@@ -193,22 +367,8 @@ function render() {
     const camX = 2 * (x + 0.5) / cols - 1;
     const rayX = dirX + planeX * camX;
     const rayY = dirY + planeY * camX;
-
-    // DDA: шагаем по клеткам сетки, пока не упрёмся в стену
-    let mapX = Math.floor(px), mapY = Math.floor(py);
-    const deltaX = Math.abs(1 / rayX), deltaY = Math.abs(1 / rayY);
-    const stepX = rayX < 0 ? -1 : 1, stepY = rayY < 0 ? -1 : 1;
-    let sideX = (rayX < 0 ? px - mapX : mapX + 1 - px) * deltaX;
-    let sideY = (rayY < 0 ? py - mapY : mapY + 1 - py) * deltaY;
-    let side;
-
-    while (MAP[mapY][mapX] !== "#") {
-      if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
-      else               { sideY += deltaY; mapY += stepY; side = 1; }
-    }
-
-    // Расстояние до стены перпендикулярно экрану (без эффекта "рыбьего глаза")
-    const dist = side === 0 ? sideX - deltaX : sideY - deltaY;
+    const { mapX, mapY, side, dist } = castRay(rayX, rayY);
+    const wallRgb = COLORS[world[mapY][mapX]].rgb;
 
     // Где именно на стене попал луч (0..1 вдоль стены) — нужно для кирпичей
     let wallX = side === 0 ? py + dist * rayY : px + dist * rayX;
@@ -222,6 +382,7 @@ function render() {
     for (let y = 0; y < rows; y++) {
       const sy = y + 0.5;
       let b = 0;  // потолок — чёрный
+      let tint = COLORS[0].rgb;
 
       if (sy >= top && sy < top + lineH) {
         // Стена из кирпичей: 4 ряда по высоте, 2 кирпича по ширине, ряды со сдвигом
@@ -230,6 +391,7 @@ function render() {
         const u = (wallX * 2 + (brickRow % 2) * 0.5) % 1;
         const mortar = lineH > 12 && ((v * 4) % 1 < 0.08 || u < 0.05);
         b = light * (mortar ? 0.45 : 1);
+        tint = wallRgb;
       } else if (sy >= top + lineH) {
         // Пол: находим точку на полу под этой клеткой и рисуем сетку плиток
         const d = K / (2 * (sy - horizon));
@@ -238,12 +400,16 @@ function render() {
         b = (tileEdge ? 0.4 : 0.18) * Math.exp(-d * 0.25);
       }
 
-      cells[y * cols + x] = b * 255;
+      const i = (y * cols + x) * 4;
+      cells[i] = tint[0];
+      cells[i + 1] = tint[1];
+      cells[i + 2] = tint[2];
+      cells[i + 3] = b * 255;
     }
   }
 
   gl.activeTexture(gl.TEXTURE0);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, cols, rows, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, cells);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, cols, rows, 0, gl.RGBA, gl.UNSIGNED_BYTE, cells);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
