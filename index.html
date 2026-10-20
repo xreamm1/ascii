@@ -83,6 +83,19 @@
     white-space: nowrap;
   }
 
+  /* Главное меню */
+  #menu {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: #000;
+  }
+  #menu .item { cursor: pointer; }
+  #menu .item:hover { background: #fff; color: #000; }
+  #lobby { left: 16px; top: 16px; pointer-events: none; }
+  /* Пока открыто меню, игровой интерфейс прячем */
+  body.in-menu #hotbar, body.in-menu #touch, body.in-menu #crosshair, body.in-menu #chat { display: none; }
+
   /* Управление для телефона: видно только на сенсорных экранах */
   #touch { display: none; }
   #touch .button { right: 16px; }
@@ -102,17 +115,20 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "trystero": "https://cdn.jsdelivr.net/npm/trystero@0.25.4/+esm"
+      "firebase/app": "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js"
     }
   }
 </script>
 </head>
-<body>
+<body class="in-menu">
 <pre id="crosshair">+</pre>
 <pre id="hotbar"></pre>
 <pre id="palette"></pre>
 <pre id="chat"></pre>
+<pre id="lobby"></pre>
 <div id="labels"></div>
+<pre id="menu"></pre>
 <div id="ask">
   <pre id="askTop"></pre>
   <div class="row"><pre>║ </pre><input id="askInput" enterkeyhint="done" autocomplete="off"><pre> ║</pre></div>
@@ -124,13 +140,16 @@
   <pre class="button" data-action="fullscreen" style="top: 16px">┌─────────┐
 │  ЭКРАН  │
 └─────────┘</pre>
-  <pre class="button" data-action="chat"   style="bottom: 210px">┌─────────┐
+  <pre class="button" data-action="chat"   style="bottom: 245px">┌─────────┐
 │   ЧАТ   │
 └─────────┘</pre>
-  <pre class="button" data-action="color"  style="bottom: 150px">┌─────────┐
+  <pre class="button" data-action="color"  style="bottom: 190px">┌─────────┐
 │  ЦВЕТ   │
 └─────────┘</pre>
-  <pre class="button" data-action="jump"   style="bottom: 90px">┌─────────┐
+  <pre class="button" data-action="crouch" style="bottom: 135px">┌─────────┐
+│  СЕСТЬ  │
+└─────────┘</pre>
+  <pre class="button" data-action="jump"   style="bottom: 80px">┌─────────┐
 │ ПРЫЖОК  │
 └─────────┘</pre>
   <pre id="stick">  .---.
@@ -142,6 +161,11 @@
 </div>
 <script type="module">
 import * as THREE from "three";
+
+// Настройки Firebase для сетевой игры. Взять их можно в консоли Firebase:
+// Project settings → General → Your apps → SDK setup and configuration → Config.
+// Пока здесь null, работает только одиночная игра
+const FIREBASE_CONFIG = null;
 
 // Цвета палитры
 const COLORS = [
@@ -175,6 +199,9 @@ const HOLD_TIME = 500;     // столько миллисекунд держат
 const RADIUS = 0.3;        // половина ширины игрока
 const HEIGHT = 1.75;       // рост игрока
 const EYE = 1.5;           // высота глаз
+const CROUCH_HEIGHT = 1.2; // рост, когда присел
+const CROUCH_EYE = 0.95;   // высота глаз, когда присел
+const CROUCH_SPEED = 0.45; // присевший идёт медленнее — во столько раз
 const STEP = 0.3;          // на такую высоту можно зайти без прыжка (доски, пандусы)
 const GRAVITY = 25;
 const JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25);  // прыжок на 1.25 блока
@@ -198,6 +225,8 @@ const EDGES = "|\\-/";
 let px = SIZE / 2, pz = SIZE / 2, feet = 0;  // позиция (feet — высота ступней)
 let vy = 0, onGround = true;
 let yaw = 0, pitch = 0;
+let crouching = false, bodyH = HEIGHT, eye = EYE;  // присел ли, текущий рост и высота глаз
+let inGame = false;     // false — открыто главное меню
 let slot = 0, color = 0, menuOpen = false;
 let typing = false;     // открыто окошко ввода — клавиши идут в него, а не в игру
 let nick = loadNick();
@@ -423,11 +452,11 @@ scene.add(ghostBlock, ghostPlank, ghostPoint);
 
 const inside = (x, z) => x >= 0 && z >= 0 && x < SIZE && z < SIZE;
 
-// Пересекается ли тело игрока (стоящего ступнями на высоте f) с каким-нибудь блоком
-function hitsBlock(x, f, z) {
+// Пересекается ли тело игрока (стоящего ступнями на высоте f, ростом h) с каким-нибудь блоком
+function hitsBlock(x, f, z, h) {
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
-      for (let cy = Math.floor(f + 0.01); cy <= Math.floor(f + HEIGHT - 0.01); cy++)
+      for (let cy = Math.floor(f + 0.01); cy <= Math.floor(f + h - 0.01); cy++)
         if (blocks.has(key(cx, cy, cz))) return true;
   return false;
 }
@@ -453,16 +482,16 @@ function segmentHitsBox(a, d, half) {
 // чтобы на низкие доски можно было заходить) до макушки. Переводим его в систему координат
 // доски, где она — обычная коробка, и расширяем коробку на толщину игрока
 const invQ = new THREE.Quaternion();
-function hitsPlank(mesh, x, f, z) {
+function hitsPlank(mesh, x, f, z, h = bodyH) {
   invQ.copy(mesh.quaternion).invert();
   const a = new THREE.Vector3(x, f + STEP, z).sub(mesh.position).applyQuaternion(invQ);
-  const d = new THREE.Vector3(0, HEIGHT - STEP, 0).applyQuaternion(invQ);
+  const d = new THREE.Vector3(0, h - STEP, 0).applyQuaternion(invQ);
   const half = new THREE.Vector3(PLANK_W / 2 + RADIUS, PLANK_T / 2, mesh.scale.z / 2 + RADIUS);
   return segmentHitsBox(a, d, half);
 }
 
-function hitsSolid(x, f, z) {
-  return hitsBlock(x, f, z) || [...planks.values()].some(p => hitsPlank(p, x, f, z));
+function hitsSolid(x, f, z, h = bodyH) {
+  return hitsBlock(x, f, z, h) || [...planks.values()].some(p => hitsPlank(p, x, f, z, h));
 }
 
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
@@ -481,6 +510,15 @@ function groundHeight(x, f, z) {
 }
 
 function update(dt) {
+  // Присед: пока держишь C — ниже и медленнее. Встать можно, только если над головой свободно
+  if (keys.KeyC) crouching = true;
+  else if (crouching && !hitsSolid(px, feet, pz, HEIGHT)) crouching = false;
+  bodyH = crouching ? CROUCH_HEIGHT : HEIGHT;
+  eye += ((crouching ? CROUCH_EYE : EYE) - eye) * Math.min(1, dt * 12);  // камера опускается плавно
+
+  // В главном меню камера просто медленно оборачивается вокруг
+  if (!inGame) yaw += dt * 0.1;
+
   // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда (или джойстик)
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
@@ -488,7 +526,7 @@ function update(dt) {
   let mz = -Math.cos(yaw) * forward - Math.sin(yaw) * strafe;
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
-  const step = MOVE_SPEED * dt;
+  const step = MOVE_SPEED * (crouching ? CROUCH_SPEED : 1) * dt;
   // По каждой оси отдельно — так можно скользить вдоль стены.
   // Если уже застрял (например, упал вплотную к краю доски), даём выйти
   const stuck = hitsSolid(px, feet, pz);
@@ -509,7 +547,7 @@ function update(dt) {
   // Упал с плиты — возвращаемся в центр
   if (feet < -30) { px = pz = SIZE / 2; feet = 0; vy = 0; }
 
-  camera.position.set(px, feet + EYE, pz);
+  camera.position.set(px, feet + eye, pz);
   camera.rotation.set(pitch, yaw, 0);
 }
 
@@ -519,7 +557,7 @@ const aimRay = new THREE.Raycaster();
 aimRay.far = REACH;
 
 // Можно ли сейчас управлять: мышь захвачена (или это телефон) и палитра закрыта
-const playing = () => !menuOpen && !typing && (TOUCH || !!document.pointerLockElement);
+const playing = () => inGame && !menuOpen && !typing && (TOUCH || !!document.pointerLockElement);
 
 // Что под точкой экрана (по умолчанию — под прицелом в центре): точка, нормаль поверхности и объект.
 // screen — координаты от -1 до 1, как у WebGL
@@ -544,7 +582,7 @@ function blockCell(hit) {
   if (y < 0 || !inside(x, z)) return null;
   // Нельзя ставить блок внутрь себя
   const overlapsPlayer = x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
-                         y < feet + HEIGHT && y + 1 > feet;
+                         y < feet + bodyH && y + 1 > feet;
   return overlapsPlayer ? null : [x, y, z];
 }
 
@@ -570,7 +608,7 @@ function updateGhosts() {
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 function use(action, screen) {
-  if (menuOpen) return;
+  if (menuOpen || !inGame) return;
   const hit = aim(screen);
 
   // Убрать блок или доску под прицелом (или отменить начатую доску)
@@ -622,7 +660,7 @@ function selectSlot(n) {
 }
 
 addEventListener("keydown", e => {
-  if (typing) return;
+  if (typing || !inGame) return;
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
@@ -635,7 +673,7 @@ addEventListener("keyup", e => keys[e.code] = false);
 
 // Клик по экрану захватывает мышь; камера крутится полностью, вверх и вниз до упора
 renderer.domElement.addEventListener("click", () => {
-  if (!menuOpen && !typing && !TOUCH) renderer.domElement.requestPointerLock();
+  if (inGame && !menuOpen && !typing && !TOUCH) renderer.domElement.requestPointerLock();
 });
 
 function turn(dx, dy, speed) {
@@ -671,7 +709,7 @@ function screenPoint(t) {
 
 addEventListener("touchstart", e => {
   for (const t of e.changedTouches) {
-    if (t.target.closest(".button, #hotbar, #palette, #ask")) continue;
+    if (!inGame || t.target.closest(".button, #hotbar, #palette, #ask")) continue;
     if (!press) {
       const screen = screenPoint(t);
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
@@ -760,6 +798,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     e.preventDefault();
     button.classList.add("active");
     if (action === "jump") keys.Space = true;
+    if (action === "crouch") keys.KeyC = true;
     if (action === "color") togglePalette();
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
@@ -767,6 +806,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
   button.addEventListener("touchend", () => {
     button.classList.remove("active");
     if (action === "jump") keys.Space = false;
+    if (action === "crouch") keys.KeyC = false;
   });
 }
 
@@ -859,7 +899,7 @@ function closeAsk(result) {
   askBox.style.display = "none";
   askInput.blur();
   askDone(result);
-  if (!TOUCH && !menuOpen) renderer.domElement.requestPointerLock();
+  if (!TOUCH && !menuOpen && inGame) renderer.domElement.requestPointerLock();
 }
 
 askInput.addEventListener("keydown", e => {
@@ -873,10 +913,13 @@ function loadNick() {
   try { return localStorage.getItem("nick") || ""; } catch { return ""; }
 }
 if (!nick) nick = "Игрок" + Math.floor(Math.random() * 1000);
-ask("ТВОЙ НИК", nick, 16).then(n => {
-  if (n) nick = n;
-  try { localStorage.setItem("nick", nick); } catch {}
-});
+
+function changeNick() {
+  return ask("ТВОЙ НИК", nick, 16).then(n => {
+    if (n) nick = n;
+    try { localStorage.setItem("nick", nick); } catch {}
+  });
+}
 
 // ---------- Чат ----------
 
@@ -1044,18 +1087,33 @@ function buildFont(cw, ch) {
 addEventListener("resize", resize);
 resize();
 
-// ---------- Онлайн: игроки соединяются напрямую друг с другом (WebRTC через Trystero) ----------
-// Сервер не нужен: публичные узлы только знакомят игроков, дальше данные идут напрямую.
-// Мир живёт, пока в игре кто-то есть: новичок получает его от тех, кто уже играет.
+// ---------- Сетевая игра через Firebase Realtime Database ----------
+// Все данные идут через серверы Google, поэтому игра работает в любой сети, даже на мобильном
+// интернете. Постройки лобби хранятся в базе и не пропадают, когда все выходят.
+// Устройство базы:
+//   lobbyInfo/{код}            — название лобби, время создания и кто сейчас в нём (online)
+//   players/{код}/{id игрока}  — где стоит игрок, куда смотрит, его цвет, ник и присел ли он
+//   world/{код}/{id предмета}  — блоки, доски и надписи (те же объекты, что получает edit())
+//   chat/{код}/{id сообщения}  — сообщения чата
 
-let online = null;          // появится, когда библиотека загрузится
+let online = null;          // появится, когда войдём в лобби
 const others = new Map();   // id игрока → его фигурка
-let poseTimer = 0;
+let poseTimer = 0, lastPose = "";
+
+// Firebase загружается, только когда он нужен: одиночная игра работает и без него
+let firebase = null;
+async function loadFirebase() {
+  if (firebase) return firebase;
+  const [{ initializeApp }, fb] = await Promise.all([import("firebase/app"), import("firebase/database")]);
+  firebase = { ...fb, db: fb.getDatabase(initializeApp(FIREBASE_CONFIG)) };
+  return firebase;
+}
 
 const avatarBody = new THREE.BoxGeometry(0.6, 1.2, 0.35);
 const avatarHead = new THREE.BoxGeometry(0.45, 0.45, 0.45);
 const avatarEyes = new THREE.BoxGeometry(0.3, 0.08, 0.02);
 const eyesMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const labels = document.getElementById("labels");
 
 // Фигурка другого игрока: туловище и голова его цвета, глаза показывают, куда он смотрит
 function avatar(id) {
@@ -1079,54 +1137,79 @@ function avatar(id) {
   return a;
 }
 
-const labels = document.getElementById("labels");
+function updateAvatar(id, p) {
+  const a = avatar(id);
+  a.target.set(p.x, p.f, p.z);
+  a.yaw = p.yaw;
+  a.group.scale.y = p.cr ? 0.7 : 1;  // присел — фигурка ниже
+  const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
+  a.mat.color.setRGB(r / 255, g / 255, b / 255);
+  a.nick = String(p.nick).slice(0, 16);
+  a.label.textContent = a.nick;  // textContent: чужой ник выводится только как текст
+  a.label.style.color = `rgb(${r},${g},${b})`;
+  if (a.fresh) {
+    a.group.position.copy(a.target);
+    a.fresh = false;
+    addChat(`* ${a.nick} зашёл`);
+  }
+}
 
-import("trystero").then(({ joinRoom }) => {
-  const room = joinRoom({ appId: "xreamm1-ascii-baseplate" }, "baseplate");
-  const edits = room.makeAction("edits");
-  const pose = room.makeAction("pose");
-  const chat = room.makeAction("chat");
+function removeAvatar(id) {
+  const a = others.get(id);
+  if (!a) return;
+  scene.remove(a.group);
+  a.label.remove();
+  others.delete(id);
+  addChat(`* ${a.nick} вышел`);
+}
 
-  // Новичку отправляем всё, что уже построено
-  room.onPeerJoin = id => edits.send(solids.slice(1).map(m => m.userData.edit), { target: id });
-  room.onPeerLeave = id => {
-    const a = others.get(id);
-    if (!a) return;
-    scene.remove(a.group);
-    a.label.remove();
-    others.delete(id);
-    addChat(`* ${a.nick} вышел`);
-  };
+// Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
+const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.id;
+// Обратное изменение: что сделать, когда предмет удалили из базы
+const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
-  edits.onMessage = list => list.forEach(e => { try { edit(e); } catch {} });
-  pose.onMessage = ([x, f, z, yaw, c, name], { peerId }) => {
-    const a = avatar(peerId);
-    a.target.set(x, f, z);
-    a.yaw = yaw;
-    const [r, g, b] = (COLORS[c] || COLORS[0]).rgb;
-    a.mat.color.setRGB(r / 255, g / 255, b / 255);
-    a.nick = String(name).slice(0, 16);
-    a.label.textContent = a.nick;
-    a.label.style.color = `rgb(${r},${g},${b})`;
-    if (a.fresh) {
-      a.group.position.copy(a.target);
-      a.fresh = false;
-      addChat(`* ${a.nick} зашёл`);
-    }
-  };
-  chat.onMessage = (text, { peerId }) => {
-    addChat(`${others.get(peerId)?.nick || "?"}: ${String(text).slice(0, 100)}`);
-  };
+async function joinLobby(code) {
+  const { db, ref, set, push, remove, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast } = await loadFirebase();
+  const me = ref(db, `players/${code}/${myId}`);
+  const presence = ref(db, `lobbyInfo/${code}/online/${myId}`);
+  // Закрыл вкладку или пропал интернет — сервер сам уберёт игрока из лобби
+  onDisconnect(me).remove();
+  onDisconnect(presence).remove();
+  set(presence, true);
+
+  const world = ref(db, `world/${code}`);
+  onChildAdded(world, s => { try { edit(s.val()); } catch {} });
+  onChildRemoved(world, s => { try { edit(undo(s.val())); } catch {} });
+
+  const players = ref(db, `players/${code}`);
+  const onPlayer = s => { if (s.key !== myId) try { updateAvatar(s.key, s.val()); } catch {} };
+  onChildAdded(players, onPlayer);
+  onChildChanged(players, onPlayer);
+  onChildRemoved(players, s => removeAvatar(s.key));
+
+  // Показываем только свежие сообщения, старые уже исчезли бы сами
+  onChildAdded(query(ref(db, `chat/${code}`), limitToLast(10)), s => {
+    const m = s.val();
+    if (Date.now() - m.t < CHAT_TIME) addChat(`${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
+  });
 
   online = {
-    sendEdits: list => edits.send(list),
-    sendPose: () => pose.send([...[px, feet, pz, yaw].map(v => +v.toFixed(2)), color, nick]),
-    sendChat: text => chat.send(text),
+    sendEdits: list => list.forEach(e => {
+      const r = ref(db, `world/${code}/${worldKey(e)}`);
+      if (e.op.startsWith("un")) remove(r); else set(r, e);
+    }),
+    // Позицию шлём, только если она изменилась: так меньше трафика
+    sendPose: () => {
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching };
+      const json = JSON.stringify(p);
+      if (json !== lastPose) { lastPose = json; set(me, p); }
+    },
+    sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: Date.now() }),
   };
-}).catch(err => console.warn("Онлайн недоступен:", err));
+}
 
 // Плавно двигаем чужие фигурки к последним присланным позициям, ставим ники над головами
-// и 15 раз в секунду шлём свою позицию
+// и 8 раз в секунду шлём свою позицию
 function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
   const screen = renderer.domElement.getBoundingClientRect();
@@ -1145,11 +1228,140 @@ function updateOnline(dt) {
     a.label.style.top = screen.top + (1 - p.y) / 2 * screen.height + "px";
   }
   poseTimer += dt;
-  if (online && poseTimer > 1 / 15) {
+  if (online && poseTimer > 1 / 8) {
     poseTimer = 0;
     online.sendPose();
   }
 }
+
+// ---------- Главное меню: одиночная игра или сетевая с лобби ----------
+
+const menuEl = document.getElementById("menu");
+const lobbyEl = document.getElementById("lobby");
+let menuScreen = "main";   // "main" или "online"
+let lobbyList = [];        // [{ code, name, players }]
+let stopLobbyList = null;  // отписка от обновлений списка лобби
+let menuNote = "";         // подсказка внизу: "загрузка…", ошибки
+
+// Всё, что пришло из сети (названия лобби), экранируем, прежде чем вставить в HTML меню
+const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+const MW = 40;  // ширина меню внутри рамки
+function line(text = "", act) {
+  const t = text.slice(0, MW - 2);
+  const body = act ? `<span class="item" data-act="${esc(act)}">${esc(t)}</span>` : esc(t);
+  return "║ " + body + " ".repeat(MW - 1 - t.length) + "║";
+}
+function title(t, l = "═") {
+  const s = t ? ` ${t} ` : "";
+  return s.padStart(MW / 2 + s.length / 2, l).padEnd(MW, l);
+}
+
+function drawMenu() {
+  const rows = [];
+  if (menuScreen === "main") {
+    rows.push("╔" + title("ASCII BASEPLATE") + "╗", line(),
+      line("[ ОДИНОЧНАЯ ИГРА ]", "single"), line(),
+      line("[ СЕТЕВАЯ ИГРА ]", "online"), line(),
+      "╚" + title("") + "╝");
+  } else {
+    rows.push("╔" + title("СЕТЕВАЯ ИГРА") + "╗", line(),
+      line(`Ник: ${nick}`), line("[ сменить ник ]", "nick"), line());
+    if (!FIREBASE_CONFIG) {
+      rows.push(line("Сетевая игра ещё не настроена:"), line("нужны настройки Firebase."));
+    } else {
+      rows.push(line("[ СОЗДАТЬ ЛОББИ ]", "create"), line("[ ВОЙТИ ПО КОДУ ]", "code"), "╟" + title("ЛОББИ", "─") + "╢");
+      if (!lobbyList.length) rows.push(line("пока пусто — создай своё лобби"));
+      for (const l of lobbyList) rows.push(line(`${l.code}  ${l.name.slice(0, 22).padEnd(22)} ${l.players} чел.`, "join:" + l.code));
+    }
+    if (menuNote) rows.push(line(), line(menuNote));
+    rows.push("╟" + title("", "─") + "╢", line("[ НАЗАД ]", "back"), "╚" + title("") + "╝");
+  }
+  menuEl.innerHTML = rows.join("\n");
+}
+
+menuEl.addEventListener("click", e => {
+  const act = e.target.closest(".item")?.dataset.act;
+  if (!act || typing) return;
+  if (act === "single") startGame();
+  if (act === "online") { menuScreen = "online"; watchLobbies(); }
+  if (act === "back") { menuScreen = "main"; stopLobbyList?.(); stopLobbyList = null; menuNote = ""; }
+  if (act === "nick") changeNick().then(drawMenu);
+  if (act === "create") createLobby().catch(() => showNote("не удалось создать лобби"));
+  if (act === "code") ask("КОД ЛОББИ", "", 4).then(c => c && enterLobby(c));
+  if (act.startsWith("join:")) enterLobby(act.slice(5));
+  drawMenu();
+});
+
+function showNote(text) {
+  menuNote = text;
+  drawMenu();
+}
+
+// Список лобби обновляется сам: сверху те, где сейчас больше всего игроков
+async function watchLobbies() {
+  if (!FIREBASE_CONFIG || stopLobbyList) return;
+  showNote("загрузка…");
+  try {
+    const { db, ref, query, orderByChild, limitToLast, onValue } = await loadFirebase();
+    stopLobbyList = onValue(query(ref(db, "lobbyInfo"), orderByChild("created"), limitToLast(20)), snap => {
+      lobbyList = [];
+      snap.forEach(l => {
+        const v = l.val();
+        lobbyList.push({ code: l.key, name: String(v.name || l.key), players: Object.keys(v.online || {}).length });
+      });
+      lobbyList.sort((a, b) => b.players - a.players);
+      lobbyList = lobbyList.slice(0, 8);
+      if (!inGame) showNote("");
+    }, () => showNote("нет связи с сервером"));
+  } catch {
+    showNote("не удалось загрузить Firebase");
+  }
+}
+
+async function createLobby() {
+  const name = await ask("НАЗВАНИЕ ЛОББИ", `Лобби ${nick}`, 22);
+  if (!name) return;
+  const { db, ref, set, get } = await loadFirebase();
+  // Код из 4 символов без похожих друг на друга (нет O/0, I/1)
+  const ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code;
+  do code = Array.from({ length: 4 }, () => ABC[Math.floor(Math.random() * ABC.length)]).join("");
+  while ((await get(ref(db, `lobbyInfo/${code}`))).exists());
+  await set(ref(db, `lobbyInfo/${code}`), { name, created: Date.now() });
+  startGame(code, name);
+}
+
+async function enterLobby(code) {
+  code = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!code) return;
+  showNote("подключаюсь…");
+  try {
+    const { db, ref, get } = await loadFirebase();
+    const info = await get(ref(db, `lobbyInfo/${code}`));
+    if (!info.exists()) return showNote(`лобби ${code} не найдено`);
+    startGame(code, String(info.val().name || code));
+  } catch {
+    showNote("нет связи с сервером");
+  }
+}
+
+// code не задан — одиночная игра
+function startGame(code, name) {
+  inGame = true;
+  stopLobbyList?.();
+  stopLobbyList = null;
+  menuEl.style.display = "none";
+  document.body.classList.remove("in-menu");
+  yaw = 0;
+  if (code) {
+    lobbyEl.textContent = `${name} · код ${code}`;  // код видно, чтобы позвать друзей
+    joinLobby(code).catch(() => addChat("* не удалось подключиться к лобби"));
+  }
+  if (!TOUCH) renderer.domElement.requestPointerLock();
+}
+
+drawMenu();
 
 // ---------- Главный цикл ----------
 
