@@ -1528,7 +1528,10 @@ async function joinLobby(code, me) {
 
 // Выход в главное меню: проще всего перезагрузить страницу, а причину показать в меню
 function leave(note) {
-  try { sessionStorage.setItem("note", note); } catch {}
+  try {
+    sessionStorage.setItem("note", note);
+    if (document.fullscreenElement) sessionStorage.setItem("fs", "1");
+  } catch {}
   location.reload();
 }
 
@@ -1658,6 +1661,7 @@ function drawMenu() {
     rows.push("╔" + title("ASCII BASEPLATE") + "╗", line(),
       line("[ ОДИНОЧНАЯ ИГРА ]", "single"), line(),
       line("[ СЕТЕВАЯ ИГРА ]", "online"), line());
+    if (requestFullscreen) rows.push(line("[ ПОЛНЫЙ ЭКРАН ]", "fullscreen"), line());
     if (menuNote) rows.push(...noteLines(), line());
     rows.push("╚" + title("") + "╝");
   } else {
@@ -1686,6 +1690,7 @@ menuEl.addEventListener("click", e => {
   const act = e.target.closest(".item")?.dataset.act;
   if (!act || typing) return;
   if (act === "single") startGame();
+  if (act === "fullscreen") toggleFullscreen();
   if (act === "online") { menuScreen = "online"; menuNote = ""; watchLobbies(); }
   if (act === "back") { menuScreen = "main"; stopLobbyList?.(); stopLobbyList = null; menuNote = ""; }
   if (act === "nick") changeNick().then(drawMenu);
@@ -1805,6 +1810,14 @@ try {
   sessionStorage.removeItem("note");
 } catch {}
 drawMenu();
+
+// Перезагрузка сбрасывает полный экран, а браузер даёт войти в него только по клику — возвращаем на первом клике
+try {
+  if (sessionStorage.getItem("fs")) {
+    sessionStorage.removeItem("fs");
+    addEventListener("pointerdown", () => requestFullscreen?.call(root).catch(() => {}), { once: true });
+  }
+} catch {}
 
 // Своя фигурка с ником — видна, когда смотришь со стороны (вид от 3-го лица или свободная камера)
 const selfMat = new THREE.MeshLambertMaterial();
