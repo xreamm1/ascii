@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>ASCII Baseplate</title>
 <style>
   html, body {
@@ -10,6 +10,9 @@
     height: 100%;
     background: #000;
     overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   canvas {
     position: absolute;
@@ -22,7 +25,6 @@
     margin: 0;
     color: #fff;
     font: 16px/1 Consolas, "Courier New", monospace;
-    user-select: none;
   }
   #crosshair {
     left: 50%;
@@ -33,8 +35,8 @@
   #hotbar {
     left: 16px;
     bottom: 16px;
-    pointer-events: none;
   }
+  #hotbar .slot { display: inline-block; cursor: pointer; }
   #palette {
     left: 50%;
     top: 50%;
@@ -44,6 +46,20 @@
   }
   #palette .option { cursor: pointer; }
   #palette .option:hover { background: #333; }
+
+  /* Управление для телефона: видно только на сенсорных экранах */
+  #touch { display: none; }
+  #touch .button { right: 16px; }
+  #touch .button.active { color: #000; background: #fff; }
+  #stick, #knob {
+    display: none;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  @media (pointer: coarse) {
+    pre { font-size: 13px; }
+    #touch { display: block; }
+  }
 </style>
 <script type="importmap">
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -53,6 +69,26 @@
 <pre id="crosshair">+</pre>
 <pre id="hotbar"></pre>
 <pre id="palette"></pre>
+<div id="touch">
+  <pre class="button" data-action="color"  style="bottom: 250px">┌─────────┐
+│  ЦВЕТ   │
+└─────────┘</pre>
+  <pre class="button" data-action="remove" style="bottom: 200px">┌─────────┐
+│ УБРАТЬ  │
+└─────────┘</pre>
+  <pre class="button" data-action="place"  style="bottom: 150px">┌─────────┐
+│ СТАВИТЬ │
+└─────────┘</pre>
+  <pre class="button" data-action="jump"   style="bottom: 100px">┌─────────┐
+│ ПРЫЖОК  │
+└─────────┘</pre>
+  <pre id="stick">  .---.
+ /     \
+|       |
+ \     /
+  '---'</pre>
+  <pre id="knob">@</pre>
+</div>
 <script type="module">
 import * as THREE from "three";
 
@@ -72,11 +108,15 @@ const COLORS = [
 // Панель предметов: блок, доска, остальные слоты пустые
 const HOTBAR = ["Блок", "Доска", null, null, null];
 
+const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
+
 const SIZE = 64;           // размер плиты в блоках
-const CELL_W = 6;          // ширина одного символа в пикселях (меньше — детальнее)
-const CELL_H = 10;         // высота одного символа в пикселях
+const CELL_W = 5;          // ширина одного символа в пикселях (меньше — детальнее)
+const CELL_H = 8;          // высота одного символа в пикселях
 const MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
+const TOUCH_SPEED = 0.006; // поворот камеры пальцем
+const STICK_RADIUS = 50;   // радиус джойстика в пикселях
 const RADIUS = 0.3;        // половина ширины игрока
 const HEIGHT = 1.75;       // рост игрока
 const EYE = 1.5;           // высота глаз
@@ -84,11 +124,15 @@ const STEP = 0.3;          // на такую высоту можно зайти
 const GRAVITY = 25;
 const JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25);  // прыжок на 1.25 блока
 const REACH = 8;           // как далеко можно строить
+const AIR_DIST = 4;        // точка доски в воздухе — на таком расстоянии перед глазами
 const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
+const NEAR = 0.1, FAR = 150;
 
 // Символы от самого тёмного к самому яркому
 const RAMP = " .`',:;-~=+*░xo#%@▒▓█";
+// Символы для контуров — по направлению грани
+const EDGES = "|\\-/";
 
 // ---------- Состояние игрока и интерфейса ----------
 
@@ -99,6 +143,7 @@ let slot = 0, color = 0, menuOpen = false;
 let plankStart = null;  // первая точка доски, пока не выбрана вторая
 
 const keys = {};
+const stick = { x: 0, y: 0 };  // наклон джойстика на телефоне, от -1 до 1
 
 // ---------- Сцена ----------
 
@@ -114,7 +159,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.Fog(0x000000, 20, 70);  // дальше — темнее
 
-const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
+const camera = new THREE.PerspectiveCamera(70, 1, NEAR, FAR);
 camera.rotation.order = "YXZ";
 
 // В three.js яркость света делится на π, поэтому умножаем на π
@@ -264,21 +309,17 @@ function groundHeight(x, f, z) {
 }
 
 function update(dt) {
-  // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда
-  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // вперёд
-  const rx = Math.cos(yaw), rz = -Math.sin(yaw);   // вправо
-  let mx = 0, mz = 0;
-  if (keys.KeyW) { mx += fx; mz += fz; }
-  if (keys.KeyS) { mx -= fx; mz -= fz; }
-  if (keys.KeyD) { mx += rx; mz += rz; }
-  if (keys.KeyA) { mx -= rx; mz -= rz; }
+  // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда (или джойстик)
+  const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+  const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+  let mx = -Math.sin(yaw) * forward + Math.cos(yaw) * strafe;
+  let mz = -Math.cos(yaw) * forward - Math.sin(yaw) * strafe;
   const len = Math.hypot(mx, mz);
-  if (len > 0) {
-    const step = MOVE_SPEED * dt / len;
-    // По каждой оси отдельно — так можно скользить вдоль стены
-    if (!hitsBlock(px + mx * step, feet, pz)) px += mx * step;
-    if (!hitsBlock(px, feet, pz + mz * step)) pz += mz * step;
-  }
+  if (len > 1) { mx /= len; mz /= len; }
+  const step = MOVE_SPEED * dt;
+  // По каждой оси отдельно — так можно скользить вдоль стены
+  if (!hitsBlock(px + mx * step, feet, pz)) px += mx * step;
+  if (!hitsBlock(px, feet, pz + mz * step)) pz += mz * step;
 
   // Прыжок и гравитация
   if (keys.Space && onGround) vy = JUMP_SPEED;
@@ -303,6 +344,9 @@ function update(dt) {
 const aimRay = new THREE.Raycaster();
 aimRay.far = REACH;
 
+// Можно ли сейчас управлять: мышь захвачена (или это телефон) и палитра закрыта
+const playing = () => !menuOpen && (TOUCH || !!document.pointerLockElement);
+
 // Что под прицелом: точка, нормаль поверхности и объект
 function aim() {
   aimRay.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -310,6 +354,12 @@ function aim() {
   if (!hit) return null;
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
   return { point: hit.point, normal, object: hit.object };
+}
+
+// Точка доски: там, куда смотрит прицел, а если там пусто — в воздухе перед глазами
+function plankPoint(hit) {
+  if (hit) return hit.point.clone();
+  return camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(AIR_DIST).add(camera.position);
 }
 
 // Клетка, куда встанет новый блок: соседняя с поверхностью под прицелом
@@ -324,7 +374,8 @@ function blockCell(hit) {
 }
 
 function updateGhosts() {
-  const hit = document.pointerLockElement ? aim() : null;
+  const on = playing();
+  const hit = on ? aim() : null;
   const [r, g, b] = COLORS[color].rgb;
   ghostMat.color.setRGB(r / 255, g / 255, b / 255);
 
@@ -332,66 +383,152 @@ function updateGhosts() {
   ghostBlock.visible = !!cell;
   if (cell) ghostBlock.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
 
-  const plankMode = HOTBAR[slot] === "Доска";
-  ghostPoint.visible = plankMode && (!!plankStart || !!hit);
-  if (ghostPoint.visible) ghostPoint.position.copy(plankStart || hit.point);
-  ghostPlank.visible = plankMode && !!plankStart && !!hit;
-  if (ghostPlank.visible) fitPlank(ghostPlank, plankStart, hit.point);
+  const plankMode = on && HOTBAR[slot] === "Доска";
+  const point = plankMode ? plankPoint(hit) : null;
+  ghostPoint.visible = plankMode;
+  if (plankMode) ghostPoint.position.copy(plankStart || point);
+  ghostPlank.visible = plankMode && !!plankStart;
+  if (ghostPlank.visible) fitPlank(ghostPlank, plankStart, point);
 }
 
-addEventListener("mousedown", e => {
-  if (!document.pointerLockElement) return;
+// Действие предметом: "place" — ЛКМ, "remove" — ПКМ
+function use(action) {
   const hit = aim();
 
-  // ПКМ убирает блок или доску под прицелом (и отменяет начатую доску)
-  if (e.button === 2) {
+  // Убрать блок или доску под прицелом (или отменить начатую доску)
+  if (action === "remove") {
     if (plankStart) plankStart = null;
     else if (hit && hit.object !== plate) removeSolid(hit.object);
     drawHotbar();
     return;
   }
-  if (e.button !== 0 || !hit) return;
 
-  if (HOTBAR[slot] === "Блок") {
+  if (HOTBAR[slot] === "Блок" && hit) {
     const cell = blockCell(hit);
     if (cell) addBlock(...cell);
   }
-  // Доска: первый клик — начало, второй — конец
+  // Доска: первое нажатие — начало, второе — конец
   if (HOTBAR[slot] === "Доска") {
-    if (!plankStart) plankStart = hit.point.clone();
+    const point = plankPoint(hit);
+    if (!plankStart) plankStart = point;
     else {
-      if (plankStart.distanceTo(hit.point) > 0.3) addPlank(plankStart, hit.point);
+      if (plankStart.distanceTo(point) > 0.3) addPlank(plankStart, point);
       plankStart = null;
     }
     drawHotbar();
   }
-});
+}
 
-// ---------- Управление ----------
+// ---------- Управление с клавиатуры и мыши ----------
+
+function selectSlot(n) {
+  slot = n;
+  plankStart = null;
+  drawHotbar();
+}
 
 addEventListener("keydown", e => {
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
-    if (n >= 0 && n < HOTBAR.length) { slot = n; plankStart = null; drawHotbar(); }
+    if (n >= 0 && n < HOTBAR.length) selectSlot(n);
   }
-  if (e.code === "KeyF" && !e.repeat) {
-    if (menuOpen) closePalette(); else openPalette();
-  }
+  if (e.code === "KeyF" && !e.repeat) togglePalette();
 });
 addEventListener("keyup", e => keys[e.code] = false);
 
 // Клик по экрану захватывает мышь; камера крутится полностью, вверх и вниз до упора
 renderer.domElement.addEventListener("click", () => {
-  if (!menuOpen) renderer.domElement.requestPointerLock();
+  if (!menuOpen && !TOUCH) renderer.domElement.requestPointerLock();
 });
-addEventListener("mousemove", e => {
-  if (!document.pointerLockElement) return;
-  yaw -= e.movementX * MOUSE_SPEED;
-  pitch -= e.movementY * MOUSE_SPEED;
+
+function turn(dx, dy, speed) {
+  yaw -= dx * speed;
+  pitch -= dy * speed;
   pitch = Math.max(-Math.PI / 2 + 0.001, Math.min(Math.PI / 2 - 0.001, pitch));
+}
+
+addEventListener("mousemove", e => {
+  if (document.pointerLockElement) turn(e.movementX, e.movementY, MOUSE_SPEED);
+});
+addEventListener("mousedown", e => {
+  if (!document.pointerLockElement) return;
+  if (e.button === 0) use("place");
+  if (e.button === 2) use("remove");
 });
 addEventListener("contextmenu", e => e.preventDefault());
+
+// ---------- Управление на телефоне ----------
+// Левая половина экрана — джойстик для ходьбы, правая — поворот камеры пальцем
+
+const stickEl = document.getElementById("stick");
+const knobEl = document.getElementById("knob");
+let moveTouch = null, lookTouch = null;  // какой палец что делает
+
+addEventListener("touchstart", e => {
+  for (const t of e.changedTouches) {
+    if (t.target.closest(".button, #hotbar, #palette")) continue;
+    if (t.clientX < innerWidth / 2 && !moveTouch) {
+      moveTouch = { id: t.identifier, x: t.clientX, y: t.clientY };
+      for (const el of [stickEl, knobEl]) {
+        el.style.display = "block";
+        el.style.left = t.clientX + "px";
+        el.style.top = t.clientY + "px";
+      }
+    } else if (t.clientX >= innerWidth / 2 && !lookTouch) {
+      lookTouch = { id: t.identifier, x: t.clientX, y: t.clientY };
+    }
+  }
+}, { passive: false });
+
+addEventListener("touchmove", e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (moveTouch && t.identifier === moveTouch.id) {
+      let dx = t.clientX - moveTouch.x, dy = t.clientY - moveTouch.y;
+      const len = Math.hypot(dx, dy);
+      if (len > STICK_RADIUS) { dx *= STICK_RADIUS / len; dy *= STICK_RADIUS / len; }
+      stick.x = dx / STICK_RADIUS;
+      stick.y = dy / STICK_RADIUS;
+      knobEl.style.left = moveTouch.x + dx + "px";
+      knobEl.style.top = moveTouch.y + dy + "px";
+    }
+    if (lookTouch && t.identifier === lookTouch.id) {
+      turn(t.clientX - lookTouch.x, t.clientY - lookTouch.y, TOUCH_SPEED);
+      lookTouch.x = t.clientX;
+      lookTouch.y = t.clientY;
+    }
+  }
+}, { passive: false });
+
+function touchEnd(e) {
+  for (const t of e.changedTouches) {
+    if (moveTouch && t.identifier === moveTouch.id) {
+      moveTouch = null;
+      stick.x = stick.y = 0;
+      stickEl.style.display = knobEl.style.display = "none";
+    }
+    if (lookTouch && t.identifier === lookTouch.id) lookTouch = null;
+  }
+}
+addEventListener("touchend", touchEnd);
+addEventListener("touchcancel", touchEnd);
+
+// Кнопки справа: прыжок держится, пока палец на кнопке
+for (const button of document.querySelectorAll("#touch .button")) {
+  const action = button.dataset.action;
+  button.addEventListener("touchstart", e => {
+    e.preventDefault();
+    button.classList.add("active");
+    if (action === "jump") keys.Space = true;
+    if (action === "place" || action === "remove") use(action);
+    if (action === "color") togglePalette();
+  });
+  button.addEventListener("touchend", () => {
+    button.classList.remove("active");
+    if (action === "jump") keys.Space = false;
+  });
+}
 
 // ---------- ASCII-интерфейс: панель предметов и палитра ----------
 
@@ -404,19 +541,21 @@ function rgb(c) {
 }
 
 function drawHotbar() {
-  const lines = ["", "", ""];
-  HOTBAR.forEach((item, i) => {
+  const slots = HOTBAR.map((item, i) => {
     const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
     const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
     const style = i === slot ? "" : ' style="color:#666"';
-    lines[0] += `<span${style}>${tl}${h.repeat(4)}${tr}</span>`;
-    lines[1] += `<span${style}>${v}</span>${icon}<span${style}>${v}</span>`;
-    lines[2] += `<span${style}>${bl}${h}${i + 1}${h}${h}${br}</span>`;
+    return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${i + 1}${h}${h}${br}</span>`;
   });
   let label = HOTBAR[slot] || "—";
   if (plankStart) label += " — выбери вторую точку";
-  hotbar.innerHTML = label + "\n" + lines.join("\n");
+  hotbar.innerHTML = label + "\n" + slots.join("");
 }
+
+hotbar.addEventListener("click", e => {
+  const s = e.target.closest(".slot");
+  if (s) selectSlot(Number(s.dataset.slot));
+});
 
 function drawPalette() {
   const W = 22;  // ширина внутри рамки
@@ -428,22 +567,20 @@ function drawPalette() {
     html += `║ <span class="option" data-color="${i}"><span style="color:${rgb(i)}">██</span>${text}</span> ║\n`;
   });
   html += "╟" + "─".repeat(W) + "╢\n";
-  html += "║" + " F — закрыть".padEnd(W) + "║\n";
+  html += "║" + (TOUCH ? " ЦВЕТ — закрыть" : " F — закрыть").padEnd(W) + "║\n";
   html += "╚" + "═".repeat(W) + "╝";
   palette.innerHTML = html;
 }
 
-function openPalette() {
-  menuOpen = true;
-  document.exitPointerLock();
-  drawPalette();
-  palette.style.display = "block";
-}
-
-function closePalette() {
-  menuOpen = false;
-  palette.style.display = "none";
-  renderer.domElement.requestPointerLock();
+function togglePalette() {
+  menuOpen = !menuOpen;
+  if (menuOpen) {
+    document.exitPointerLock();
+    drawPalette();
+  } else if (!TOUCH) {
+    renderer.domElement.requestPointerLock();
+  }
+  palette.style.display = menuOpen ? "block" : "none";
 }
 
 palette.addEventListener("click", e => {
@@ -451,14 +588,15 @@ palette.addEventListener("click", e => {
   if (!option) return;
   color = Number(option.dataset.color);
   drawHotbar();
-  closePalette();
+  togglePalette();
 });
 
 drawHotbar();
 
 // ---------- ASCII-шейдер: сцена рисуется в маленькую картинку, каждый её пиксель — один символ ----------
 
-const sceneTarget = new THREE.WebGLRenderTarget(1, 1);  // размер задаётся в resize()
+// Картинка сцены вместе с глубиной: по глубине шейдер находит грани и рисует контуры
+const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
 const fontTex = new THREE.CanvasTexture(document.createElement("canvas"));
 fontTex.flipY = false;
 fontTex.generateMipmaps = false;
@@ -467,9 +605,11 @@ fontTex.minFilter = THREE.LinearFilter;
 const asciiMat = new THREE.ShaderMaterial({
   uniforms: {
     sceneTex: { value: sceneTarget.texture },
+    depthTex: { value: sceneTarget.depthTexture },
     fontTex: { value: fontTex },
     grid: { value: new THREE.Vector2() },
-    glyphs: { value: RAMP.length },
+    rampLen: { value: RAMP.length },
+    glyphs: { value: RAMP.length + EDGES.length },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -480,10 +620,21 @@ const asciiMat = new THREE.ShaderMaterial({
   `,
   fragmentShader: `
     uniform sampler2D sceneTex;
+    uniform sampler2D depthTex;
     uniform sampler2D fontTex;
     uniform vec2 grid;
+    uniform float rampLen;
     uniform float glyphs;
     varying vec2 vUv;
+
+    // 1 / расстояние до камеры. На ровной поверхности оно меняется равномерно,
+    // поэтому всплеск в разнице с соседями означает грань или край предмета
+    float invDepth(vec2 cell) {
+      float d = texture2D(depthTex, (cell + 0.5) / grid).r * 2.0 - 1.0;
+      float z = 2.0 * ${NEAR.toFixed(2)} * ${FAR.toFixed(1)} / (${(FAR + NEAR).toFixed(2)} - d * ${(FAR - NEAR).toFixed(2)});
+      return 1.0 / z;
+    }
+
     void main() {
       vec2 cell = floor(vUv * grid);
       vec2 inCell = fract(vUv * grid);
@@ -491,7 +642,23 @@ const asciiMat = new THREE.ShaderMaterial({
       vec3 c = texture2D(sceneTex, (cell + 0.5) / grid).rgb;
       float b = max(c.r, max(c.g, c.b));            // яркость → какой символ
       vec3 tint = b > 0.0 ? c / b : vec3(0.0);      // оттенок → цвет символа
-      float g = floor(b * (glyphs - 1.0) + 0.5);
+
+      float w  = invDepth(cell);
+      float wl = invDepth(cell + vec2(-1.0, 0.0));
+      float wr = invDepth(cell + vec2( 1.0, 0.0));
+      float wd = invDepth(cell + vec2(0.0, -1.0));
+      float wu = invDepth(cell + vec2(0.0,  1.0));
+      float edge = -(wl + wr + wd + wu - 4.0 * w) / w;  // > 0 на ближней стороне грани
+
+      float g;
+      if (edge > 0.12 && w > 1.0 / 40.0) {
+        // Контур: символ | \\ - / по направлению грани, чуть ярче самой поверхности
+        float a = atan(wu - wd, wr - wl);
+        g = rampLen + mod(floor(a / 3.14159 * 4.0 + 0.5), 4.0);
+        b = max(b, 0.6);
+      } else {
+        g = floor(b * (rampLen - 1.0) + 0.5);
+      }
       float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, 1.0 - inCell.y)).r;
       gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b), 1.0);
     }
@@ -515,9 +682,10 @@ function resize() {
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
   camera.updateProjectionMatrix();
 
+  const chars = RAMP + EDGES;
   const cw = Math.round(CELL_W * dpr), ch = Math.round(CELL_H * dpr);
   const font = document.createElement("canvas");
-  font.width = cw * RAMP.length;
+  font.width = cw * chars.length;
   font.height = ch;
   const ctx = font.getContext("2d");
   ctx.fillStyle = "#000";
@@ -526,13 +694,13 @@ function resize() {
   ctx.font = Math.min(ch, cw / 0.6) + "px Consolas, 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (let i = 0; i < RAMP.length; i++) {
+  for (let i = 0; i < chars.length; i++) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(i * cw, 0, cw, ch);  // символ не вылезает за свою клетку
     ctx.clip();
-    if (RAMP[i] === "█") ctx.fillRect(i * cw, 0, cw, ch);  // сплошной блок без щелей
-    else ctx.fillText(RAMP[i], i * cw + cw / 2, ch / 2);
+    if (chars[i] === "█") ctx.fillRect(i * cw, 0, cw, ch);  // сплошной блок без щелей
+    else ctx.fillText(chars[i], i * cw + cw / 2, ch / 2);
     ctx.restore();
   }
   fontTex.image = font;
