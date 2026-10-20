@@ -393,11 +393,10 @@ const woodTex = canvasTexture(32, 128, ctx => {
   ctx.strokeStyle = "#666"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, 32, 128);
 });
 
-// Стекло: почти прозрачное, с рамкой и бликом — так его видно и в ASCII
+// Стекло: почти прозрачное, только с рамкой по краю — так его видно и в ASCII
 const glassTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "rgba(210, 235, 255, 0.18)"; ctx.fillRect(0, 0, 64, 64);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.95)"; ctx.lineWidth = 5; ctx.strokeRect(0, 0, 64, 64);
-  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(14, 44); ctx.lineTo(44, 14); ctx.moveTo(24, 50); ctx.lineTo(50, 24); ctx.stroke();
 });
 const glassMats = {};
 function glassMaterial(c) {
@@ -1650,13 +1649,16 @@ function title(t, l = "═") {
   return s.padStart(MW / 2 + s.length / 2, l).padEnd(MW, l);
 }
 
+// Подсказка может быть длинной — режем её на строки по ширине меню
+const noteLines = () => menuNote.match(new RegExp(`.{1,${MW - 2}}`, "g")).map(t => line(t));
+
 function drawMenu() {
   const rows = [];
   if (menuScreen === "main") {
     rows.push("╔" + title("ASCII BASEPLATE") + "╗", line(),
       line("[ ОДИНОЧНАЯ ИГРА ]", "single"), line(),
       line("[ СЕТЕВАЯ ИГРА ]", "online"), line());
-    if (menuNote) rows.push(line(menuNote), line());
+    if (menuNote) rows.push(...noteLines(), line());
     rows.push("╚" + title("") + "╝");
   } else {
     rows.push("╔" + title("СЕТЕВАЯ ИГРА") + "╗", line(),
@@ -1674,7 +1676,7 @@ function drawMenu() {
           `<span class="item" data-act="del:${esc(l.code)}">[x]</span>` + " ".repeat(MW - 5 - text.length) + "║");
       }
     }
-    if (menuNote) rows.push(line(), line(menuNote));
+    if (menuNote) rows.push(line(), ...noteLines());
     rows.push("╟" + title("", "─") + "╢", line("[ НАЗАД ]", "back"), "╚" + title("") + "╝");
   }
   menuEl.innerHTML = rows.join("\n");
@@ -1740,10 +1742,12 @@ async function createLobby() {
 async function deleteLobby(code) {
   await signIn();
   if (!isDev) throw new Error("удалять лобби может только разработчик");
-  const { db, ref, update } = await loadFirebase();
-  const gone = {};
-  for (const part of ["lobbyInfo", "players", "world", "chat", "kicks", "bans", "announce"]) gone[`${part}/${code}`] = null;
-  await update(ref(db), gone);
+  const { db, ref, remove } = await loadFirebase();
+  // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "lobbyInfo"];
+  const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
+  const denied = parts.filter((_, i) => results[i].status === "rejected");
+  if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
 }
 
 // Спрашиваем подтверждение — удалённое лобби не вернуть
@@ -1752,7 +1756,8 @@ function confirmDeleteLobby(code) {
     if (t?.toLowerCase() !== "да") return;
     return deleteLobby(code).then(
       () => showNote(`лобби ${code} удалено`),
-      err => (inGame ? addChat : showNote)(err.message.length < 38 ? err.message : "не удалось удалить лобби"));
+      // Длинное объяснение — в чат (в игре) или в подсказку меню, по кусочку на строку
+      err => inGame ? addChat("* " + err.message) : showNote(err.message));
   });
 }
 
