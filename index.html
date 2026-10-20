@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>ASCII Baseplate</title>
+<!-- Моноширинный шрифт с русскими буквами: без него на Android рамки из символов разъезжаются -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   html, body {
     margin: 0;
@@ -24,7 +28,7 @@
     position: absolute;
     margin: 0;
     color: #fff;
-    font: 16px/1 Consolas, "Courier New", monospace;
+    font: 16px/1 "JetBrains Mono", Consolas, "Courier New", monospace;
   }
   #crosshair {
     left: 50%;
@@ -55,7 +59,7 @@
     transform: translate(-50%, -50%);
     background: #000;
     color: #fff;
-    font: 16px/1 Consolas, "Courier New", monospace;
+    font: 16px/1 "JetBrains Mono", Consolas, "Courier New", monospace;
     display: none;
   }
   #ask pre { position: static; font: inherit; }
@@ -140,8 +144,27 @@
 
   /* Управление для телефона: видно только на сенсорных экранах */
   #touch { display: none; }
-  #touch .button { right: 16px; }
+  /* Кнопки собраны в два ряда, чтобы не наезжали друг на друга на любом экране:
+     сверху справа — ЭКРАН, МЕНЮ, АДМИН, ЧАТ, ЦВЕТ; снизу справа — СЕСТЬ и ПРЫЖОК */
+  #touch .row {
+    position: absolute;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+  }
+  #touch .row.top { top: 16px; flex-wrap: wrap; justify-content: flex-end; max-width: 58vw; }
+  #touch .row.bottom { bottom: 16px; flex-direction: column; align-items: flex-end; }
+  /* Вертикально экран узкий: нижние кнопки — над панелью предметов, чтобы не наезжали на неё */
+  @media (orientation: portrait) { #touch .row.bottom { bottom: 90px; } }
+  #touch .button {
+    position: static;
+    padding: 8px 10px;
+    border: 2px solid #fff;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  #touch .button.big { padding: 14px 18px; }
   #touch .button.active { color: #000; background: #fff; }
+  #lobby { max-width: 40vw; white-space: pre-wrap; }
   #stick, #knob {
     display: none;
     transform: translate(-50%, -50%);
@@ -184,27 +207,17 @@
 ╚════════════════════════════════╝</pre>
 </div>
 <div id="touch">
-  <pre class="button" data-action="fullscreen" style="top: 16px">┌─────────┐
-│  ЭКРАН  │
-└─────────┘</pre>
-  <pre class="button" data-action="game"   style="top: 70px">┌─────────┐
-│  МЕНЮ   │
-└─────────┘</pre>
-  <pre class="button" data-action="admin"  style="top: 125px; display: none">┌─────────┐
-│  АДМИН  │
-└─────────┘</pre>
-  <pre class="button" data-action="chat"   style="bottom: 245px">┌─────────┐
-│   ЧАТ   │
-└─────────┘</pre>
-  <pre class="button" data-action="color"  style="bottom: 190px">┌─────────┐
-│  ЦВЕТ   │
-└─────────┘</pre>
-  <pre class="button" data-action="crouch" style="bottom: 135px">┌─────────┐
-│  СЕСТЬ  │
-└─────────┘</pre>
-  <pre class="button" data-action="jump"   style="bottom: 80px">┌─────────┐
-│ ПРЫЖОК  │
-└─────────┘</pre>
+  <div class="row top">
+    <pre class="button" data-action="fullscreen">ЭКРАН</pre>
+    <pre class="button" data-action="game">МЕНЮ</pre>
+    <pre class="button" data-action="admin" style="display: none">АДМИН</pre>
+    <pre class="button" data-action="chat">ЧАТ</pre>
+    <pre class="button" data-action="color">ЦВЕТ</pre>
+  </div>
+  <div class="row bottom">
+    <pre class="button big" data-action="crouch">СЕСТЬ</pre>
+    <pre class="button big" data-action="jump">ПРЫЖОК</pre>
+  </div>
   <pre id="stick">  .---.
  /     \
 |       |
@@ -240,7 +253,7 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", null, null];
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -380,6 +393,27 @@ const woodTex = canvasTexture(32, 128, ctx => {
   ctx.strokeStyle = "#666"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, 32, 128);
 });
 
+// Стекло: почти прозрачное, с рамкой и бликом — так его видно и в ASCII
+const glassTex = canvasTexture(64, 64, ctx => {
+  ctx.fillStyle = "rgba(210, 235, 255, 0.18)"; ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)"; ctx.lineWidth = 5; ctx.strokeRect(0, 0, 64, 64);
+  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(14, 44); ctx.lineTo(44, 14); ctx.moveTo(24, 50); ctx.lineTo(50, 24); ctx.stroke();
+});
+const glassMats = {};
+function glassMaterial(c) {
+  const [r, g, b] = COLORS[c].rgb;
+  return glassMats[c] ??= new THREE.MeshLambertMaterial({ map: glassTex, color: new THREE.Color(r / 255, g / 255, b / 255), transparent: true });
+}
+
+// Дверь: доски с филёнками и ручкой
+const doorTex = canvasTexture(32, 64, ctx => {
+  ctx.fillStyle = "#d8d8d8"; ctx.fillRect(0, 0, 32, 64);
+  ctx.strokeStyle = "#777"; ctx.lineWidth = 2;
+  ctx.strokeRect(5, 5, 22, 24); ctx.strokeRect(5, 35, 22, 24);
+  ctx.fillStyle = "#444"; ctx.fillRect(24, 31, 4, 4);
+  ctx.strokeStyle = "#555"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, 32, 64);
+});
+
 // Один материал на каждую пару "текстура + цвет"
 const materials = {};
 function material(tex, c) {
@@ -389,6 +423,10 @@ function material(tex, c) {
 }
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const STICK_HALF = 0.08;  // палка — тонкий столбик в центре клетки
+const stickGeo = new THREE.BoxGeometry(STICK_HALF * 2, 1, STICK_HALF * 2);
+// Дверь: 1 × 2 блока; петля — в начале координат, поэтому дверь удобно поворачивать вокруг неё
+const doorGeo = new THREE.BoxGeometry(1, 2, 0.12).translate(0.5, 1, 0);
 const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина задаётся масштабом по Z
 
 const blocks = new Map();  // "x,y,z" → меш блока
@@ -404,8 +442,11 @@ let idCount = 0;
 // Все изменения мира проходят через edit() — так их легко повторить у других игроков.
 // Изменение — это объект: { op: "block", x, y, z, c }, { op: "unblock", x, y, z },
 // { op: "plank", id, ends: [ax, ay, az, bx, by, bz], c }, { op: "unplank", id },
-// { op: "text", id, p: [x, y, z], q: [поворот кватернионом], text, c } или { op: "untext", id }
-function edit(e) {
+// { op: "text", id, p: [x, y, z], q: [поворот кватернионом], text, c } или { op: "untext", id }.
+// У блока может быть вид k: "glass" — стекло, "stick" — палка, "door" — дверь высотой 2
+// (r — куда повёрнута, open — открыта ли). replace — заменить стоящий предмет (дверь открыли)
+function edit(e, replace = false) {
+  if (replace && e.op === "block") removeSolid(blocks.get(key(e.x, e.y, e.z)));
   if (e.op === "text" && !texts.has(e.id)) {
     const mesh = textMesh(String(e.text).slice(0, 40), e.c);
     mesh.position.fromArray(e.p);
@@ -416,10 +457,11 @@ function edit(e) {
   }
   if (e.op === "untext") removeSolid(texts.get(e.id));
   if (e.op === "block" && !blocks.has(key(e.x, e.y, e.z))) {
-    const mesh = new THREE.Mesh(boxGeo, material(brickTex, e.c));
-    mesh.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    const mesh = blockMesh(e);
     addSolid(mesh, e);
+    if (e.k === "glass") mesh.castShadow = false;
     blocks.set(key(e.x, e.y, e.z), mesh);
+    if (e.k === "door") blocks.set(key(e.x, e.y + 1, e.z), mesh);  // дверь занимает две клетки
   }
   if (e.op === "plank" && !planks.has(e.id)) {
     const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
@@ -432,8 +474,8 @@ function edit(e) {
 }
 
 // Своё изменение: применяем у себя и рассылаем остальным игрокам
-function share(e) {
-  edit(e);
+function share(e, replace = false) {
+  edit(e, replace);
   online?.sendEdits([e]);
 }
 
@@ -450,8 +492,34 @@ function removeSolid(mesh) {
   solids.splice(solids.indexOf(mesh), 1);
   const e = mesh.userData.edit;
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
+  if (e.k === "door") blocks.delete(key(e.x, e.y + 1, e.z));
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
+}
+
+// Меш блока по его виду: обычный кирпичный, стекло, палка или дверь
+function blockMesh(e) {
+  if (e.k === "glass") {
+    const m = new THREE.Mesh(boxGeo, glassMaterial(e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    return m;
+  }
+  if (e.k === "stick") {
+    const m = new THREE.Mesh(stickGeo, material(woodTex, e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    return m;
+  }
+  if (e.k === "door") {
+    // Петля у края клетки; открытая дверь повёрнута на 90° вокруг петли
+    const a = (e.r || 0) * Math.PI / 2;
+    const m = new THREE.Mesh(doorGeo, material(doorTex, e.c));
+    m.position.set(e.x + 0.5 - 0.5 * Math.cos(a), e.y, e.z + 0.5 + 0.5 * Math.sin(a));
+    m.rotation.y = a + (e.open ? Math.PI / 2 : 0);
+    return m;
+  }
+  const m = new THREE.Mesh(boxGeo, material(brickTex, e.c));
+  m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+  return m;
 }
 
 // Надпись: текст рисуется на canvas и натягивается на плоскость. Сам текст светится,
@@ -520,12 +588,23 @@ scene.add(ghostBlock, ghostPlank, ghostPoint);
 
 const inside = (x, z) => x >= 0 && z >= 0 && x < SIZE && z < SIZE;
 
+// Мешает ли то, что стоит в клетке, игроку с центром (x, z): блок и стекло — всей клеткой,
+// палка — только тонким столбиком посередине, открытая дверь — не мешает
+function cellBlocks(cx, cy, cz, x, z) {
+  const m = blocks.get(key(cx, cy, cz));
+  if (!m) return false;
+  const e = m.userData.edit;
+  if (e.k === "door") return !e.open;
+  if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
+  return true;
+}
+
 // Пересекается ли тело игрока (стоящего ступнями на высоте f, ростом h) с каким-нибудь блоком
 function hitsBlock(x, f, z, h) {
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
       for (let cy = Math.floor(f + 0.01); cy <= Math.floor(f + h - 0.01); cy++)
-        if (blocks.has(key(cx, cy, cz))) return true;
+        if (cellBlocks(cx, cy, cz, x, z)) return true;
   return false;
 }
 
@@ -569,7 +648,7 @@ function groundHeight(x, f, z) {
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
       for (let cy = Math.floor(f + STEP) - 1; cy >= 0; cy--)
-        if (blocks.has(key(cx, cy, cz))) { g = Math.max(g, cy + 1); break; }
+        if (cellBlocks(cx, cy, cz, x, z)) { g = Math.max(g, cy + 1); break; }
 
   downRay.set(new THREE.Vector3(x, f + STEP, z), new THREE.Vector3(0, -1, 0));
   const hit = downRay.intersectObjects([...planks.values()])[0];
@@ -680,6 +759,16 @@ function plankPoint(hit) {
   return aimRay.ray.at(AIR_DIST, new THREE.Vector3());
 }
 
+// Клетка для предмета: для двери нужна ещё и свободная клетка над ней
+function placeCell(hit, item) {
+  const cell = blockCell(hit);
+  if (!cell || item !== "Дверь") return cell;
+  const [x, y, z] = cell;
+  const headroom = !blocks.has(key(x, y + 1, z)) && !(x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
+                   y + 1 < feet + bodyH && y + 2 > feet);
+  return headroom ? cell : null;
+}
+
 // Клетка, куда встанет новый блок: соседняя с поверхностью под прицелом
 function blockCell(hit) {
   const p = hit.point.clone().addScaledVector(hit.normal, 0.5);
@@ -698,9 +787,15 @@ function updateGhosts() {
   const [r, g, b] = COLORS[color].rgb;
   ghostMat.color.setRGB(r / 255, g / 255, b / 255);
 
-  const cell = hit && HOTBAR[slot] === "Блок" ? blockCell(hit) : null;
+  const item = HOTBAR[slot];
+  const onDoor = hit?.object.userData.edit?.k === "door";  // по двери кликают, чтобы открыть
+  const cell = hit && !onDoor && ["Блок", "Стекло", "Дверь", "Палка"].includes(item) ? placeCell(hit, item) : null;
   ghostBlock.visible = !!cell;
-  if (cell) ghostBlock.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
+  if (cell) {
+    const tall = item === "Дверь" ? 2 : 1, thin = item === "Палка" ? STICK_HALF * 2 : 1;
+    ghostBlock.scale.set(thin, tall, thin);
+    ghostBlock.position.set(cell[0] + 0.5, cell[1] + tall / 2, cell[2] + 0.5);
+  }
 
   const plankMode = on && HOTBAR[slot] === "Доска";
   const point = plankMode ? plankPoint(hit) : null;
@@ -726,9 +821,20 @@ function use(action, screen) {
     return;
   }
 
-  if (HOTBAR[slot] === "Блок" && hit) {
-    const cell = blockCell(hit);
-    if (cell) share({ op: "block", x: cell[0], y: cell[1], z: cell[2], c: color });
+  // Дверь под прицелом — открываем или закрываем, чем бы ни кликнули
+  const target = hit?.object.userData.edit;
+  if (target?.k === "door") {
+    share({ ...target, open: !target.open }, true);
+    return;
+  }
+  const kinds = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door" };
+  if (HOTBAR[slot] in kinds && hit) {
+    const cell = placeCell(hit, HOTBAR[slot]);
+    const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
+    if (kinds[HOTBAR[slot]]) e.k = kinds[HOTBAR[slot]];
+    // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
+    if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
+    if (cell) share(e);
   }
   // Текст: запоминаем, куда ставить, и спрашиваем, что написать
   if (HOTBAR[slot] === "Текст") {
@@ -948,7 +1054,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa " };
+const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || " };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1374,6 +1480,7 @@ async function joinLobby(code, me) {
 
   const world = ref(db, `world/${code}`);
   onChildAdded(world, s => { try { edit(s.val()); } catch {} });
+  onChildChanged(world, s => { try { edit(s.val(), true); } catch {} });  // открыли или закрыли дверь
   onChildRemoved(world, s => { try { edit(undo(s.val())); } catch {} });
 
   const players = ref(db, `players/${code}`);
