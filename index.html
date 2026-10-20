@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ASCII Лабиринт</title>
+<title>ASCII Baseplate</title>
 <style>
   html, body {
     margin: 0;
@@ -52,24 +52,7 @@
 <pre id="hotbar"></pre>
 <pre id="palette"></pre>
 <script>
-// Карта: '#' — стена, '.' — свободно
-const MAP = [
-  "################",
-  "#......#.......#",
-  "#.####.#.#####.#",
-  "#.#....#.....#.#",
-  "#.#.######.#.#.#",
-  "#.#........#.#.#",
-  "#.########.#.#.#",
-  "#......#...#...#",
-  "######.#.#######",
-  "#......#.......#",
-  "#.######.#####.#",
-  "#........#.....#",
-  "################",
-];
-
-// Цвета палитры; стены из карты — белые (номер 0)
+// Цвета палитры
 const COLORS = [
   { name: "Белый",      rgb: [255, 255, 255] },
   { name: "Красный",    rgb: [255,  60,  60] },
@@ -85,46 +68,61 @@ const COLORS = [
 // Панель предметов: в первом слоте стена, остальные пустые
 const HOTBAR = ["Стена", null, null, null, null];
 
+const SIZE = 48;         // размер плиты в клетках
 const CELL_W = 7;        // ширина одного символа в пикселях (меньше — детальнее)
 const CELL_H = 12;       // высота одного символа в пикселях
 const FOV = 0.66;        // ширина обзора (длина вектора камеры)
-const MOVE_SPEED = 2.5;  // клеток в секунду
-const TURN_SPEED = 2.2;  // радиан в секунду
-const MOUSE_SPEED = 0.0025;  // радиан на пиксель движения мыши
+const MOVE_SPEED = 3;    // клеток в секунду
+const MOUSE_SPEED = 0.0025;  // поворот на пиксель движения мыши
 const RADIUS = 0.2;      // "толщина" игрока, чтобы не упираться носом в стену
-const REACH = 5;         // как далеко можно ставить и убирать стены
+const REACH = 6;         // как далеко можно ставить и убирать стены
+const EYE = 0.5;         // высота глаз над полом (стена высотой 1)
+const JUMP_SPEED = 3.5;  // начальная скорость прыжка
+const GRAVITY = 14;
 
 // Символы от самого тёмного к самому яркому
 const RAMP = " .,:;-~=+*░#%@▒▓█";
 
-// Мир: в каждой клетке либо null (пусто), либо номер цвета стены
-const world = MAP.map(row => [...row].map(c => c === "#" ? 0 : null));
+// Мир: пустая плита. В клетке либо null (пусто), либо номер цвета стены
+const world = Array.from({ length: SIZE }, () => new Array(SIZE).fill(null));
 
-// Игрок стартует в центре свободной клетки (1, 1), смотрит вправо
-let px = 1.5, py = 1.5, angle = 0;
+// Игрок стартует в центре плиты
+let px = SIZE / 2 + 0.5, py = SIZE / 2 + 0.5;
+let angle = 0;      // поворот влево-вправо
+let pitch = 0;      // наклон вверх-вниз (сдвиг горизонта в долях экрана)
+let z = 0, vz = 0;  // высота прыжка и вертикальная скорость
 let slot = 0;       // выбранный слот панели
 let color = 0;      // выбранный цвет
 let menuOpen = false;
+let target = null;  // клетки под прицелом: куда поставить и что убрать
 
+function inside(x, y) {
+  return x >= 0 && y >= 0 && x < SIZE && y < SIZE;
+}
+
+// За краем плиты — невидимая граница, туда не пройти
 function isWall(x, y) {
-  return world[Math.floor(y)][Math.floor(x)] !== null;
+  x = Math.floor(x); y = Math.floor(y);
+  return !inside(x, y) || world[y][x] !== null;
 }
 
 // DDA: шагаем по клеткам сетки вдоль луча, пока не упрёмся в стену.
 // prevX/prevY — последняя пустая клетка перед стеной (туда ставится новый блок).
+// Если луч ушёл за край плиты, стены нет — возвращаем null.
 function castRay(rayX, rayY) {
   let mapX = Math.floor(px), mapY = Math.floor(py);
-  let prevX = mapX, prevY = mapY;
+  let prevX, prevY, side;
   const deltaX = Math.abs(1 / rayX), deltaY = Math.abs(1 / rayY);
   const stepX = rayX < 0 ? -1 : 1, stepY = rayY < 0 ? -1 : 1;
   let sideX = (rayX < 0 ? px - mapX : mapX + 1 - px) * deltaX;
   let sideY = (rayY < 0 ? py - mapY : mapY + 1 - py) * deltaY;
-  let side = 0;
 
-  while (world[mapY][mapX] === null) {
+  for (;;) {
     prevX = mapX; prevY = mapY;
     if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
     else               { sideY += deltaY; mapY += stepY; side = 1; }
+    if (!inside(mapX, mapY)) return null;
+    if (world[mapY][mapX] !== null) break;
   }
 
   // Расстояние до стены перпендикулярно экрану (без эффекта "рыбьего глаза")
@@ -133,9 +131,6 @@ function castRay(rayX, rayY) {
 }
 
 function update(dt) {
-  if (keys.KeyA) angle -= TURN_SPEED * dt;
-  if (keys.KeyD) angle += TURN_SPEED * dt;
-
   let step = 0;
   if (keys.KeyW) step += MOVE_SPEED * dt;
   if (keys.KeyS) step -= MOVE_SPEED * dt;
@@ -146,6 +141,12 @@ function update(dt) {
   // Двигаемся по каждой оси отдельно — так можно скользить вдоль стены
   if (!isWall(px + dx + Math.sign(dx) * RADIUS, py)) px += dx;
   if (!isWall(px, py + dy + Math.sign(dy) * RADIUS)) py += dy;
+
+  // Прыжок: на земле пробел даёт скорость вверх, дальше тянет гравитация
+  if (keys.Space && z === 0) vz = JUMP_SPEED;
+  vz -= GRAVITY * dt;
+  z = Math.max(0, z + vz * dt);
+  if (z === 0) vz = 0;
 }
 
 // ---------- Управление ----------
@@ -165,29 +166,29 @@ addEventListener("keydown", e => {
 });
 addEventListener("keyup", e => keys[e.code] = false);
 
-// Клик по экрану захватывает мышь, после этого ей можно поворачиваться
+// Клик по экрану захватывает мышь, после этого камера крутится мышью
 canvas.addEventListener("click", () => {
   if (!menuOpen) canvas.requestPointerLock();
 });
 addEventListener("mousemove", e => {
-  if (document.pointerLockElement === canvas) angle += e.movementX * MOUSE_SPEED;
+  if (document.pointerLockElement !== canvas) return;
+  angle += e.movementX * MOUSE_SPEED;
+  pitch = Math.max(-0.6, Math.min(0.6, pitch - e.movementY * MOUSE_SPEED * 0.6));
 });
 addEventListener("contextmenu", e => e.preventDefault());
 
 // ЛКМ — поставить стену выбранного цвета, ПКМ — убрать стену
 addEventListener("mousedown", e => {
-  if (document.pointerLockElement !== canvas || HOTBAR[slot] !== "Стена") return;
-  const hit = castRay(Math.cos(angle), Math.sin(angle));
-  if (hit.dist > REACH) return;
+  if (document.pointerLockElement !== canvas || HOTBAR[slot] !== "Стена" || !target) return;
 
   if (e.button === 0) {
-    const inPlayerCell = hit.prevX === Math.floor(px) && hit.prevY === Math.floor(py);
-    if (!inPlayerCell) world[hit.prevY][hit.prevX] = color;
+    const [x, y] = target.place;
+    const inPlayerCell = x === Math.floor(px) && y === Math.floor(py);
+    if (!inPlayerCell) world[y][x] = color;
   }
-  if (e.button === 2) {
-    const onBorder = hit.mapX === 0 || hit.mapY === 0 ||
-                     hit.mapX === MAP[0].length - 1 || hit.mapY === MAP.length - 1;
-    if (!onBorder) world[hit.mapY][hit.mapX] = null;
+  if (e.button === 2 && target.remove) {
+    const [x, y] = target.remove;
+    world[y][x] = null;
   }
 });
 
@@ -312,7 +313,7 @@ gl.uniform1i(gl.getUniformLocation(program, "fontTex"), 1);
 gl.uniform1f(gl.getUniformLocation(program, "glyphs"), RAMP.length);
 gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
-let cols, rows, cells;
+let cols, rows, cells, K;
 
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
@@ -321,6 +322,7 @@ function resize() {
   cols = Math.floor(innerWidth / CELL_W);
   rows = Math.floor(innerHeight / CELL_H);
   cells = new Uint8Array(cols * rows * 4);
+  K = (cols * CELL_W) / (2 * FOV * CELL_H);  // высота стены в строках на расстоянии 1
 
   canvas.width = cols * cw;
   canvas.height = rows * ch;
@@ -354,50 +356,81 @@ function resize() {
 addEventListener("resize", resize);
 resize();
 
+// Что под прицелом (центр экрана): стена или клетка пола в пределах досягаемости
+function findTarget(dirX, dirY, horizon, eye) {
+  const hit = castRay(dirX, dirY);
+  const center = rows / 2;
+  const floorDist = center > horizon ? eye * K / (center - horizon) : Infinity;
+
+  if (hit && hit.dist < floorDist) {
+    return hit.dist <= REACH ? { place: [hit.prevX, hit.prevY], remove: [hit.mapX, hit.mapY] } : null;
+  }
+  if (floorDist <= REACH) {
+    const x = Math.floor(px + dirX * floorDist), y = Math.floor(py + dirY * floorDist);
+    if (inside(x, y)) return { place: [x, y], remove: null };
+  }
+  return null;
+}
+
 // ---------- Raycasting: считаем цвет и яркость каждой клетки экрана ----------
 
 function render() {
   const dirX = Math.cos(angle), dirY = Math.sin(angle);
   const planeX = -dirY * FOV, planeY = dirX * FOV;
-  const K = (cols * CELL_W) / (2 * FOV * CELL_H);  // высота стены в строках на расстоянии 1
-  const horizon = rows / 2;
+  const horizon = rows * (0.5 + pitch);
+  const eye = EYE + z;  // высота камеры с учётом прыжка
+
+  target = HOTBAR[slot] === "Стена" ? findTarget(dirX, dirY, horizon, eye) : null;
 
   for (let x = 0; x < cols; x++) {
     // Направление луча для этого столбца
     const camX = 2 * (x + 0.5) / cols - 1;
     const rayX = dirX + planeX * camX;
     const rayY = dirY + planeY * camX;
-    const { mapX, mapY, side, dist } = castRay(rayX, rayY);
-    const wallRgb = COLORS[world[mapY][mapX]].rgb;
+    const hit = castRay(rayX, rayY);
 
-    // Где именно на стене попал луч (0..1 вдоль стены) — нужно для кирпичей
-    let wallX = side === 0 ? py + dist * rayY : px + dist * rayX;
-    wallX -= Math.floor(wallX);
-
-    const lineH = K / dist;
-    const top = horizon - lineH / 2;
-    // Чем дальше, тем темнее; боковые стены чуть темнее, чтобы были видны углы
-    const light = Math.exp(-dist * 0.12) * (side === 1 ? 0.7 : 1);
+    // Где на экране верх и низ стены (если луч в неё попал)
+    let top = Infinity, bottom = horizon, wallX = 0, light = 0, wallRgb;
+    if (hit) {
+      const lineH = K / hit.dist;
+      top = horizon - (1 - eye) * lineH;
+      bottom = horizon + eye * lineH;
+      // Где именно на стене попал луч (0..1 вдоль стены) — нужно для кирпичей
+      wallX = hit.side === 0 ? py + hit.dist * rayY : px + hit.dist * rayX;
+      wallX -= Math.floor(wallX);
+      // Чем дальше, тем темнее; боковые стены чуть темнее, чтобы были видны углы
+      light = Math.exp(-hit.dist * 0.08) * (hit.side === 1 ? 0.7 : 1);
+      wallRgb = COLORS[world[hit.mapY][hit.mapX]].rgb;
+    }
 
     for (let y = 0; y < rows; y++) {
       const sy = y + 0.5;
-      let b = 0;  // потолок — чёрный
+      let b = 0;  // небо — чёрное
       let tint = COLORS[0].rgb;
 
-      if (sy >= top && sy < top + lineH) {
+      if (sy >= top && sy < bottom) {
         // Стена из кирпичей: 4 ряда по высоте, 2 кирпича по ширине, ряды со сдвигом
-        const v = (sy - top) / lineH;
+        const v = (sy - top) / (bottom - top);
         const brickRow = Math.floor(v * 4);
         const u = (wallX * 2 + (brickRow % 2) * 0.5) % 1;
-        const mortar = lineH > 12 && ((v * 4) % 1 < 0.08 || u < 0.05);
+        const mortar = bottom - top > 12 && ((v * 4) % 1 < 0.08 || u < 0.05);
         b = light * (mortar ? 0.45 : 1);
         tint = wallRgb;
-      } else if (sy >= top + lineH) {
-        // Пол: находим точку на полу под этой клеткой и рисуем сетку плиток
-        const d = K / (2 * (sy - horizon));
+      } else if (sy >= bottom) {
+        // Пол: находим точку на плите под этой клеткой экрана
+        const d = eye * K / (sy - horizon);
         const fx = px + rayX * d, fy = py + rayY * d;
-        const tileEdge = fx % 1 < 0.05 || fy % 1 < 0.05;
-        b = (tileEdge ? 0.4 : 0.18) * Math.exp(-d * 0.25);
+        if (inside(fx, fy)) {
+          // Плитка в шахматном порядке; вдали она сливается, иначе там рябит
+          const checker = (Math.floor(fx) + Math.floor(fy)) % 2;
+          const fade = Math.max(0, 1 - d / 8);
+          b = (0.28 + 0.12 * checker * fade) * Math.exp(-d * 0.06);
+          // Клетка под прицелом подсвечивается выбранным цветом
+          if (target && Math.floor(fx) === target.place[0] && Math.floor(fy) === target.place[1]) {
+            b = 0.6;
+            tint = COLORS[color].rgb;
+          }
+        }
       }
 
       const i = (y * cols + x) * 4;
