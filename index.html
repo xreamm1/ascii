@@ -1739,7 +1739,7 @@ const asciiMat = new THREE.ShaderMaterial({
         g = floor(b * (rampLen - 1.0) + 0.5);
       }
       float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, 1.0 - inCell.y)).r;
-      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b), 1.0);
+      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * 0.7, 1.0);  // 0.7 — общая яркость, чтобы не слепило
     }
   `,
 });
