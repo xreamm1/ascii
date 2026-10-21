@@ -1478,7 +1478,7 @@ function droneHits(p) {
 }
 
 // Машина: W/S — газ и тормоз, A/D — руль, пробел — ручник (с ним машину заносит). E — сесть и выйти
-let carV = { x: 0, z: 0 }, carYaw = 0;
+let carV = { x: 0, z: 0 }, carYaw = 0, nitroOn = false;
 
 // Ближайшая машина, в которую можно сесть
 function nearestCar() {
@@ -1514,6 +1514,7 @@ function toggleCar() {
 
 function exitCar() {
   if (!drivingCar) return;
+  nitroOn = false;
   const m = drivingCar;
   drivingCar = null;
   // Выходим вбок от машины
@@ -1697,9 +1698,10 @@ function updateCar(dt) {
   [f, r] = dirs();
   // Скорость остаётся прежней, а нос повернулся: часть скорости оказывается "вбок" — это и есть занос
   let vf = carV.x * f[0] + carV.z * f[1], vl = carV.x * r[0] + carV.z * r[1];
-  vf += throttle * 14 * dt;
+  nitroOn = !!(keys.ShiftLeft || keys.ShiftRight) && throttle > 0;  // нитро на Shift: сильнее разгон и выше потолок скорости
+  vf += throttle * (nitroOn ? 34 : 14) * dt;
   if (!throttle) vf -= vf * Math.min(1, 1.2 * dt);
-  vf = Math.max(-8, Math.min(24, vf));
+  vf = Math.max(-8, Math.min(nitroOn ? 40 : 24, vf));
   vl *= Math.exp(-(hand ? 1 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
   carV = { x: f[0] * vf + r[0] * vl, z: f[1] * vf + r[1] * vl };
 
@@ -4526,7 +4528,7 @@ renderer.setAnimationLoop(now => {
   }
   // Зум на C: угол обзора плавно сужается, пока клавиша зажата
   if (!keys.KeyC) zoomFov = ZOOM_FOV;
-  const fovTarget = trollOn("fisheye") ? 140 : trollOn("binoc") ? 12 : trollOn("pulse") ? 75 + Math.sin(performance.now() / 200) * 35 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
+  const fovTarget = nitroOn ? 88 : trollOn("fisheye") ? 140 : trollOn("binoc") ? 12 : trollOn("pulse") ? 75 + Math.sin(performance.now() / 200) * 35 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 12);
     camera.updateProjectionMatrix();
