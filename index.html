@@ -1747,9 +1747,10 @@ function flushBombs() {
 function enterPlane(m) {
   drivingPlane = m;
   planeYaw = m.rotation.y; planePitch = m.userData.edit.pt || 0; planeRoll = 0;
+  yaw = planeYaw; pitch = planePitch;
   camMode = "car";
   vy = 0;
-  addChat(TOUCH ? "* самолёт: джойстик вверх — набор высоты, вниз — снижение, ПРЫЖОК — бомба" : "* самолёт: W — вверх, S — вниз, A/D — поворот, пробел — бомба, E — выйти");
+  addChat(TOUCH ? "* самолёт: палец по экрану — куда лететь, джойстик вверх/вниз — высота, ПРЫЖОК — бомба" : "* самолёт: мышь — куда лететь, W/S — вверх/вниз, A/D — поворот, пробел — бомба, E — выйти");
 }
 function exitPlane() {
   const m = drivingPlane;
@@ -1772,10 +1773,13 @@ function updatePlane(dt) {
   const m = drivingPlane;
   const steer = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
   const nose = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;  // >0 — нос вверх (W или джойстик вверх)
-  planeYaw -= steer * 1.1 * dt;
-  planePitch = Math.max(-1.2, Math.min(1.2, planePitch + nose * 1.0 * dt));
-  if (!nose) planePitch *= Math.exp(-0.4 * dt);
-  planeRoll += (-steer * 0.7 - planeRoll) * Math.min(1, dt * 4);
+  // Мышь (палец) задаёт, куда лететь: самолёт плавно разворачивается за прицелом. A/D и W/S тоже двигают прицел
+  yaw -= steer * 1.1 * dt;
+  pitch = Math.max(-1.2, Math.min(1.2, pitch + nose * 1.0 * dt));
+  const dyaw = Math.atan2(Math.sin(yaw - planeYaw), Math.cos(yaw - planeYaw));
+  planeYaw += dyaw * Math.min(1, dt * 2.5);
+  planePitch += (pitch - planePitch) * Math.min(1, dt * 2.5);
+  planeRoll += (Math.max(-0.9, Math.min(0.9, dyaw * 1.2)) - planeRoll) * Math.min(1, dt * 4);
   const speed = Math.max(12, 22 - 10 * Math.sin(planePitch));
   const dir = new THREE.Vector3(-Math.sin(planeYaw) * Math.cos(planePitch), Math.sin(planePitch), -Math.cos(planeYaw) * Math.cos(planePitch));
   let { x, y, z } = m.position;
@@ -1804,7 +1808,6 @@ function updatePlane(dt) {
   const hit = camRay.intersectObjects(solids.filter(s => s !== m))[0];
   camera.position.copy(head).addScaledVector(back, hit ? Math.max(1, hit.distance - 0.3) : 14);
   camera.lookAt(x + dir.x * 8, y + dir.y * 8 + 1, z + dir.z * 8);
-  yaw = planeYaw; pitch = planePitch;
   scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
 }
 
