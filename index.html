@@ -293,7 +293,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
-  null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Огниво", "ТНТ", null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -1010,7 +1010,11 @@ const STREET = {
 const counterParts = () => [...P(0x2b2b2e, box(0.94, 0.1, 0.84, 0, -0.45, 0.02)), box(1, 0.74, 0.9, 0, -0.03, 0), ...P(0x3b3f44, box(1.04, 0.07, 1.04, 0, 0.375, -0.02)),       // цоколь, корпус, столешница
   ...P(0x555a60, box(1.06, 0.02, 1.06, 0, 0.41, -0.02)), box(0.4, 0.5, 0.03, -0.22, -0.05, -0.46), box(0.4, 0.5, 0.03, 0.22, -0.05, -0.46),                         // кромка, филёнки
   box(0.3, 0.38, 0.015, -0.22, -0.05, -0.48), box(0.3, 0.38, 0.015, 0.22, -0.05, -0.48), ...P(0xc0c4c8, box(0.03, 0.18, 0.04, -0.04, 0.1, -0.49), box(0.03, 0.18, 0.04, 0.04, 0.1, -0.49))];
+// ТНТ: красный ящик с белым поясом и фитилём
+const tntGeo = mergeParts([...P(0xcf2a1f, box(0.98, 0.98, 0.98, 0, 0, 0)), ...P(0xf2f2f2, box(1, 0.32, 1, 0, 0, 0)), ...P(0x222222, box(1.01, 0.04, 1.01, 0, 0.14, 0), box(1.01, 0.04, 1.01, 0, -0.14, 0)),
+  ...P(0x6b4a2a, box(0.05, 0.14, 0.05, 0, 0.55, 0)), ...P(0xffa000, ball(0.045, 0, 0.64, 0))]);
 const KITCHEN = {
+  tnt: tntGeo,
   counter: mergeParts(counterParts()),
   // Касса: ящик для денег, наклонный монитор на стойке, клавиатура, дисплей покупателя, чековый принтер и считыватель карт
   register: mergeParts([...counterParts(), ...P(0x26282c, box(0.5, 0.1, 0.42, 0, 0.465, 0.05), box(0.4, 0.012, 0.02, 0, 0.52, -0.15),
@@ -1776,7 +1780,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Телевизор": "tv", "Раковина": "sink", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -1814,6 +1818,11 @@ function use(action, screen) {
   const target = hit?.object.userData.edit;
   if (target?.k === "door" || target?.k === "barrier") {
     share({ ...target, open: !target.open }, true);
+    return;
+  }
+  if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
+    const t = hit?.object.userData.edit;
+    if (t?.k === "tnt") igniteTnt(t, 3);
     return;
   }
   if (HOTBAR[slot] in KINDS && hit) {
@@ -2109,7 +2118,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -3947,6 +3956,54 @@ function updateRockets(dt) {
     if (boom) { scene.remove(r.mesh); rockets.splice(i, 1); rocketBoom(r.mesh.position.clone(), r.own, r.W); }
   }
 }
+// ТНТ: огниво поджигает блок, он превращается в мигающий заряд и через пару секунд взрывается. Рядом стоящие ТНТ детонируют цепочкой.
+// Мир ломает тот, кто поджёг (остальные получают изменения через общий мир), а картинку взрыва и урон каждый считает у себя
+const TNT_R = 4.5, TNT_DMG = 70;
+const primed = [];
+function startPrimed(x, y, z, fuse, own) {
+  const mesh = new THREE.Mesh(tntGeo, vmaterial(plainTex, 0));
+  const flash = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.02, 1.02), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }));
+  mesh.add(flash);
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  primed.push({ mesh, flash, t: fuse, own });
+}
+function igniteTnt(e, fuse) {
+  if (blocks.get(key(e.x, e.y, e.z))?.userData.edit.k !== "tnt") return;
+  share(undo(e));  // блока больше нет — вместо него горит заряд
+  startPrimed(e.x + 0.5, e.y + 0.5, e.z + 0.5, fuse, true);
+  online?.fx({ t: "tnt", x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5, f: fuse });
+}
+function tntBoom(p, own) {
+  addExplosion(p, TNT_R);
+  const d = Math.hypot(px - p.x, feet + 1 - p.y, pz - p.z);
+  if (d < TNT_R) damage(TNT_DMG * (1 - d / TNT_R), "ТНТ");
+  if (!own) return;
+  for (const m of [...solids]) {  // соседние ТНТ загораются
+    const e = m.userData.edit;
+    if (e?.k === "tnt" && m.position.distanceTo(p) < TNT_R * 1.3) igniteTnt(e, 0.25 + Math.random() * 0.5);
+  }
+  explode(p, TNT_R);
+  // Воронка в земле
+  const crater = [];
+  const [cx, cy, cz] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
+  for (let x = cx - 5; x <= cx + 5; x++) for (let y = cy - 5; y <= cy + 5; y++) for (let z = cz - 5; z <= cz + 5; z++) {
+    if (y > -1 || y < -DEPTH || !inDigArea(x, z) || dug.has(`${x},${y},${z}`)) continue;
+    if (Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y, z + 0.5 - p.z) <= TNT_R - 0.5) crater.push({ op: "dig", x, y, z });
+  }
+  for (const e of crater) edit(e);
+  if (crater.length) online?.sendEdits(crater);
+}
+function updatePrimed(dt) {
+  for (let i = primed.length - 1; i >= 0; i--) {
+    const t = primed[i];
+    t.t -= dt;
+    t.flash.visible = Math.floor(t.t * 5) % 2 === 0;
+    t.mesh.scale.setScalar(1 + Math.max(0, 1 - t.t) * 0.12);
+    if (t.t <= 0) { scene.remove(t.mesh); primed.splice(i, 1); tntBoom(t.mesh.position.clone(), t.own); }
+  }
+}
+
 // Взрыв: у себя ломает блоки (остальные увидят это через мир) и бьёт игроков вокруг, чем ближе — тем сильнее
 function rocketBoom(pos, own, W) {
   addExplosion(pos, W.radius);
@@ -4079,6 +4136,7 @@ function handleFx(f) {
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
   if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
   if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
+  if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false);
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
 
@@ -4140,6 +4198,7 @@ function updateWeapons(dt) {
   updateFx(dt);
   updateHelpers(dt);
   updateFlying(dt);
+  updatePrimed(dt);
   updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || (inGame && camMode === "first" && nearestCar())) ? "" : "none";
