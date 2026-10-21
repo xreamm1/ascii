@@ -212,6 +212,7 @@
     <pre class="button" data-action="fullscreen">ЭКРАН</pre>
     <pre class="button" data-action="game">МЕНЮ</pre>
     <pre class="button" data-action="admin" style="display: none">АДМИН</pre>
+    <pre class="button" data-action="car">МАШИНА</pre>
     <pre class="button" data-action="chat">ЧАТ</pre>
     <pre class="button" data-action="color">ЦВЕТ</pre>
   </div>
@@ -256,7 +257,7 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Мяч", "Шлагбаум"];
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Мяч", "Шлагбаум", "Лампа", "Машина"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -332,7 +333,8 @@ let prefixes = {};         // выданные разработчиком пре
 let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
-let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон
+let drivingCar = null;  // меш машины, в которой сидит игрок
+let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон, "car" — за рулём
 const freePos = new THREE.Vector3();  // где сейчас свободная камера
 let slot = 0, color = 0, menuOpen = false;
 let typing = false;     // открыто окошко ввода — клавиши идут в него, а не в игру
@@ -456,6 +458,7 @@ const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина за
 
 const blocks = new Map();  // "x,y,z" → меш блока
 const planks = new Map();  // id доски → её меш
+const cars = new Map();    // id машины → её меш
 const texts = new Map();   // id надписи → её меш
 const textGeo = new THREE.PlaneGeometry(1, 1);
 const solids = [plate];    // всё, во что можно целиться
@@ -495,6 +498,17 @@ function edit(e, replace = false) {
     planks.set(e.id, mesh);
   }
   if (e.op === "unblock") removeSolid(blocks.get(key(e.x, e.y, e.z)));
+  if (e.op === "car") {
+    const m = cars.get(e.id);
+    if (!m) {
+      const mesh = new THREE.Mesh(carGeo, material(brickTex, e.c));
+      mesh.position.set(e.x, e.y, e.z);
+      mesh.rotation.y = e.yaw;
+      addSolid(mesh, e);
+      cars.set(e.id, mesh);
+    } else if (m !== drivingCar) m.userData.edit = m.userData.target = e;  // чужая машина плавно доезжает до новой точки
+  }
+  if (e.op === "uncar") removeSolid(cars.get(e.id));
   if (e.op === "unplank") removeSolid(planks.get(e.id));
 }
 
@@ -520,6 +534,7 @@ function removeSolid(mesh) {
   if (e.k === "door") blocks.delete(key(e.x, e.y + 1, e.z));
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
+  if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
 }
 
 // Рампа — клин, поднимающийся от низа клетки к верху. Сторона подъёма: r = 0..3, как у двери
@@ -592,7 +607,12 @@ const foodTex = canvasTexture(16, 16, ctx => {
 const barrierGeo = open => mergeParts([box(0.2, 1, 0.2, -0.4, 0, 0),
   [new THREE.BoxGeometry(0.85, 0.1, 0.1).translate(0.425, 0, 0).rotateZ(open ? 1.4 : 0), -0.4, 0.3, 0]]);
 const barrierGeos = { false: barrierGeo(false), true: barrierGeo(true) };
-const DECOR = { burger: [burgerGeo, "бургер"], pizza: [pizzaGeo, "пиццу"], wings: [wingsGeo, "крылышки"], ball: [ballGeo, ""] };
+const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, -0.075, 0],
+  [new THREE.CylinderGeometry(0.1, 0.22, 0.3, 14), 0, 0.35, 0]]);
+// Машина: кузов, кабина и колёса; смотрит в сторону -z, начало координат — на земле под центром
+const carGeo = mergeParts([box(0.85, 0.3, 1.7, 0, 0.3, 0), box(0.7, 0.28, 0.85, 0, 0.58, 0.15),
+  ...corners.map(([x, z]) => [cyl(0.17, 0.14).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55])]);
+const DECOR = { lamp: [lampGeo, ""],  burger: [burgerGeo, "бургер"], pizza: [pizzaGeo, "пиццу"], wings: [wingsGeo, "крылышки"], ball: [ballGeo, ""] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
@@ -615,6 +635,11 @@ function blockMesh(e) {
     const m = new THREE.Mesh(geo, material(tex, e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     m.rotation.y = (e.r || 0) * Math.PI / 2;
+    if (e.k === "lamp") {
+      const light = new THREE.PointLight(0xfff2cc, 2 * Math.PI, 14);  // лампа светит вокруг
+      light.position.y = 0.3;
+      m.add(light);
+    }
     return m;
   }
   if (e.k === "table" || e.k === "chair") {
@@ -837,6 +862,80 @@ function droneHits(p) {
     [...planks.values()].some(m => hitsPlank(m, p.x, p.y - STEP, p.z, STEP));
 }
 
+// Машина: W/S — газ и тормоз, A/D — руль, пробел — ручник (с ним машину заносит). E — сесть и выйти
+let carV = { x: 0, z: 0 }, carYaw = 0;
+
+function toggleCar() {
+  if (drivingCar) return exitCar();
+  if (camMode !== "first" || !inGame) return;
+  let best = null, bestD = 3.5;
+  for (const m of cars.values()) {
+    const d = Math.hypot(m.position.x - px, m.position.z - pz);
+    if (d < bestD && Math.abs(m.position.y - feet) < 2) { best = m; bestD = d; }
+  }
+  if (!best) return;
+  drivingCar = best;
+  carYaw = best.rotation.y;
+  carV = { x: 0, z: 0 };
+  camMode = "car";
+  crouching = true;  // другим игрокам видно, что ты сидишь
+}
+
+function exitCar() {
+  if (!drivingCar) return;
+  const m = drivingCar;
+  drivingCar = null;
+  // Выходим вбок от машины
+  px = m.position.x + Math.cos(carYaw) * 1.3;
+  pz = m.position.z - Math.sin(carYaw) * 1.3;
+  feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
+  vy = 0;
+  crouching = false;
+  yaw = carYaw;
+  if (camMode === "car") camMode = "first";
+}
+
+function updateCar(dt) {
+  const m = drivingCar;
+  const throttle = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+  const steer = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+  const hand = !!keys.Space;
+  const dirs = () => [[-Math.sin(carYaw), -Math.cos(carYaw)], [Math.cos(carYaw), -Math.sin(carYaw)]];  // вперёд и вправо
+  let [f, r] = dirs();
+  // Руль работает, только пока машина едет; ручник поворачивает резче
+  const vf0 = carV.x * f[0] + carV.z * f[1];
+  carYaw -= steer * 1.9 * Math.max(-1, Math.min(1, vf0 / 6)) * (hand ? 1.4 : 1) * dt;
+  [f, r] = dirs();
+  // Скорость остаётся прежней, а нос повернулся: часть скорости оказывается "вбок" — это и есть занос
+  let vf = carV.x * f[0] + carV.z * f[1], vl = carV.x * r[0] + carV.z * r[1];
+  vf += throttle * 14 * dt;
+  if (!throttle) vf -= vf * Math.min(1, 1.2 * dt);
+  vf = Math.max(-8, Math.min(24, vf));
+  vl *= Math.exp(-(hand ? 1 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
+  carV = { x: f[0] * vf + r[0] * vl, z: f[1] * vf + r[1] * vl };
+
+  // Едем по каждой оси отдельно; в стену — отскок
+  const y = m.position.y;
+  let x = m.position.x, z = m.position.z;
+  if (!hitsSolid(x + carV.x * dt, y, z, 0.6)) x += carV.x * dt; else carV.x *= -0.3;
+  if (!hitsSolid(x, y, z + carV.z * dt, 0.6)) z += carV.z * dt; else carV.z *= -0.3;
+  m.position.set(x, Math.max(0, groundHeight(x, y, z)), z);
+  m.rotation.y = carYaw;
+  Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +carYaw.toFixed(2) });
+  px = x; pz = z; feet = m.position.y;
+
+  // Камера сзади и чуть сверху, плавно догоняет поворот машины
+  yaw += Math.atan2(Math.sin(carYaw - yaw), Math.cos(carYaw - yaw)) * Math.min(1, dt * 4);
+  pitch = -0.2;
+  const head = new THREE.Vector3(x, m.position.y + 1.2, z);
+  const back = new THREE.Vector3(Math.sin(yaw), 0.35, Math.cos(yaw)).normalize();
+  camRay.set(head, back);
+  camRay.far = 6;
+  const hit = camRay.intersectObjects(solids)[0];
+  camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 6);
+  camera.rotation.set(pitch, yaw, 0);
+}
+
 function updateDrone(dt) {
   if (boom > 0) {
     boom -= dt;
@@ -875,6 +974,7 @@ function update(dt) {
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
 
+  if (camMode === "car") return updateCar(dt);
   if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
@@ -1022,10 +1122,10 @@ function updateGhosts() {
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
 const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table",
-  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Мяч": "ball", "Шлагбаум": "barrier" };
+  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Мяч": "ball", "Шлагбаум": "barrier", "Лампа": "lamp" };
 
 function use(action, screen) {
-  if (menuOpen || !inGame) return;
+  if (menuOpen || !inGame || camMode === "car") return;
   const hit = aim(screen);
 
   // Убрать блок или доску под прицелом (или отменить начатую доску)
@@ -1055,6 +1155,11 @@ function use(action, screen) {
     if (e.k === "barrier") e.open = false;
     if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
     if (cell) share(e);
+  }
+  // Машина встаёт на пол или на блок под прицелом, носом туда, куда смотришь
+  if (HOTBAR[slot] === "Машина" && hit && hit.normal.y > 0.5) {
+    const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
+    share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color });
   }
   // Текст: запоминаем, куда ставить, и спрашиваем, что написать
   if (HOTBAR[slot] === "Текст") {
@@ -1106,6 +1211,7 @@ addEventListener("keydown", e => {
     if (n >= 0 && n < PAGE) selectSlot(page * PAGE + n);
   }
   if (e.code === "Tab") { e.preventDefault(); if (!e.repeat) togglePage(); }
+  if (e.code === "KeyE" && !e.repeat && !menuOpen) toggleCar();
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "KeyP" && !e.repeat) toggleAdmin();
   if (e.code === "Enter" && !menuOpen) openChat();
@@ -1271,6 +1377,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "chat") openChat();
     if (action === "admin") toggleAdmin();
     if (action === "game") toggleGameMenu();
+    if (action === "car") toggleCar();
   });
   button.addEventListener("touchend", () => {
     button.classList.remove("active");
@@ -1284,7 +1391,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
 const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
-  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Мяч": "(##)", "Шлагбаум": "▮▬▬▬" };
+  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Мяч": "(##)", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1871,6 +1978,7 @@ adminEl.addEventListener("click", e => {
   if (!a || !isAdmin()) return;
   if (a === "fly") { flying = !flying; vy = 0; }
   if (a === "smaller" || a === "bigger") setSize(SIZES[Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(size) + (a === "bigger" ? 1 : -1)))]);
+  if (["fly", "third", "free", "drone"].includes(a)) exitCar();
   if (a === "third" || a === "free") endDrone();
   // FPV дрон стартует из глаз игрока, игрок стоит на месте
   if (a === "drone") {
@@ -1931,10 +2039,17 @@ function updateOnline(dt) {
 
     placeLabel(a.label, a.group.position, true, 2 * (a.size || 1));
   }
+  for (const m of cars.values()) {
+    const t = m.userData.target;
+    if (!t || m === drivingCar) continue;
+    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
+  }
   poseTimer += dt;
   if (online && poseTimer > 1 / 8) {
     poseTimer = 0;
     online.sendPose();
+    if (drivingCar) online.sendEdits([drivingCar.userData.edit]);
   }
 }
 
@@ -2133,7 +2248,7 @@ const selfLabel = document.createElement("pre");
 selfLabel.className = "nick";
 labels.append(selfLabel);
 function updateSelfFigure(dt) {
-  selfFigure.visible = camMode !== "first" && inGame;
+  selfFigure.visible = camMode !== "first" && camMode !== "car" && inGame;
   selfFigure.position.set(px, feet, pz);
   selfFigure.rotation.y = yaw;
   selfFigure.scale.set(size, size * (crouching ? 0.7 : 1), size);
