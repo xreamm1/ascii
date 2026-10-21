@@ -608,6 +608,18 @@ function edit(e, replace = false) {
     } else if (m !== drivingCar) m.userData.edit = m.userData.target = e;  // чужая машина плавно доезжает до новой точки
   }
   if (e.op === "uncar") removeSolid(cars.get(e.id));
+  if (e.op === "ball") {
+    const m = balls.get(e.id);
+    if (!m) {
+      const mesh = new THREE.Mesh(verityGeo, vmaterial(plainTex, 0));
+      mesh.position.set(e.x, e.y, e.z);
+      mesh.rotation.y = e.yaw || 0;
+      mesh.userData.sim = { vx: 0, vy: 0, vz: 0, send: 0, owned: e.o === myId, moving: e.o === myId };  // свой шарик сначала падает на пол
+      addSolid(mesh, e);
+      balls.set(e.id, mesh);
+    } else if (e.o !== myId) { m.userData.edit = m.userData.target = e; m.userData.sim.owned = false; }  // мяч двигает тот, кто его последним толкнул
+  }
+  if (e.op === "unball") removeSolid(balls.get(e.id));
   if (e.op === "unplank") removeSolid(planks.get(e.id));
 }
 
@@ -635,6 +647,7 @@ function removeSolid(mesh) {
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
+  if (e.op === "ball") balls.delete(e.id);
   lamps.delete(mesh);
   tvs.delete(mesh);
   barriers.delete(mesh);
@@ -871,10 +884,12 @@ const cupGeo = mergeParts([
 const friesGeo = mergeParts([
   ...P(0xd8262b, [new THREE.CylinderGeometry(0.2, 0.15, 0.24, 4).rotateY(Math.PI / 4), 0, -0.38, 0, 0], box(0.3, 0.03, 0.02, 0, -0.27, -0.14)),                              // картонная коробка
   ...P(0xf5c542, ...times(18, i => { const a = i * 0.9, r = 0.02 + (i % 4) * 0.04; return tbox(0.03, 0.28 - (i % 3) * 0.05, 0.03, Math.cos(a) * r, -0.16 - (i % 3) * 0.02, Math.sin(a) * r, Math.sin(a) * 0.12, a, Math.cos(a) * 0.12, 0); }))]);   // картошка
-// Верити: жёлтый смайл-шар, лицо смотрит на того, кто его поставил
-const verityGeo = mergeParts([...P(0xffd21a, ball(0.42, 0, -0.08, 0, 0)),
-  ...P(0x161616, ball(0.05, -0.14, 0.1, 0.355, 0, 1, 1.7, 0.5), ball(0.05, 0.14, 0.1, 0.355, 0, 1, 1.7, 0.5),
-    [new THREE.TorusGeometry(0.2, 0.022, 6, 18, Math.PI).rotateZ(Math.PI), 0, 0.0, 0.372])]);
+// Верити: жёлтый смайл-шар (катается с физикой, см. updateBalls). Начало координат — центр шара, лицо смотрит в +z
+const BALL_R = 0.42;
+const plainTex = canvasTexture(2, 2, ctx => { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 2, 2); });
+const verityGeo = mergeParts([...P(0xffd21a, ball(BALL_R, 0, 0, 0, 0)),
+  ...P(0x161616, ball(0.05, -0.14, 0.18, 0.355, 0, 1, 1.7, 0.5), ball(0.05, 0.14, 0.18, 0.355, 0, 1, 1.7, 0.5),
+    [new THREE.TorusGeometry(0.2, 0.022, 6, 18, Math.PI).rotateZ(Math.PI), 0, 0.08, 0.372])]);
 const coneGeo = mergeParts([...P(0x2e2e30, box(0.56, 0.04, 0.56, 0, -0.48, 0)), ...P(0xff6a1a, [new THREE.ConeGeometry(0.22, 0.75, 12), 0, -0.1, 0], [new THREE.SphereGeometry(0.03, 6, 6), 0, 0.28, 0]),
   ...P(0xf5f5f5, [cyl(0.165, 0.07), 0, -0.26, 0], [cyl(0.115, 0.07), 0, -0.06, 0])]);
 
@@ -988,7 +1003,7 @@ const GLASSY = {
     box(0.9, 0.5, 0.06, 0, 0.2, 0.05), box(0.88, 0.48, 0.02, 0, 0.2, -0.045, 1), box(0.1, 0.22, 0.05, 0, -0.2, 0.05), box(0.5, 0.03, 0.26, 0, -0.485, 0.05))),
 };
 const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"], pizza: [pizzaGeo, "съел пиццу"], wings: [wingsGeo, "съел крылышки"], ball: [ballGeo, ""],
-  cone: [coneGeo, ""], verity: [verityGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
+  cone: [coneGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
@@ -1345,6 +1360,7 @@ function exitCar() {
 
 // Отлетающие машины: считает тот, кто врезался, остальные видят их через обычную рассылку машин
 const flung = new Map();
+const balls = new Map();
 function launchCar(m, vx, vz, speed) {
   const k = 0.3 + speed / 60;
   flung.set(m, { vx: vx * k, vz: vz * k, vy: 3 + speed * 0.25, spin: (Math.random() - 0.5) * 5, air: 0, send: 0 });
@@ -1370,6 +1386,68 @@ function updateFlying(dt) {
     const done = Math.hypot(f.vx, f.vz) < 0.3 && y <= ground + 0.01 && Math.abs(f.vy) < 0.1;
     if (done || f.send <= 0) { f.send = 0.125; online?.sendEdits([e]); }
     if (done) { m.rotation.z = 0; flung.delete(m); }
+  }
+}
+
+// Шарики «Верити»: физика считается у того, кто толкнул шарик последним, остальные видят его через рассылку
+let ballPx = 0, ballPz = 0;
+function rollBall(m, dx, dz) {
+  const len = Math.hypot(dx, dz);
+  if (len > 1e-5) m.rotateOnWorldAxis(new THREE.Vector3(dz, 0, -dx).normalize(), len / BALL_R);
+}
+function updateBalls(dt) {
+  const pvx = (px - ballPx) / Math.max(dt, 1e-3), pvz = (pz - ballPz) / Math.max(dt, 1e-3);
+  ballPx = px; ballPz = pz;
+  for (const m of balls.values()) {
+    const s = m.userData.sim, e = m.userData.edit;
+    if (!s.owned) {
+      const t = m.userData.target;
+      if (t) {
+        const nx = m.position.x + (t.x - m.position.x) * Math.min(1, dt * 12), nz = m.position.z + (t.z - m.position.z) * Math.min(1, dt * 12);
+        rollBall(m, nx - m.position.x, nz - m.position.z);
+        m.position.set(nx, m.position.y + (t.y - m.position.y) * Math.min(1, dt * 12), nz);
+      }
+    }
+    const p = m.position;
+    // Толчок от игрока (ходьба) и от машины
+    let pushX = 0, pushZ = 0, kickY = 0;
+    const dx = p.x - px, dz = p.z - pz, d = Math.hypot(dx, dz);
+    if (!dead && camMode !== "car" && d < BALL_R + RADIUS && p.y + BALL_R > feet && p.y - BALL_R < feet + HEIGHT) {
+      const nx = d > 1e-4 ? dx / d : 1, nz = d > 1e-4 ? dz / d : 0, rel = pvx * nx + pvz * nz;
+      if (rel > 0.3) { pushX = nx * (rel * 1.3 + 1.5); pushZ = nz * (rel * 1.3 + 1.5); kickY = rel > 3 ? 2.5 : 0; }
+      p.x += nx * (BALL_R + RADIUS - d); p.z += nz * (BALL_R + RADIUS - d);
+    }
+    if (drivingCar) {
+      const cx = p.x - drivingCar.position.x, cz = p.z - drivingCar.position.z, cd = Math.hypot(cx, cz), sp = Math.hypot(carV.x, carV.z);
+      if (cd < 1.5 + BALL_R && sp > 1 && Math.abs(p.y - drivingCar.position.y) < 1.5) { pushX = carV.x * 1.2 + (cx / cd) * 2; pushZ = carV.z * 1.2 + (cz / cd) * 2; kickY = 3; }
+    }
+    if (pushX || pushZ) {
+      if (!s.owned) { s.owned = true; s.vx = s.vy = s.vz = 0; }
+      s.vx = pushX; s.vz = pushZ; s.vy = Math.max(s.vy, kickY);
+      s.moving = true;
+    }
+    if (!s.owned || !s.moving) continue;
+    // Свои движения: гравитация, стены, пол, трение
+    const air = Math.exp(-0.2 * dt);
+    s.vx *= air; s.vz *= air; s.vy -= 20 * dt;
+    const ox = p.x, oz = p.z;
+    if (!hitsBlock(p.x + s.vx * dt, p.y - 0.3, p.z, 0.6)) p.x += s.vx * dt; else s.vx *= -0.6;
+    if (!hitsBlock(p.x, p.y - 0.3, p.z + s.vz * dt, 0.6)) p.z += s.vz * dt; else s.vz *= -0.6;
+    p.y += s.vy * dt;
+    if (s.vy > 0 && hitsBlock(p.x, p.y + 0.3, p.z, 0.2)) s.vy *= -0.4;
+    const ground = Math.max(0, groundHeight(p.x, p.y - BALL_R + 0.3, p.z));
+    let onGround = false;
+    if (p.y - BALL_R <= ground) {
+      p.y = ground + BALL_R; onGround = true;
+      s.vy = s.vy < -2 ? -s.vy * 0.65 : 0;
+      const g = Math.exp(-0.7 * dt); s.vx *= g; s.vz *= g;
+    }
+    rollBall(m, p.x - ox, p.z - oz);
+    const rest = onGround && s.vy === 0 && Math.hypot(s.vx, s.vz) < 0.08;
+    if (rest) { s.vx = s.vz = 0; s.moving = false; }
+    Object.assign(e, { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), o: myId });
+    s.send -= dt;
+    if (rest || s.send <= 0) { s.send = 0.125; online?.sendEdits([e]); }
   }
 }
 
@@ -1630,7 +1708,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Верити": "verity", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Телевизор": "tv", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -1673,6 +1751,10 @@ function use(action, screen) {
     if (cell) share(e);
   }
   // Машина встаёт на пол или на блок под прицелом, носом туда, куда смотришь
+  if (HOTBAR[slot] === "Верити" && hit) {
+    const p = hit.point.clone().addScaledVector(hit.normal, BALL_R + 0.03);
+    share({ op: "ball", id: `${myId}-${idCount++}`, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(2), o: myId });
+  }
   if (HOTBAR[slot] === "Машина" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color });
@@ -3117,6 +3199,7 @@ function cleanEdit(e) {
   if (e.op === "plank" && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends)) return { op: "plank", id: newId(), ends: e.ends, c };
   if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
+  if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c };
   return null;
 }
@@ -3701,6 +3784,7 @@ function updateWeapons(dt) {
   updateFx(dt);
   updateHelpers(dt);
   updateFlying(dt);
+  updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || (inGame && camMode === "first" && nearestCar())) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
