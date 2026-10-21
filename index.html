@@ -254,13 +254,23 @@ const COLORS = [
   { name: "Розовый",    rgb: [255, 110, 200] },
   { name: "Чёрный",     rgb: [ 30,  30,  30] },
   { name: "Коричневый", rgb: [140,  80,  30] },
+  { name: "Серый",      rgb: [140, 140, 140] },
+  { name: "Светло-серый", rgb: [200, 200, 200] },
+  { name: "Тёмно-серый", rgb: [ 70,  70,  70] },
+  { name: "Бежевый",    rgb: [235, 215, 170] },
+  { name: "Золотой",    rgb: [255, 190,   0] },
+  { name: "Бордовый",   rgb: [150,  20,  40] },
+  { name: "Тёмно-зелёный", rgb: [ 20, 110,  50] },
+  { name: "Салатовый",  rgb: [150, 220,  60] },
+  { name: "Тёмно-коричн.", rgb: [ 90,  50,  20] },
+  { name: "Небесный",   rgb: [140, 200, 255] },
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа", "Машина", "Решётка", "Дерево", "Забор", "Бочка", "Ящик", "Кровать", "Диван",
-  "Вилка", "Ложка", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
-  "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Колонна", "Окно", "Клумба", "Телевизор", "Шкаф", "Раковина",
-  null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
+  "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
+  "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
+  null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -468,7 +478,9 @@ const planks = new Map();  // id доски → её меш
 const cars = new Map();    // id машины → её меш
 // Свет дают только 3 ближайшие лампы: каждый источник замедляет отрисовку всего мира
 const lamps = new Set();
-const lampLights = Array.from({ length: 3 }, () => new THREE.PointLight(0xfff2cc, 2 * Math.PI, 14));
+const tvs = new Set();       // телевизоры: их экран обновляется
+const barriers = new Set();  // шлагбаумы: у них играет анимация
+const lampLights = Array.from({ length: 3 }, () => new THREE.PointLight(0xfff2cc, 24 * Math.PI, 24));  // свет ламп сильный, иначе его не видно на фоне дня
 function updateLamps() {
   const near = [...lamps].sort((a, b) => a.position.distanceToSquared(camera.position) - b.position.distanceToSquared(camera.position));
   lampLights.forEach((light, i) => {
@@ -495,7 +507,10 @@ let idCount = 0;
 // У блока может быть вид k: "glass" — стекло, "stick" — палка, "door" — дверь высотой 2
 // (r — куда повёрнута, open — открыта ли). replace — заменить стоящий предмет (дверь открыли)
 function edit(e, replace = false) {
-  if (replace && e.op === "block") removeSolid(blocks.get(key(e.x, e.y, e.z)));
+  // Шлагбаум при открытии/закрытии не прыгает: новая модель продолжает с того угла, где стояла старая
+  const old = replace && e.op === "block" ? blocks.get(key(e.x, e.y, e.z)) : null;
+  const step = old?.userData.step;
+  if (old) removeSolid(old);
   if (e.op === "text" && !texts.has(e.id)) {
     const mesh = textMesh(String(e.text).slice(0, 40), e.c);
     mesh.position.fromArray(e.p);
@@ -507,11 +522,12 @@ function edit(e, replace = false) {
   if (e.op === "untext") removeSolid(texts.get(e.id));
   if (e.op === "block" && !blocks.has(key(e.x, e.y, e.z))) {
     const mesh = blockMesh(e);
+    if (step !== undefined && e.k === "barrier") { mesh.userData.step = step; mesh.geometry = barrierGeos[Math.round(step)]; }
     addSolid(mesh, e);
     if (e.k === "glass") mesh.castShadow = false;
     blocks.set(key(e.x, e.y, e.z), mesh);
     if (e.k === "door") blocks.set(key(e.x, e.y + 1, e.z), mesh);  // дверь занимает две клетки
-    if (e.k === "barrier") for (const c of barrierCells(e)) blocks.set(key(...c), mesh);  // шлагбаум — стойку и три клетки стрелы
+    for (const c of extraCells(e)) blocks.set(key(...c), mesh);  // шлагбаум, кровать и диван длиннее одной клетки
   }
   if (e.op === "plank" && !planks.has(e.id)) {
     const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
@@ -554,11 +570,13 @@ function removeSolid(mesh) {
   const e = mesh.userData.edit;
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
   if (e.k === "door") blocks.delete(key(e.x, e.y + 1, e.z));
-  if (e.k === "barrier") for (const c of barrierCells(e)) blocks.delete(key(...c));
+  for (const c of extraCells(e)) blocks.delete(key(...c));
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
   lamps.delete(mesh);
+  tvs.delete(mesh);
+  barriers.delete(mesh);
 }
 
 // Рампа — клин, поднимающийся от низа клетки к верху. Сторона подъёма: r = 0..3, как у двери
@@ -582,21 +600,27 @@ const rampGeo = (() => {
   return g;
 })();
 
-// Склеивает части [геометрия, x, y, z] в один меш: по нему целятся лучом
-const box = (w, h, d, x, y, z) => [new THREE.BoxGeometry(w, h, d), x, y, z];
+// Склеивает части [геометрия, x, y, z, материал] в один меш: по нему целятся лучом.
+// Материал — номер (0 — основной, 1 — стекло или экран): части с одним номером идут одной группой
+const box = (w, h, d, x, y, z, mat) => [new THREE.BoxGeometry(w, h, d), x, y, z, mat];
 function mergeParts(parts) {
-  const pos = [], nor = [], uv = [];
-  for (const [geo, x, y, z] of parts) {
+  const pos = [], nor = [], uv = [], runs = [];
+  let count = 0;
+  for (const [geo, x, y, z, mat = 0] of parts) {
     const g = geo.index ? geo.toNonIndexed() : geo;
     g.translate(x, y, z);
     pos.push(...g.attributes.position.array);
     nor.push(...g.attributes.normal.array);
     uv.push(...g.attributes.uv.array);
+    const n = g.attributes.position.count;
+    if (runs.length && runs.at(-1)[2] === mat) runs.at(-1)[1] += n; else runs.push([count, n, mat]);
+    count += n;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  if (runs.some(r => r[2])) for (const [start, n, mat] of runs) g.addGroup(start, n, mat);
   return g;
 }
 const corners = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -627,16 +651,21 @@ const foodTex = canvasTexture(16, 16, ctx => {
   ctx.fillStyle = "#ddd"; ctx.fillRect(0, 0, 16, 16);
   ctx.fillStyle = "#999"; for (const [x, y] of [[3, 4], [10, 2], [7, 9], [13, 12], [2, 13]]) ctx.fillRect(x, y, 2, 2);
 });
-// Шлагбаум: стойка на краю клетки и стрела поперёк; открытый поднимает стрелу вверх
-const BARRIER_ARM = 3;  // на сколько клеток стрела тянется от стойки
-const barrierGeo = open => mergeParts([box(0.3, 1.2, 0.3, -0.35, 0.1, 0),
-  [new THREE.BoxGeometry(BARRIER_ARM + 0.4, 0.14, 0.14).translate((BARRIER_ARM + 0.4) / 2, 0, 0).rotateZ(open ? 1.4 : 0), -0.4, 0.5, 0]]);
-// Клетки под стрелой: направо от стойки, как её повернули
-const barrierCells = e => {
+// Шлагбаум: стойка с корпусом и стрела на 3 клетки. Стрела поднимается плавно — для каждого угла своя геометрия
+const BARRIER_ARM = 3, BARRIER_STEPS = 8;
+const barrierGeo = angle => mergeParts([box(0.3, 1.2, 0.3, -0.35, 0.1, 0), box(0.4, 0.1, 0.4, -0.35, -0.45, 0), box(0.22, 0.2, 0.22, -0.35, 0.72, 0),
+  [mergeParts([box(BARRIER_ARM + 0.4, 0.12, 0.12, (BARRIER_ARM + 0.4) / 2, 0, 0),
+    ...[0.6, 1.2, 1.8, 2.4, 3].map(x => box(0.1, 0.17, 0.17, x, 0, 0))]).rotateZ(angle), -0.4, 0.5, 0]]);
+const barrierGeos = Array.from({ length: BARRIER_STEPS + 1 }, (_, i) => barrierGeo(i / BARRIER_STEPS * 1.4));
+// Длинные предметы занимают ещё клетки: [сколько, вдоль какой оси предмета]
+const EXTRA = { barrier: [BARRIER_ARM, "x"], bed: [1, "z"], sofa: [1, "x"] };
+const extraCells = e => {
+  const ex = EXTRA[e.k];
+  if (!ex) return [];
   const a = (e.r || 0) * Math.PI / 2;
-  return Array.from({ length: BARRIER_ARM }, (_, i) => [e.x + Math.round(Math.cos(a)) * (i + 1), e.y, e.z - Math.round(Math.sin(a)) * (i + 1)]);
+  const [dx, dz] = ex[1] === "x" ? [Math.cos(a), -Math.sin(a)] : [Math.sin(a), Math.cos(a)];
+  return Array.from({ length: ex[0] }, (_, i) => [e.x + Math.round(dx) * (i + 1), e.y, e.z + Math.round(dz) * (i + 1)]);
 };
-const barrierGeos = { false: barrierGeo(false), true: barrierGeo(true) };
 const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, -0.075, 0],
   [new THREE.CylinderGeometry(0.1, 0.22, 0.3, 14), 0, 0.35, 0]]);
 // Машина: кузов, кабина и колёса; смотрит в сторону -z, начало координат — на земле под центром
@@ -645,56 +674,135 @@ const carGeo = mergeParts([box(0.85, 0.3, 1.7, 0, 0.3, 0), box(0.7, 0.28, 0.85, 
 // Решётка: рамка и прутья посреди клетки (клетка при этом занята целиком)
 const grateGeo = mergeParts([box(1, 0.1, 0.12, 0, 0.45, 0), box(1, 0.1, 0.12, 0, -0.45, 0),
   ...[-0.375, -0.125, 0.125, 0.375].map(x => box(0.08, 1, 0.1, x, 0, 0))]);
-const MORE = {  // мебель и всякое: [геометрия, текстура]
-  tree: mergeParts([[cyl(0.15, 1.2), 0, 0.1, 0], [new THREE.SphereGeometry(0.9, 10, 8), 0, 1.3, 0], [new THREE.SphereGeometry(0.65, 10, 8), 0, 2.1, 0]]),
-  fence: mergeParts([box(0.12, 0.9, 0.12, -0.44, -0.05, 0), box(0.12, 0.9, 0.12, 0.44, -0.05, 0), box(1, 0.1, 0.06, 0, 0.15, 0), box(1, 0.1, 0.06, 0, -0.2, 0)]),
+
+// Мебель из дерева. Кровать и диван длиннее клетки: [-0.5…1.5] вдоль своей оси (см. EXTRA)
+const MORE = {
   barrel: mergeParts([[cyl(0.4, 1), 0, 0, 0], [cyl(0.44, 0.08), 0, 0.3, 0], [cyl(0.44, 0.08), 0, -0.3, 0]]),
-  crate: mergeParts([box(0.96, 0.96, 0.96, 0, 0, 0)]),
-  bed: mergeParts([box(0.95, 0.5, 1, 0, -0.25, 0), box(0.95, 0.5, 0.1, 0, 0.25, 0.45), box(0.6, 0.1, 0.25, 0, 0.05, 0.3)]),
-  bench: mergeParts([box(1, 0.08, 0.45, 0, -0.06, 0), box(1, 0.35, 0.06, 0, 0.2, 0.2), box(0.08, 0.4, 0.4, -0.4, -0.3, 0), box(0.08, 0.4, 0.4, 0.4, -0.3, 0)]),
-  sofa: mergeParts([box(0.95, 0.45, 0.9, 0, -0.275, -0.05), box(0.95, 0.5, 0.2, 0, 0.2, 0.4), box(0.15, 0.3, 0.9, -0.4, 0, -0.05), box(0.15, 0.3, 0.9, 0.4, 0, -0.05)]),
+  bed: mergeParts([box(0.96, 0.2, 1.96, 0, -0.4, 0.5), box(0.94, 0.3, 1.9, 0, -0.15, 0.5),                       // рама и матрас
+    box(0.38, 0.1, 0.28, -0.22, 0.05, -0.2), box(0.38, 0.1, 0.28, 0.22, 0.05, -0.2),                            // подушки
+    box(0.96, 0.06, 1.1, 0, 0.02, 0.85),                                                                           // одеяло
+    box(1, 0.7, 0.08, 0, 0.2, -0.46), box(1, 0.35, 0.07, 0, -0.05, 1.46),                                          // изголовье и изножье
+    ...[-1, 1].map(x => box(0.08, 0.8, 0.08, x * 0.46, 0.25, -0.46))]),
+  sofa: mergeParts([box(1.96, 0.25, 0.9, 0.5, -0.375, 0), box(1.96, 0.7, 0.16, 0.5, 0.1, 0.42),                    // основание и спинка
+    ...[0, 1].flatMap(i => [box(0.9, 0.2, 0.7, i, -0.15, -0.05), box(0.9, 0.4, 0.14, i, 0, 0.27)]),               // подушки сиденья и спинки
+    box(0.16, 0.45, 0.9, -0.42, -0.02, 0), box(0.16, 0.45, 0.9, 1.42, -0.02, 0)]),                                 // подлокотники
+  bench: mergeParts([...[0, 1, 2, 3].map(i => box(1, 0.03, 0.09, 0, -0.07, -0.17 + i * 0.115)),                      // доски сиденья
+    ...[0, 1, 2].map(i => box(1, 0.07, 0.025, 0, 0.1 + i * 0.12, 0.2)),                                             // доски спинки
+    ...[-1, 1].flatMap(x => [box(0.05, 0.43, 0.05, x * 0.42, -0.285, -0.17), box(0.05, 0.43, 0.05, x * 0.42, -0.285, 0.17),
+      box(0.05, 0.5, 0.05, x * 0.42, 0.1, 0.2), box(0.06, 0.03, 0.4, x * 0.46, 0.1, 0), box(0.04, 0.15, 0.04, x * 0.46, 0, -0.17)])]),
 };
-const forkGeo = mergeParts([box(0.05, 0.03, 0.55, 0, -0.47, 0.1), box(0.2, 0.03, 0.1, 0, -0.47, -0.22),
-  ...[-0.075, -0.025, 0.025, 0.075].map(x => box(0.025, 0.03, 0.18, x, -0.47, -0.35))]);
-const spoonGeo = mergeParts([box(0.05, 0.03, 0.5, 0, -0.47, 0.15), [cyl(0.11, 0.03).scale(1, 1, 1.4), 0, -0.47, -0.2]]);
-const trayGeo = mergeParts([box(0.9, 0.04, 0.65, 0, -0.48, 0), box(0.9, 0.08, 0.03, 0, -0.45, 0.31), box(0.9, 0.08, 0.03, 0, -0.45, -0.31),
-  box(0.03, 0.08, 0.65, 0.44, -0.45, 0), box(0.03, 0.08, 0.65, -0.44, -0.45, 0)]);
+
+// Еда, посуда и мелочь: стоят в клетке, проходимые
+const trayGeo = mergeParts([box(0.94, 0.03, 0.66, 0, -0.485, 0), box(0.8, 0.012, 0.52, 0, -0.465, 0),
+  box(0.94, 0.06, 0.035, 0, -0.455, -0.31), box(0.94, 0.06, 0.035, 0, -0.455, 0.31),
+  box(0.035, 0.06, 0.66, -0.455, -0.455, 0), box(0.035, 0.06, 0.66, 0.455, -0.455, 0),
+  ...corners.map(([x, z]) => box(0.06, 0.09, 0.06, x * 0.44, -0.44, z * 0.3)),
+  ...[-0.15, 0, 0.15].map(z => box(0.78, 0.01, 0.025, 0, -0.455, z)),
+  box(0.2, 0.04, 0.06, 0, -0.465, -0.36), box(0.2, 0.04, 0.06, 0, -0.465, 0.36)]);
 const cupGeo = mergeParts([[new THREE.CylinderGeometry(0.17, 0.12, 0.45, 12), 0, -0.275, 0], [cyl(0.18, 0.04), 0, -0.03, 0], box(0.03, 0.25, 0.03, 0.04, 0.1, 0)]);
 const friesGeo = mergeParts([box(0.36, 0.24, 0.16, 0, -0.38, 0),
   ...[-0.12, -0.08, -0.04, 0, 0.04, 0.08, 0.12].map((x, i) => box(0.04, 0.3, 0.04, x, -0.16 + (i % 2) * 0.04, (i % 3 - 1) * 0.03))]);
-// Предметы для кафе: прилавок, касса, терминал, витрина, плита, холодильник, урна (клетку занимают целиком)
-const counterParts = () => [box(1, 0.86, 0.9, 0, -0.07, 0), box(1, 0.07, 1, 0, 0.395, 0)];
-const coneGeo = mergeParts([[new THREE.ConeGeometry(0.22, 0.6, 10), 0, -0.2, 0], box(0.5, 0.05, 0.5, 0, -0.475, 0)]);
-const STREET = {  // улица и дом: тоже занимают клетку целиком
+const coneGeo = mergeParts([box(0.56, 0.04, 0.56, 0, -0.48, 0), [new THREE.ConeGeometry(0.22, 0.75, 12), 0, -0.1, 0],
+  [cyl(0.165, 0.07), 0, -0.26, 0], [cyl(0.115, 0.07), 0, -0.06, 0], [new THREE.SphereGeometry(0.03, 6, 6), 0, 0.28, 0]]);
+
+// Экраны: телевизор показывает бегущую рекламу, терминал — экран оплаты
+const tvCanvas = document.createElement("canvas");
+tvCanvas.width = 128; tvCanvas.height = 72;
+const tvTex = new THREE.CanvasTexture(tvCanvas);
+const tvMat = new THREE.MeshBasicMaterial({ map: tvTex });
+const SLIDES = [["БУРГЕР", "199 ₽"], ["ПИЦЦА", "349 ₽"], ["КАРТОШКА", "99 ₽"], ["НАПИТКИ", "79 ₽"]];
+function drawTv(t) {
+  const c = tvCanvas.getContext("2d");
+  c.fillStyle = "#101018"; c.fillRect(0, 0, 128, 72);
+  c.fillStyle = "#ffc300"; c.fillRect(0, 0, 128, 18);
+  c.fillStyle = "#101018"; c.font = "bold 14px sans-serif"; c.textBaseline = "middle";
+  c.fillText("ВКУСНО — И ТОЧКА   ВКУСНО — И ТОЧКА", 128 - (t * 40) % 260, 9);
+  const [name, price] = SLIDES[Math.floor(t / 2) % SLIDES.length];
+  c.fillStyle = "#fff"; c.font = "bold 20px sans-serif"; c.textAlign = "center";
+  c.fillText(name, 64, 36); c.fillStyle = "#ff4040"; c.fillText(price, 64, 58);
+  c.textAlign = "left";
+  for (let i = 0; i < 8; i++) { c.fillStyle = "#ffc300"; c.fillRect(i * 16 + 2, 70 - 2 - ((Math.sin(t * 4 + i) + 1) * 4), 12, 2 + (Math.sin(t * 4 + i) + 1) * 4); }
+}
+drawTv(0);
+const kioskTex = canvasTexture(64, 96, c => {
+  c.fillStyle = "#21a038"; c.fillRect(0, 0, 64, 96);
+  c.fillStyle = "#fff"; c.font = "bold 11px sans-serif"; c.textAlign = "center";
+  c.fillText("ОПЛАТА", 32, 18);
+  c.fillRect(10, 30, 44, 28);
+  c.fillStyle = "#21a038"; c.fillRect(10, 36, 44, 6);
+  c.fillStyle = "#fff"; c.fillRect(8, 68, 48, 14);
+  c.fillStyle = "#21a038"; c.fillText("ПРИЛОЖИТЕ КАРТУ", 32, 78);
+});
+const kioskMat = new THREE.MeshBasicMaterial({ map: kioskTex });
+
+// Улица (стоят клеткой целиком)
+const STREET = {
   streetlamp: mergeParts([[cyl(0.2, 0.1), 0, -0.45, 0], [cyl(0.06, 3.2), 0, 1.1, 0], box(0.5, 0.12, 0.3, 0, 2.75, 0), box(0.3, 0.06, 0.2, 0, 2.66, 0)]),
-  traffic: mergeParts([[cyl(0.07, 2.6), 0, 0.8, 0], box(0.4, 1.1, 0.3, 0, 1.9, 0),
-    ...[2.2, 1.9, 1.6].map(y => [cyl(0.1, 0.05).rotateX(Math.PI / 2), 0, y, -0.17])]),
-  sign: mergeParts([[cyl(0.04, 1.8), 0, 0.4, 0], [new THREE.CylinderGeometry(0.38, 0.38, 0.05, 8).rotateX(Math.PI / 2), 0, 1.5, 0]]),
-  column: mergeParts([[cyl(0.4, 1), 0, 0, 0], box(0.9, 0.15, 0.9, 0, -0.425, 0), box(0.9, 0.15, 0.9, 0, 0.425, 0)]),
-  window: mergeParts([box(1, 0.12, 0.2, 0, 0.44, 0), box(1, 0.12, 0.2, 0, -0.44, 0), box(0.12, 1, 0.2, 0.44, 0, 0), box(0.12, 1, 0.2, -0.44, 0, 0),
-    box(0.04, 0.76, 0.08, 0, 0, 0), box(0.76, 0.04, 0.08, 0, 0, 0)]),
-  planter: mergeParts([box(0.9, 0.4, 0.9, 0, -0.3, 0), [new THREE.SphereGeometry(0.38, 10, 8), 0, 0.0, 0],
-    ...[[-0.25, 0.2], [0.25, -0.2], [0.2, 0.25]].map(([x, z]) => box(0.1, 0.1, 0.1, x, 0.38, z))]),
-  tv: mergeParts([box(0.9, 0.55, 0.08, 0, 0.1, 0), box(0.1, 0.25, 0.1, 0, -0.25, 0), box(0.5, 0.04, 0.3, 0, -0.48, 0)]),
-  wardrobe: mergeParts([box(0.95, 1.9, 0.6, 0, 0.45, 0), box(0.02, 1.7, 0.02, 0, 0.45, -0.31), box(0.04, 0.2, 0.04, -0.08, 0.45, -0.33), box(0.04, 0.2, 0.04, 0.08, 0.45, -0.33)]),
-  sink: mergeParts([...counterParts(), box(0.5, 0.04, 0.4, 0, 0.45, 0), [cyl(0.03, 0.3), 0, 0.58, 0.3], box(0.03, 0.03, 0.2, 0, 0.72, 0.2)]),
+  traffic: mergeParts([[cyl(0.06, 2.5), 0, 0.75, 0], box(0.2, 0.1, 0.2, 0, -0.45, 0), box(0.07, 0.12, 0.05, 0, 0.5, -0.06),  // стойка, основание, кнопка
+    box(0.36, 1.1, 0.26, 0, 1.75, 0), box(0.5, 1.2, 0.03, 0, 1.75, 0.15),                                                        // корпус и задняя пластина
+    ...[2.1, 1.75, 1.4].flatMap(y => [[cyl(0.1, 0.05).rotateX(Math.PI / 2), 0, y, -0.14],                                         // сигнал и козырёк
+      box(0.26, 0.025, 0.16, 0, y + 0.12, -0.2), box(0.025, 0.2, 0.16, -0.13, y + 0.03, -0.2), box(0.025, 0.2, 0.16, 0.13, y + 0.03, -0.2)])]),
+  sign: mergeParts([[cyl(0.035, 1.9), 0, 0.45, 0], box(0.08, 0.05, 0.04, 0, 1.4, -0.03), box(0.08, 0.05, 0.04, 0, 1.7, -0.03),
+    [new THREE.CylinderGeometry(0.36, 0.36, 0.04, 8).rotateX(Math.PI / 2).rotateZ(Math.PI / 8), 0, 1.55, -0.06],
+    [new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8).rotateX(Math.PI / 2).rotateZ(Math.PI / 8), 0, 1.55, -0.08], box(0.4, 0.09, 0.04, 0, 1.55, -0.1)]),
 };
+
+// Кафе: цоколь, корпус, столешница и накладные панели с ручками
+const counterParts = () => [box(0.94, 0.1, 0.84, 0, -0.45, 0.02), box(1, 0.74, 0.9, 0, -0.03, 0), box(1.04, 0.07, 1.04, 0, 0.375, -0.02),
+  box(0.4, 0.5, 0.03, -0.22, -0.05, -0.46), box(0.4, 0.5, 0.03, 0.22, -0.05, -0.46), box(0.03, 0.18, 0.04, -0.04, 0.1, -0.49), box(0.03, 0.18, 0.04, 0.04, 0.1, -0.49)];
 const KITCHEN = {
   counter: mergeParts(counterParts()),
-  register: mergeParts([...counterParts(), box(0.55, 0.2, 0.4, 0, 0.53, 0.05), box(0.4, 0.3, 0.05, 0, 0.75, -0.08)]),
-  terminal: mergeParts([box(0.7, 0.06, 0.5, 0, -0.47, 0), box(0.14, 1, 0.14, 0, 0.06, 0), box(0.75, 0.55, 0.1, 0, 0.85, 0)]),
-  showcase: mergeParts([box(1, 0.5, 0.9, 0, -0.25, 0), box(1, 0.06, 0.9, 0, 0.63, 0), box(0.94, 0.04, 0.84, 0, 0.1, 0),
-    ...corners.map(([x, z]) => box(0.06, 0.6, 0.06, x * 0.47, 0.3, z * 0.42))]),
-  stove: mergeParts([box(1, 0.86, 0.9, 0, -0.07, 0), ...corners.map(([x, z]) => [cyl(0.17, 0.03), x * 0.25, 0.375, z * 0.22])]),
-  fridge: mergeParts([box(0.9, 1.8, 0.8, 0, 0.4, 0), box(0.05, 0.5, 0.05, 0.35, 0.5, -0.43), box(0.9, 0.02, 0.01, 0, 0.7, -0.41)]),
+  // Касса: ящик для денег, наклонный монитор на стойке, клавиатура, дисплей покупателя, чековый принтер и считыватель карт
+  register: mergeParts([...counterParts(), box(0.5, 0.1, 0.42, 0, 0.465, 0.05), box(0.4, 0.012, 0.02, 0, 0.52, -0.15),
+    [box(0.38, 0.03, 0.2, 0, 0, 0)[0].rotateX(-0.3), 0, 0.56, -0.15], box(0.05, 0.2, 0.05, 0, 0.62, 0.15), [new THREE.BoxGeometry(0.44, 0.3, 0.03).rotateX(-0.2), 0, 0.82, 0.15],
+    box(0.02, 0.4, 0.02, 0.36, 0.65, 0.15), box(0.16, 0.08, 0.03, 0.36, 0.88, 0.15), box(0.16, 0.14, 0.2, -0.34, 0.57, 0.12), box(0.1, 0.01, 0.1, -0.34, 0.65, 0.16),
+    box(0.1, 0.04, 0.14, 0.32, 0.54, -0.22)]),
+  // Плита: конфорки с решётками, ручки, духовка с окошком и ручкой, щиток
+  stove: mergeParts([box(0.98, 0.8, 0.86, 0, -0.1, 0), box(1, 0.04, 0.92, 0, 0.32, 0),
+    ...corners.flatMap(([x, z]) => [[new THREE.TorusGeometry(0.13, 0.02, 6, 16).rotateX(Math.PI / 2), x * 0.25, 0.355, z * 0.22], [cyl(0.05, 0.02), x * 0.25, 0.345, z * 0.22],
+      box(0.34, 0.012, 0.02, x * 0.25, 0.37, z * 0.22), box(0.02, 0.012, 0.34, x * 0.25, 0.37, z * 0.22)]),
+    box(1, 0.28, 0.1, 0, 0.46, 0.4), ...[-0.36, -0.18, 0, 0.18, 0.36].map(x => [cyl(0.035, 0.05).rotateX(Math.PI / 2), x, 0.18, -0.46]),
+    box(0.86, 0.4, 0.03, 0, -0.17, -0.44), box(0.5, 0.18, 0.02, 0, -0.12, -0.46), box(0.72, 0.03, 0.05, 0, 0.05, -0.5),
+    box(0.04, 0.05, 0.04, -0.34, 0.05, -0.47), box(0.04, 0.05, 0.04, 0.34, 0.05, -0.47), box(0.86, 0.12, 0.03, 0, -0.43, -0.44)]),
+  // Холодильник: морозилка сверху и камера снизу, длинные ручки, ножки
+  fridge: mergeParts([box(0.96, 1.9, 0.8, 0, 0.45, 0), box(1, 0.04, 0.84, 0, 1.42, 0), box(0.88, 0.62, 0.03, 0, 1.03, -0.415), box(0.88, 1.1, 0.03, 0, 0.18, -0.415),
+    box(0.96, 0.025, 0.03, 0, 0.69, -0.41), box(0.035, 0.4, 0.05, -0.36, 1.0, -0.46), box(0.035, 0.55, 0.05, -0.36, 0.35, -0.46),
+    ...corners.map(([x, z]) => box(0.08, 0.04, 0.08, x * 0.4, -0.48, z * 0.32))]),
   bin: mergeParts([[cyl(0.3, 0.75), 0, -0.125, 0], [cyl(0.33, 0.06), 0, 0.28, 0]]),
+  // Раковина: шкаф с дверцами, столешница с вырезом, чаша, смеситель с изливом, дозатор, бортик
+  sink: mergeParts([box(0.94, 0.1, 0.84, 0, -0.45, 0.02), box(1, 0.74, 0.9, 0, -0.03, 0),
+    box(0.19, 0.06, 1.04, -0.415, 0.375, 0), box(0.19, 0.06, 1.04, 0.415, 0.375, 0), box(0.64, 0.06, 0.3, 0, 0.375, -0.37), box(0.64, 0.06, 0.3, 0, 0.375, 0.37),
+    box(0.64, 0.24, 0.02, 0, 0.27, -0.21), box(0.64, 0.24, 0.02, 0, 0.27, 0.21), box(0.02, 0.24, 0.4, -0.31, 0.27, 0), box(0.02, 0.24, 0.4, 0.31, 0.27, 0),
+    box(0.62, 0.02, 0.4, 0, 0.15, 0), [cyl(0.035, 0.02), 0, 0.17, 0],
+    [cyl(0.045, 0.05), 0, 0.43, 0.34], [cyl(0.025, 0.3), 0, 0.6, 0.34], box(0.03, 0.03, 0.26, 0, 0.74, 0.22), [cyl(0.02, 0.07), 0, 0.7, 0.1], box(0.1, 0.025, 0.025, 0.07, 0.5, 0.34),
+    [cyl(0.025, 0.12), 0.4, 0.46, 0.3], box(1, 0.28, 0.04, 0, 0.52, 0.5),
+    box(0.4, 0.5, 0.03, -0.22, -0.05, -0.46), box(0.4, 0.5, 0.03, 0.22, -0.05, -0.46), box(0.03, 0.18, 0.04, -0.04, 0.1, -0.49), box(0.03, 0.18, 0.04, 0.04, 0.1, -0.49)]),
+};
+
+// Предметы со стеклом или экраном: вторая группа материала (1) — стекло или экран
+const GLASSY = {
+  window: mergeParts([box(1, 0.1, 0.16, 0, 0.45, 0), box(1, 0.1, 0.16, 0, -0.45, 0), box(0.1, 1, 0.16, 0.45, 0, 0), box(0.1, 1, 0.16, -0.45, 0, 0),
+    box(0.03, 0.8, 0.1, 0, 0, 0), box(0.8, 0.03, 0.1, 0, 0, 0), box(1.1, 0.05, 0.28, 0, -0.475, -0.12), box(0.8, 0.8, 0.02, 0, 0, 0, 1)]),
+  showcase: mergeParts([box(1, 0.45, 0.9, 0, -0.275, 0), box(1.02, 0.04, 0.94, 0, -0.03, 0), box(0.92, 0.02, 0.7, 0, 0.12, 0.02), box(0.92, 0.02, 0.7, 0, 0.3, 0.02),
+    ...corners.map(([x, z]) => box(0.04, 0.6, 0.04, x * 0.47, 0.25, z * 0.42)), box(1, 0.05, 0.9, 0, 0.58, 0), box(0.9, 0.02, 0.1, 0, 0.545, -0.3),
+    ...[-0.3, -0.1, 0.1, 0.3].map(x => [cyl(0.09, 0.08), x, 0.17, 0]), ...[-0.25, 0, 0.25].map(x => [cyl(0.08, 0.07), x, 0.35, 0]),
+    [new THREE.BoxGeometry(0.94, 0.5, 0.015).rotateX(0.18), 0, 0.28, -0.4, 1], box(0.015, 0.5, 0.8, -0.47, 0.28, 0, 1), box(0.015, 0.5, 0.8, 0.47, 0.28, 0, 1),
+    box(0.94, 0.5, 0.015, 0, 0.28, 0.42, 1)]),
+  // Терминал самообслуживания, как у Сбера: большой сенсорный экран, ниже платёжный модуль с цифровой клавиатурой и приёмник чека
+  terminal: mergeParts([box(0.86, 0.06, 0.62, 0, -0.47, 0.05), box(0.7, 1.6, 0.3, 0, 0.33, 0.15), box(0.62, 0.82, 0.04, 0, 0.62, -0.02), box(0.54, 0.72, 0.02, 0, 0.62, -0.05, 1),
+    box(0.7, 0.12, 0.34, 0, 1.15, 0.15),
+    [mergeParts([box(0.38, 0.1, 0.22, 0, 0, 0), ...[0, 1, 2, 3].flatMap(r => [0, 1, 2].map(c => box(0.07, 0.02, 0.045, (c - 1) * 0.1, 0.06, -0.07 + r * 0.05))),
+      box(0.12, 0.015, 0.05, 0.1, 0.06, 0.1)]).rotateX(-0.5), 0, 0.12, -0.12],
+    box(0.24, 0.03, 0.04, 0, -0.12, -0.02), box(0.28, 0.02, 0.1, 0, -0.16, -0.08)]),
+  tv: mergeParts([box(0.96, 0.04, 0.08, 0, 0.46, -0.02), box(0.96, 0.04, 0.08, 0, -0.06, -0.02), box(0.04, 0.56, 0.08, -0.46, 0.2, -0.02), box(0.04, 0.56, 0.08, 0.46, 0.2, -0.02),
+    box(0.9, 0.5, 0.06, 0, 0.2, 0.05), box(0.88, 0.48, 0.02, 0, 0.2, -0.045, 1), box(0.1, 0.22, 0.05, 0, -0.2, 0.05), box(0.5, 0.03, 0.26, 0, -0.485, 0.05)]),
 };
 const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"], pizza: [pizzaGeo, "съел пиццу"], wings: [wingsGeo, "съел крылышки"], ball: [ballGeo, ""],
-  fork: [forkGeo, ""], cone: [coneGeo, ""], spoon: [spoonGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
+  cone: [coneGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
-const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.48 };
+const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
@@ -707,6 +815,14 @@ function lowTop(cx, cy, cz, x, z) {
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.k in GLASSY) {
+    const screen = e.k === "tv" ? tvMat : e.k === "terminal" ? kioskMat : glassMaterial(e.c);
+    const m = new THREE.Mesh(GLASSY[e.k], [material(foodTex, e.c), screen]);
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
+    if (e.k === "tv") tvs.add(m);
+    return m;
+  }
   if (e.k in KITCHEN || e.k in STREET) {
     const m = new THREE.Mesh(KITCHEN[e.k] || STREET[e.k], material(foodTex, e.c));
     if (e.k === "streetlamp") { lamps.add(m); m.userData.lightY = 2.7; }
@@ -721,12 +837,13 @@ function blockMesh(e) {
     return m;
   }
   if (e.k === "stairs" || e.k === "barrier" || e.k === "grate" || e.k in DECOR) {
-    const geo = e.k === "grate" ? grateGeo : e.k === "stairs" ? stairsGeo : e.k === "barrier" ? barrierGeos[!!e.open] : DECOR[e.k][0];
+    const geo = e.k === "grate" ? grateGeo : e.k === "stairs" ? stairsGeo : e.k === "barrier" ? barrierGeos[e.open ? BARRIER_STEPS : 0] : DECOR[e.k][0];
     const tex = e.k === "ball" ? ballTex : e.k in DECOR ? foodTex : brickTex;
     const m = new THREE.Mesh(geo, material(tex, e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     m.rotation.y = (e.r || 0) * Math.PI / 2;
     if (e.k === "lamp") lamps.add(m);
+    if (e.k === "barrier") { m.userData.step = e.open ? BARRIER_STEPS : 0; barriers.add(m); }
     return m;
   }
   if (e.k === "table" || e.k === "chair") {
@@ -1215,10 +1332,11 @@ function updateGhosts() {
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
-const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table",
-  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Дерево": "tree", "Забор": "fence", "Бочка": "barrel", "Ящик": "crate", "Кровать": "bed", "Диван": "sofa", "Вилка": "fork", "Ложка": "spoon", "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter",
-  "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove", "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Колонна": "column",
-  "Окно": "window", "Клумба": "planter", "Телевизор": "tv", "Шкаф": "wardrobe", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
+const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
+  "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
+  "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
+  "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
+  "Телевизор": "tv", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car") return;
@@ -1250,12 +1368,10 @@ function use(action, screen) {
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "chair", "stairs", "barrier", "grate", "fence", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
-    if (e.k === "barrier") {
-      e.open = false;
-      // Стрела не должна упираться в чужие блоки
-      if (barrierCells(e).some(c => blocks.has(key(...c)))) return;
-    }
+    if (["ramp", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (e.k === "barrier") e.open = false;
+    // Длинные предметы (шлагбаум, кровать, диван) не ставим, если их продолжение упирается в чужие блоки
+    if (cell && extraCells(e).some(c => blocks.has(key(...c)))) return;
     if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
     if (cell) share(e);
   }
@@ -1517,9 +1633,10 @@ for (const button of document.querySelectorAll("#touch .button")) {
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
 const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
-  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Дерево": " ▲▲ ", "Забор": "┼─┼─", "Бочка": "(▒▒)", "Ящик": "[##]", "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Вилка": "╥╥╥ ", "Ложка": " ◖─ ", "Поднос": "▂▂▂▂", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤",
-  "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐", "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Колонна": "▐██▌", "Окно": "╬╬╬╬",
-  "Клумба": "▄♣▄ ", "Телевизор": "▐▓▓▌", "Шкаф": "┃┃┃┃", "Раковина": "╤▄╤ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
+  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
+  "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
+  "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1679,7 +1796,7 @@ const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.
 const fontTex = new THREE.CanvasTexture(document.createElement("canvas"));
 fontTex.flipY = false;
 fontTex.generateMipmaps = false;
-fontTex.minFilter = THREE.LinearFilter;
+fontTex.minFilter = fontTex.magFilter = THREE.NearestFilter;  // символ 1 в 1 с пикселями экрана — резко, без размытия
 
 const asciiMat = new THREE.ShaderMaterial({
   uniforms: {
@@ -1739,7 +1856,7 @@ const asciiMat = new THREE.ShaderMaterial({
         g = floor(b * (rampLen - 1.0) + 0.5);
       }
       float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, 1.0 - inCell.y)).r;
-      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * 0.7, 1.0);  // 0.7 — общая яркость, чтобы не слепило
+      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * 0.6, 1.0);  // 0.6 — общая яркость, чтобы не слепило
     }
   `,
 });
@@ -1753,16 +1870,19 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   const [CELL_W, CELL_H] = QUALITY[quality];
-  const cw = CELL_W / dpr, ch = CELL_H / dpr;  // размер символа в css-пикселях
-  const cols = Math.floor(innerWidth / cw);
-  const rows = Math.floor(innerHeight / ch);
-  renderer.setPixelRatio(dpr);
-  renderer.setSize(cols * cw, rows * ch);
-  // Сцену рисуем подробнее сетки (по 2×2 точки на символ), но не больше ~3 млн точек, чтобы не тормозило
-  const ss = Math.max(1, Math.min(2, Math.floor(Math.sqrt(3e6 / (cols * rows)))));
+  // Всё считаем в настоящих пикселях экрана и рисуем 1 в 1: если холст растягивается браузером
+  // (дробный масштаб экрана, как на многих компьютерах), символы расплываются
+  const cols = Math.floor(innerWidth * dpr / CELL_W);
+  const rows = Math.floor(innerHeight * dpr / CELL_H);
+  renderer.setPixelRatio(1);
+  renderer.setSize(cols * CELL_W, rows * CELL_H, false);
+  renderer.domElement.style.width = cols * CELL_W / dpr + "px";
+  renderer.domElement.style.height = rows * CELL_H / dpr + "px";
+  // Сцену рисуем в 2 раза подробнее сетки: среднее четырёх точек даёт чистые края без мыла
+  const ss = Math.max(1, Math.min(2, Math.floor(Math.sqrt(5e6 / (cols * rows)))));
   sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
-  camera.aspect = (cols * cw) / (rows * ch);
+  camera.aspect = (cols * CELL_W) / (rows * CELL_H);
   camera.updateProjectionMatrix();
 
   fontTex.image = buildFont(CELL_W, CELL_H);
@@ -2546,7 +2666,7 @@ gameEl.addEventListener("click", e => {
 // ---------- Главный цикл ----------
 
 let last = performance.now();
-let lampTimer = 0, frameMs = 16, frameAt = last, lastQuality = 0;
+let tvTimer = 0, lampTimer = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
@@ -2556,6 +2676,17 @@ renderer.setAnimationLoop(now => {
   updateWorld(dt);
   lampTimer += dt;
   if (lampTimer > 0.25) { lampTimer = 0; updateLamps(); }
+  // Шлагбаумы поднимаются и опускаются плавно
+  for (const m of barriers) {
+    const target = m.userData.edit.open ? BARRIER_STEPS : 0, s = m.userData.step;
+    if (s !== target) {
+      m.userData.step = s + Math.sign(target - s) * Math.min(Math.abs(target - s), dt * 10);
+      m.geometry = barrierGeos[Math.round(m.userData.step)];
+    }
+  }
+  // Экран телевизора перерисовываем 5 раз в секунду
+  tvTimer += dt;
+  if (tvs.size && tvTimer > 0.2) { tvTimer = 0; drawTv(now / 1000); tvTex.needsUpdate = true; }
 
   // Следим за скоростью: если кадр дольше ~24 мс, символы становятся крупнее (сначала через 3 секунды после старта)
   frameMs += (Math.min(now - frameAt, 100) - frameMs) * 0.05;
