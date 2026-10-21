@@ -281,11 +281,18 @@ const PLATE = 300;         // размер плиты в блоках: она е
 // Размер одного символа в настоящих пикселях экрана (меньше — детальнее). Считаем в них, а не в css-пикселях:
 // у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере.
 // Качество подстраивается под устройство: тормозит — символы крупнее, идёт ровно — пробуем мельче (см. главный цикл)
-const QUALITY = [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]];
-let quality = 1;
+// Два вида графики: "ascii" — крупные буквы и знаки, сразу видно, что это ASCII; "sharp" — мелкая чёткая сетка из блоков
+const LADDERS = { ascii: [[6, 11], [7, 13], [8, 14], [10, 18]], sharp: [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]] };
+function loadGfx() {
+  try { const g = localStorage.getItem("gfx"); if (g in LADDERS) return g; } catch {}
+  return TOUCH ? "sharp" : "ascii";
+}
+let gfxMode = loadGfx();
+let QUALITY = LADDERS[gfxMode];
+let quality = gfxMode === "ascii" ? 0 : 1;
 // Слабые телефоны (мало памяти или ядер) не пробуют самую мелкую сетку
 const WEAK = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
-const BEST_QUALITY = WEAK ? 1 : 0;
+const bestQuality = () => gfxMode === "sharp" && WEAK ? 1 : 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -335,9 +342,10 @@ const NEAR = 0.1, FAR = 90;  // дальше тумана (70) всё равно
 const CHARS = " ▮▁▂▃▄▣▆▇█▉▊▋▌▍▬▖❚❙❘𖣯▟▞▝▜▛▚▙▘▗∎▀▭▯▓▒░" +
   "𖡎☡  ༘෴؄ᔐᔑᔓᔕ𖡬𖢦꧖𖨂𖦹⎛⎝⎞⎠⌇⦚𓎆𓍲𓍱𓏲𓂅𓂃𖨘𖥾𖤩𖣿𖣸𖥷𖣢⫸𓇮∆∇◿◺◹◸◮◭◬◥◤◣◢◅⊿▲△▴▵▷▸▹►▻▼▽▾▿◁◂◄" +
   "𝕏Ⓧ🅧🅇🆇⛝⛒⛌𒉽×☓✕⨯☐☒✗✘Χχꭓᚷ⊗⨷ₓˣ⨉";
+const ASCII_CHARS = " .'`^\",:;Il!i><~+?][}{1)(tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$█";
 const SHADES = 96;
 // Символы для контуров — по направлению грани
-const EDGES = "▌▚▬▞";
+const EDGES_BY_MODE = { ascii: "|\\-/", sharp: "▌▚▬▞" };
 
 // ---------- Состояние игрока и интерфейса ----------
 
@@ -543,7 +551,7 @@ function edit(e, replace = false) {
   if (e.op === "car") {
     const m = cars.get(e.id);
     if (!m) {
-      const mesh = new THREE.Mesh(carGeo, material(brickTex, e.c));
+      const mesh = new THREE.Mesh(carGeo, [material(foodTex, e.c), glassMaterial(e.c)]);
       mesh.position.set(e.x, e.y, e.z);
       mesh.rotation.y = e.yaw;
       addSolid(mesh, e);
@@ -673,8 +681,33 @@ const extraCells = e => {
 const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, -0.075, 0],
   [new THREE.CylinderGeometry(0.1, 0.22, 0.3, 14), 0, 0.35, 0]]);
 // Машина: кузов, кабина и колёса; смотрит в сторону -z, начало координат — на земле под центром
-const carGeo = mergeParts([box(0.85, 0.3, 1.7, 0, 0.3, 0), box(0.7, 0.28, 0.85, 0, 0.58, 0.15),
-  ...corners.map(([x, z]) => [cyl(0.17, 0.14).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55])]).scale(2, 2, 2);
+const carGeo = mergeParts([
+  box(0.85, 0.22, 1.7, 0, 0.28, 0),                                                               // нижняя часть кузова
+  [box(0.8, 0.08, 0.6, 0, 0.42, -0.55)[0].rotateX(0.08), 0, 0.42, -0.55], box(0.8, 0.1, 0.42, 0, 0.42, 0.66),   // капот и багажник
+  box(0.7, 0.03, 0.7, 0, 0.72, 0.1), box(0.62, 0.16, 0.7, 0, 0.64, 0.1),                          // крыша и кабина
+  ...[-1, 1].flatMap(x => [box(0.04, 0.2, 0.04, x * 0.33, 0.6, -0.26), box(0.04, 0.2, 0.04, x * 0.33, 0.6, 0.46), // стойки
+    box(0.08, 0.05, 0.06, x * 0.45, 0.55, -0.22), box(0.02, 0.02, 0.1, x * 0.43, 0.4, 0.15),                       // зеркала и ручки дверей
+    box(0.18, 0.07, 0.03, x * 0.28, 0.33, -0.87), box(0.16, 0.06, 0.03, x * 0.3, 0.33, 0.87)]),                    // фары и стоп-сигналы
+  box(0.88, 0.1, 0.06, 0, 0.2, -0.88), box(0.88, 0.1, 0.06, 0, 0.2, 0.88), box(0.3, 0.05, 0.02, 0, 0.28, -0.87),   // бамперы и решётка
+  box(0.2, 0.07, 0.01, 0, 0.22, 0.9),                                                                               // номер
+  box(0.7, 0.03, 0.12, 0, 0.55, 0.82), box(0.04, 0.1, 0.04, -0.3, 0.5, 0.82), box(0.04, 0.1, 0.04, 0.3, 0.5, 0.82), // спойлер
+  ...corners.flatMap(([x, z]) => [[cyl(0.17, 0.16).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55], [cyl(0.1, 0.17).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55]]),
+  // стёкла (материал 1)
+  [new THREE.BoxGeometry(0.62, 0.2, 0.02).rotateX(0.55), 0, 0.62, -0.28, 1], [new THREE.BoxGeometry(0.62, 0.2, 0.02).rotateX(-0.55), 0, 0.62, 0.5, 1],
+  box(0.02, 0.15, 0.55, -0.32, 0.64, 0.1, 1), box(0.02, 0.15, 0.55, 0.32, 0.64, 0.1, 1)]).scale(2, 2, 2);
+
+// Стоящая машина — препятствие: тело игрока (на высоте f, ростом h) против её прямоугольника
+function carHits(x, f, z, h) {
+  for (const m of cars.values()) {
+    if (m === drivingCar) continue;
+    const dx = x - m.position.x, dz = z - m.position.z;
+    if (dx * dx + dz * dz > 20) continue;
+    const c = Math.cos(m.rotation.y), sn = Math.sin(m.rotation.y);
+    const lx = dx * c - dz * sn, lz = dx * sn + dz * c;  // точка в системе машины
+    if (Math.abs(lx) < 0.9 + RADIUS && Math.abs(lz) < 1.8 + RADIUS && f < m.position.y + 1.45 && f + h > m.position.y) return true;
+  }
+  return false;
+}
 // Решётка: рамка и прутья посреди клетки (клетка при этом занята целиком)
 const grateGeo = mergeParts([box(1, 0.1, 0.12, 0, 0.45, 0), box(1, 0.1, 0.12, 0, -0.45, 0),
   ...[-0.375, -0.125, 0.125, 0.375].map(x => box(0.08, 1, 0.1, x, 0, 0))]);
@@ -1000,7 +1033,7 @@ function hitsPlank(mesh, x, f, z, h = bodyH) {
 }
 
 function hitsSolid(x, f, z, h = bodyH) {
-  if (hitsBlock(x, f, z, h)) return true;
+  if (hitsBlock(x, f, z, h) || carHits(x, f, z, h)) return true;
   for (const p of planks.values()) if (hitsPlank(p, x, f, z, h)) return true;
   return false;
 }
@@ -1809,7 +1842,8 @@ const asciiMat = new THREE.ShaderMaterial({
     fontTex: { value: fontTex },
     grid: { value: new THREE.Vector2() },
     rampLen: { value: SHADES },
-    glyphs: { value: SHADES + EDGES.length },
+    glyphs: { value: SHADES + 4 },
+    gain: { value: TOUCH ? 0.6 : 0.5 },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -1825,6 +1859,7 @@ const asciiMat = new THREE.ShaderMaterial({
     uniform vec2 grid;
     uniform float rampLen;
     uniform float glyphs;
+    uniform float gain;
     varying vec2 vUv;
 
     // 1 / расстояние до камеры. На ровной поверхности оно меняется равномерно,
@@ -1857,10 +1892,10 @@ const asciiMat = new THREE.ShaderMaterial({
         g = rampLen + mod(floor(a / 3.14159 * 4.0 + 0.5), 4.0);
         b = max(b, 0.6);
       } else {
-        g = floor(b * (rampLen - 1.0) + 0.5);
+        g = floor(pow(b, 0.6) * (rampLen - 1.0) + 0.5);  // pow — средние тона берут более плотные знаки, буквы заметнее
       }
       float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, 1.0 - inCell.y)).r;
-      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * 0.6, 1.0);  // 0.6 — общая яркость, чтобы не слепило
+      gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * gain, 1.0);  // gain — общая яркость: на компьютере темнее, чем на телефоне
     }
   `,
 });
@@ -1873,8 +1908,17 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Смена качества: пересчитываем сетку, а на грубых ступенях выключаем тени
 function setQuality() {
   resize();
-  sun.castShadow = quality < 4;
+  sun.castShadow = QUALITY[quality][0] < 6;
 }
+function toggleGfx() {
+  gfxMode = gfxMode === "ascii" ? "sharp" : "ascii";
+  try { localStorage.setItem("gfx", gfxMode); } catch {}
+  QUALITY = LADDERS[gfxMode];
+  quality = gfxMode === "ascii" ? 0 : 1;
+  lastQuality = performance.now(); goodSince = 0; frameMs = 16;
+  setQuality();
+}
+const gfxName = () => gfxMode === "ascii" ? "ASCII" : "ЧЁТКАЯ";
 
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
@@ -1902,7 +1946,7 @@ function resize() {
 // Шрифт в одну строку: SHADES символов заливки от тёмного к яркому, потом символы контуров
 function buildFont(cw, ch) {
   const font = document.createElement("canvas");
-  font.width = cw * (SHADES + EDGES.length);
+  font.width = cw * (SHADES + 4);
   font.height = ch;
   const ctx = font.getContext("2d", { willReadFrequently: true });
   // Блочные символы рисуем сами, прямоугольниками: так они одинаковые на любом устройстве,
@@ -1933,7 +1977,7 @@ function buildFont(cw, ch) {
     "◄": [["poly", 0.9, 0.1, 0.1, 0.5, 0.9, 0.9]], "◂": [["poly", 0.8, 0.25, 0.2, 0.5, 0.8, 0.75]],
   };
   // Остальные знаки рисуем шрифтом, если он есть на устройстве; недостающие просто пропускаются
-  const FONT = '"Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", "Noto Sans Egyptian Hieroglyphs", "Noto Sans Bamum", "Noto Sans Math", "DejaVu Sans", "Apple Symbols", "Arial Unicode MS", monospace';
+  const FONT = '"JetBrains Mono", Consolas, "Courier New", "Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", "Noto Sans Egyptian Hieroglyphs", "Noto Sans Bamum", "Noto Sans Math", "DejaVu Sans", "Apple Symbols", "Arial Unicode MS", monospace';
   const probe = document.createElement("canvas");
   probe.width = probe.height = 32;
   const pctx = probe.getContext("2d", { willReadFrequently: true });
@@ -2004,7 +2048,7 @@ function buildFont(cw, ch) {
   }
 
   // Сколько "чернил" у каждого символа: рисуем его и считаем среднюю яркость
-  const measured = [...new Set(CHARS)].filter(hasGlyph).map(c => {
+  const measured = [...new Set(gfxMode === "ascii" ? ASCII_CHARS : CHARS)].filter(hasGlyph).map(c => {
     draw(c, 0);
     const data = ctx.getImageData(0, 0, cw, ch).data;
     let sum = 0;
@@ -2019,10 +2063,10 @@ function buildFont(cw, ch) {
     let best = measured[0];
     for (const m of measured) if (Math.abs(m.ink - want) < Math.abs(best.ink - want)) best = m;
     // Ровные символы (пусто, ░▒▓, █) берём, если они почти так же подходят: иначе поверхности выходят полосатыми
-    for (const m of measured) if (" ░▒▓█".includes(m.c) && Math.abs(m.ink - want) <= 0.07) best = m;
+    if (gfxMode === "sharp") for (const m of measured) if (" ░▒▓█".includes(m.c) && Math.abs(m.ink - want) <= 0.07) best = m;
     draw(best.c, i);
   }
-  [...EDGES].forEach((c, i) => draw(c, SHADES + i));
+  [...EDGES_BY_MODE[gfxMode]].forEach((c, i) => draw(c, SHADES + i));
   return font;
 }
 addEventListener("resize", resize);
@@ -2443,7 +2487,8 @@ function drawMenu() {
   if (menuScreen === "main") {
     rows.push("╔" + title("ASCII BASEPLATE") + "╗", line(),
       line("[ ОДИНОЧНАЯ ИГРА ]", "single"), line(),
-      line("[ СЕТЕВАЯ ИГРА ]", "online"), line());
+      line("[ СЕТЕВАЯ ИГРА ]", "online"), line(),
+      line(`[ ГРАФИКА: ${gfxName()} ]`, "gfx"), line());
     if (requestFullscreen) rows.push(line("[ ПОЛНЫЙ ЭКРАН ]", "fullscreen"), line());
     if (menuNote) rows.push(...noteLines(), line());
     rows.push("╚" + title("") + "╝");
@@ -2473,6 +2518,7 @@ menuEl.addEventListener("click", e => {
   const act = e.target.closest(".item")?.dataset.act;
   if (!act || typing) return;
   if (act === "single") startGame();
+  if (act === "gfx") toggleGfx();
   if (act === "fullscreen") toggleFullscreen();
   if (act === "online") { menuScreen = "online"; menuNote = ""; watchLobbies(); }
   if (act === "back") { menuScreen = "main"; stopLobbyList?.(); stopLobbyList = null; menuNote = ""; }
@@ -2642,6 +2688,7 @@ function drawGameMenu() {
   const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
   gameEl.innerHTML = ["╔" + title("ПАУЗА", "═") + "╗",
     row("[ продолжить ]", "resume"),
+    row(`[ графика: ${gfxName()} ]`, "gfx"),
     row("[ выйти в главное меню ]", "exit"),
     "╟" + title("", "─") + "╢",
     row(TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"),
@@ -2670,6 +2717,7 @@ function lockMouse() {
 gameEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
   if (a === "resume") toggleGameMenu();
+  if (a === "gfx") { toggleGfx(); drawGameMenu(); }
   if (a === "exit") leave("");
 });
 
@@ -2710,7 +2758,7 @@ renderer.setAnimationLoop(now => {
       setQuality();
     } else if (frameMs < 18.5) {
       goodSince ||= now;
-      if (now - goodSince > 8000 && quality > BEST_QUALITY && now > noUpgradeUntil && now - lastQuality > 8000) {
+      if (now - goodSince > 8000 && quality > bestQuality() && now > noUpgradeUntil && now - lastQuality > 8000) {
         quality--;
         lastQuality = lastUpgrade = now; goodSince = 0; frameMs = 16;
         setQuality();
