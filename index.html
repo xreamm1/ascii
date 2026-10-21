@@ -239,6 +239,7 @@
     <pre class="button" data-weapon data-action="scope" style="display: none">ПРИЦЕЛ</pre>
     <pre class="button" data-weapon data-action="reload" style="display: none">ПЕРЕЗАР.</pre>
     <pre class="button" data-action="zoom">ЗУМ</pre>
+    <pre class="button" data-action="nitro">БЕГ</pre>
     <pre class="button big" data-action="crouch">СЕСТЬ</pre>
     <pre class="button big" data-action="jump">ПРЫЖОК</pre>
   </div>
@@ -299,7 +300,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 const SIZE = 64;           // где игрок появляется (центр стартовой плиты)
-const PLATE = 300;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
+const PLATE = 900;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
 
 // Размер одного символа в настоящих пикселях экрана (меньше — детальнее). Считаем в них, а не в css-пикселях:
 // у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере.
@@ -367,7 +368,8 @@ const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
 const TEXT_H = 0.6;        // высота надписи в блоках
 const CHAT_TIME = 15000;   // через столько миллисекунд сообщение чата исчезает
-const NEAR = 0.1, FAR = 90;  // дальше тумана (70) всё равно чёрное — не рисуем
+const NEAR = 0.1, FAR = 450;  // дальность обзора; туман почти не размывает горизонт
+const FOG_NEAR = 170, FOG_FAR = 440;
 
 // Символы для заливки — только блочные. Порядок не важен: при запуске каждый измеряется по количеству
 // "чернил" и раскладывается по SHADES ступеням яркости
@@ -423,7 +425,7 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
-scene.fog = new THREE.Fog(0x000000, 20, 70);  // дальше — темнее
+scene.fog = new THREE.Fog(0x000000, FOG_NEAR, FOG_FAR);
 
 const FOV = 70, ZOOM_FOV = 25;  // зум — пока держишь C; колесо мыши меняет его силу
 let zoomFov = ZOOM_FOV;
@@ -1523,7 +1525,7 @@ function exitCar() {
   feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
   vy = 0;
   crouching = false;
-  scene.fog.near = 20; scene.fog.far = 70;
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
   yaw = carYaw;
   if (camMode === "car") camMode = "first";
 }
@@ -1643,7 +1645,7 @@ function exitPlane() {
   online?.sendEdits([m.userData.edit]);
   px = m.position.x + Math.cos(planeYaw) * 5; pz = m.position.z - Math.sin(planeYaw) * 5;
   feet = groundHeight(px, m.position.y + 1, pz); vy = 0;
-  scene.fog.near = 20; scene.fog.far = 70;
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
   yaw = planeYaw;
   if (camMode === "car") camMode = "first";
 }
@@ -1682,7 +1684,7 @@ function updatePlane(dt) {
   camera.position.copy(head).addScaledVector(back, hit ? Math.max(1, hit.distance - 0.3) : 14);
   camera.lookAt(x + dir.x * 8, y + dir.y * 8 + 1, z + dir.z * 8);
   yaw = planeYaw; pitch = planePitch;
-  scene.fog.near = 40; scene.fog.far = 90;
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
 }
 
 function updateCar(dt) {
@@ -1737,7 +1739,7 @@ function updateCar(dt) {
   camRay.far = 12;
   const hit = camRay.intersectObjects(solids)[0];
   camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 12);
-  scene.fog.near = 30; scene.fog.far = 85;  // за рулём видно чуть дальше
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
   camera.rotation.set(pitch, yaw, 0);
 }
 
@@ -2253,6 +2255,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     button.classList.add("active");
     if (action === "jump") keys.Space = true;
     if (action === "crouch") keys.ControlLeft = true;
+    if (action === "nitro") keys.ShiftLeft = true;
     if (action === "color") togglePalette();
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
@@ -2273,6 +2276,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action !== "zoom") button.classList.remove("active");
     if (action === "jump") keys.Space = false;
     if (action === "crouch") keys.ControlLeft = false;
+    if (action === "nitro") keys.ShiftLeft = false;
     if (action === "fire") firing = false;
   });
 }
@@ -4476,6 +4480,11 @@ function updateWeapons(dt) {
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || drivingPlane || (inGame && camMode === "first" && (nearestCar() || ((isAdmin() || !online) && nearestPlane())))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
+  // Кнопка бега: за рулём она включает нитро
+  const nitroBtn = document.querySelector('#touch [data-action="nitro"]'), nitroText = drivingCar ? "НИТРО" : "БЕГ";
+  if (nitroBtn.textContent !== nitroText) nitroBtn.textContent = nitroText;
+  const nitroShow = drivingPlane || camMode === "drone" ? "none" : "";
+  if (nitroBtn.style.display !== nitroShow) nitroBtn.style.display = nitroShow;
 }
 
 // ---------- Главный цикл ----------
