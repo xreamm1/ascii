@@ -174,7 +174,6 @@
   @media (pointer: coarse) {
     pre, #ask { font-size: 13px; }
     #touch { display: block; }
-    #crosshair { display: none; }  /* на телефоне строят касанием, прицел не нужен */
   }
 </style>
 <script type="importmap">
@@ -401,6 +400,7 @@ sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
+if (TOUCH) sun.castShadow = false;  // на телефоне тени слишком дорогие
 
 // Текстуры рисуем сами на canvas — так ничего не надо загружать
 function canvasTexture(w, h, draw) {
@@ -1934,7 +1934,7 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Смена качества: пересчитываем сетку, а на грубых ступенях выключаем тени
 function setQuality() {
   resize();
-  sun.castShadow = QUALITY[quality][0] < 6;
+  sun.castShadow = !TOUCH && QUALITY[quality][0] < 6;
 }
 function toggleGfx() {
   gfxMode = gfxMode === "ascii" ? "sharp" : "ascii";
@@ -1958,8 +1958,8 @@ function resize() {
   renderer.setSize(cols * CELL_W, rows * CELL_H, false);
   renderer.domElement.style.width = cols * CELL_W / dpr + "px";
   renderer.domElement.style.height = rows * CELL_H / dpr + "px";
-  // Сцену рисуем в 2 раза подробнее сетки: среднее четырёх точек даёт чистые края без мыла
-  const ss = Math.max(1, Math.min(2, Math.floor(Math.sqrt(5e6 / (cols * rows)))));
+  // Сцену рисуем в 2 раза подробнее сетки: среднее четырёх точек даёт чистые края без мыла (а при очень мелкой сетке экономим)
+  const ss = cols * rows > 150000 ? 1 : 2;  // очень мелкая сетка и так подробная — вторую точку на символ не рисуем
   sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
@@ -2715,11 +2715,76 @@ function drawGameMenu() {
   gameEl.innerHTML = ["╔" + title("ПАУЗА", "═") + "╗",
     row("[ продолжить ]", "resume"),
     row(`[ графика: ${gfxName()} ]`, "gfx"),
+    row("[ экспорт мира ]", "export"),
+    ...(!online || isDev ? [row("[ импорт мира ]", "import")] : []),
     row("[ выйти в главное меню ]", "exit"),
     "╟" + title("", "─") + "╢",
     row(TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"),
     "╚" + title("", "═") + "╝"].join("\n");
 }
+// ---------- Экспорт и импорт мира: файл .baseAscii (обычный JSON со списком предметов) ----------
+
+const WORLD_EXT = ".baseAscii";
+const MAX_WORLD = 30000;  // больше предметов за раз не принимаем
+const worldFileEl = Object.assign(document.createElement("input"), { type: "file", hidden: true });
+document.body.append(worldFileEl);
+
+function exportWorld() {
+  // Каждый предмет мира хранит запись, из которой он создан (userData.edit)
+  const edits = [...new Set(solids.map(m => m.userData.edit).filter(Boolean))];
+  const blob = new Blob([JSON.stringify({ format: "baseAscii", version: 1, edits })], { type: "application/json" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "world" + WORLD_EXT });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  addChat(`* мир сохранён: ${edits.length} предметов`);
+}
+
+// Проверяем каждую запись из файла: берём только известные поля, id заводим свои, чтобы не пересеклись с чужими
+const KIND_SET = new Set(Object.values(KINDS).filter(Boolean));
+const num = (...v) => v.every(Number.isFinite);
+const newId = () => `${myId}-${idCount++}`;
+function cleanEdit(e) {
+  if (!e || typeof e !== "object") return null;
+  const c = Number.isInteger(e.c) && e.c >= 0 && e.c < COLORS.length ? e.c : 0;
+  if (e.op === "block") {
+    if (![e.x, e.y, e.z].every(v => Number.isInteger(v) && Math.abs(v) < 5000) || e.y < 0) return null;
+    const out = { op: "block", x: e.x, y: e.y, z: e.z, c };
+    if (e.k !== undefined) { if (!KIND_SET.has(e.k)) return null; out.k = e.k; }
+    if (Number.isInteger(e.r) && e.r >= 0 && e.r < 4) out.r = e.r;
+    if (e.k === "door" || e.k === "barrier") out.open = e.open === true;
+    if (e.p === true) out.p = true;
+    return out;
+  }
+  if (e.op === "plank" && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends)) return { op: "plank", id: newId(), ends: e.ends, c };
+  if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
+    return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
+  if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c };
+  return null;
+}
+
+// Мир добавляется к тому, что уже есть (занятые клетки не трогаем). Создаём кусками, чтобы игра не зависла
+function importWorld(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { return addChat("* это не файл мира"); }
+  if (data?.format !== "baseAscii" || !Array.isArray(data.edits)) return addChat("* это не файл мира .baseAscii");
+  const list = data.edits.slice(0, MAX_WORLD).map(cleanEdit).filter(Boolean);
+  const skipped = data.edits.length - list.length;
+  addChat(`* импорт: ${list.length} предметов${skipped ? `, пропущено ${skipped}` : ""}`);
+  let i = 0;
+  (function chunk() {
+    const part = list.slice(i, i += 400);
+    for (const e of part) try { edit(e); } catch {}
+    online?.sendEdits(part);
+    if (i < list.length) setTimeout(chunk, online ? 250 : 16); else addChat("* мир импортирован");
+  })();
+}
+
+worldFileEl.addEventListener("change", () => {
+  const file = worldFileEl.files[0];
+  worldFileEl.value = "";
+  if (file) file.text().then(importWorld, () => addChat("* не удалось прочитать файл"));
+});
+
 function toggleGameMenu() { togglePanel(gameEl, drawGameMenu); }
 
 // Мышь освободилась (Esc, переключение окна) — ставим игру на паузу
@@ -2744,6 +2809,8 @@ gameEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
   if (a === "resume") toggleGameMenu();
   if (a === "gfx") { toggleGfx(); drawGameMenu(); }
+  if (a === "export") exportWorld();
+  if (a === "import") worldFileEl.click();
   if (a === "exit") leave("");
 });
 
