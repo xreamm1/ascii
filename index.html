@@ -40,6 +40,12 @@
     left: 16px;
     bottom: 16px;
   }
+  #hp { left: 16px; bottom: 96px; color: #f55; pointer-events: none; display: none; }
+  #flash { position: fixed; inset: 0; background: #f00; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+  #death {
+    left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; color: #f55;
+    background: #000; display: none; pointer-events: none; font-size: 22px;
+  }
   #hotbar .slot { display: inline-block; cursor: pointer; }
   #hotbar .page { cursor: pointer; }
   #palette {
@@ -141,7 +147,7 @@
   #game .act { cursor: pointer; }
   #game .act:hover { background: #fff; color: #000; }
   /* Пока открыто меню, игровой интерфейс прячем */
-  body.in-menu #hotbar, body.in-menu #touch, body.in-menu #crosshair, body.in-menu #chat { display: none; }
+  body.in-menu #hotbar, body.in-menu #hp, body.in-menu #touch, body.in-menu #crosshair, body.in-menu #chat { display: none; }
 
   /* Управление для телефона: видно только на сенсорных экранах */
   #touch { display: none; }
@@ -190,6 +196,9 @@
 <body class="in-menu">
 <pre id="crosshair">+</pre>
 <pre id="hotbar"></pre>
+<pre id="hp"></pre>
+<div id="flash"></div>
+<pre id="death"></pre>
 <pre id="palette"></pre>
 <pre id="chat"></pre>
 <pre id="lobby"></pre>
@@ -314,6 +323,7 @@ const DEV_NICK = "xreamm"; // ник разработчика: с ним спр�
 const DEV_EMAIL = "xreamm@ascii-baseplate.game";  // аккаунт разработчика в Firebase Authentication
 let STEP = 0.3;          // на такую высоту можно зайти без прыжка (доски, пандусы)
 const GRAVITY = 25;
+const FALL_SAFE = 12;      // быстрее этой скорости падения (блоков в секунду) — урон
 let JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25);  // прыжок на 1.25 блока
 let REACH = 8;           // как далеко можно строить
 
@@ -354,6 +364,9 @@ let yaw = 0, pitch = 0;
 let crouching = false, bodyH = HEIGHT, eye = EYE;  // присел ли, текущий рост и высота глаз
 let inGame = false;     // false — открыто главное меню
 let isDev = false;      // вошёл разработчик (проверено паролем на сервере Firebase)
+let gameMode = "creative";  // "creative" — творческий, "survival" — обычный: есть HP, можно погибнуть
+let hp = 100, dead = false, respawnAt = 0, invulnUntil = 0;
+const MAX_HP = 100;
 let adminGranted = false;  // разработчик выдал админ-панель в этом лобби
 let adminIds = {};         // у кого в лобби есть админ-панель: { id: true }
 let prefixes = {};         // выданные разработчиком префиксы: { id: "текст" }
@@ -1085,6 +1098,53 @@ function groundHeight(x, f, z) {
 
 const camRay = new THREE.Raycaster();
 
+// ---------- Здоровье (только в обычном режиме) ----------
+const hpEl = document.getElementById("hp");
+const flashEl = document.getElementById("flash");
+const deathEl = document.getElementById("death");
+let lastHpText = "";
+function drawHp() {
+  const show = gameMode === "survival" && inGame;
+  hpEl.style.display = show ? "block" : "none";
+  if (!show) return;
+  const t = `♥ ${Math.max(0, Math.ceil(hp))}\n` + "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10));
+  if (t !== lastHpText) { lastHpText = t; hpEl.textContent = t; }
+}
+
+// Урон: в творческом режиме его нет. by — кто виноват (для сообщения о гибели)
+function damage(n, by) {
+  if (gameMode !== "survival" || dead || performance.now() < invulnUntil || n <= 0) return;
+  hp -= n;
+  flashEl.style.transition = "none"; flashEl.style.opacity = 0.35;
+  requestAnimationFrame(() => { flashEl.style.transition = "opacity 0.4s"; flashEl.style.opacity = 0; });
+  if (hp <= 0) die(by);
+  drawHp();
+}
+
+function die(by) {
+  hp = 0; dead = true;
+  exitCar();
+  endDrone();
+  for (const k in keys) keys[k] = false;
+  respawnAt = performance.now() + 3000;
+  const text = by ? `☠ ${nick} погиб от ${by}` : `☠ ${nick} погиб`;
+  addChat(text);
+  online?.sendChat(text);
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function resetWeapons() {}  // заготовка: оружие добавим ниже
+
+function respawn() {
+  dead = false; hp = MAX_HP;
+  invulnUntil = performance.now() + 2500;  // сразу после возрождения недолго неуязвим
+  px = pz = SIZE / 2; feet = 0; vy = 0;
+  deathEl.style.display = "none";
+  resetWeapons();
+  drawHp();
+  if (!TOUCH && !menuOpen) lockMouse();
+}
+
 // Модель дрона: корпус и четыре винта. Её видят другие игроки, пока ты летишь
 function makeDrone() {
   const g = new THREE.Group();
@@ -1248,6 +1308,16 @@ function update(dt) {
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
 
+  if (dead) {
+    // Лежим на месте и ждём возрождения
+    camera.position.set(px, feet + 0.3, pz);
+    camera.rotation.set(0.9, yaw, 0.3);
+    const left = Math.ceil((respawnAt - performance.now()) / 1000);
+    deathEl.style.display = "block";
+    deathEl.textContent = `ТЫ ПОГИБ\nвозрождение через ${Math.max(left, 0)}`;
+    if (left <= 0) respawn();
+    return;
+  }
   if (camMode === "car") return updateCar(dt);
   if (camMode === "drone") return updateDrone(dt);
 
@@ -1304,7 +1374,10 @@ function update(dt) {
 
     const ground = groundHeight(px, prevFeet, pz);
     onGround = feet <= ground;
-    if (onGround) { feet = ground; vy = 0; }
+    if (onGround) {
+      if (vy < -FALL_SAFE) damage((-vy - FALL_SAFE) * 6);  // удар о землю: чем быстрее падал, тем больнее
+      feet = ground; vy = 0;
+    }
   }
 
   // Упал с плиты — возвращаемся в центр
@@ -1402,7 +1475,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Телевизор": "tv", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
-  if (menuOpen || !inGame || camMode === "car") return;
+  if (menuOpen || !inGame || camMode === "car" || dead) return;
   const hit = aim(screen);
 
   // Убрать блок или доску под прицелом (или отменить начатую доску)
@@ -1412,7 +1485,10 @@ function use(action, screen) {
       const t = hit.object.userData.edit;
       if (t.p && online && !isDev) { addChat("* этот блок может сломать только разработчик"); return; }
       const eaten = DECOR[hit.object.userData.edit.k]?.[1];  // еду можно съесть
-      if (eaten) addChat(`* ты ${eaten}`);
+      if (eaten) {
+        addChat(`* ты ${eaten}`);
+        if (gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 25); drawHp(); }  // еда лечит
+      }
       share(undo(hit.object.userData.edit));
     }
     drawHotbar();
@@ -2189,6 +2265,7 @@ function updateAvatar(id, p) {
   a.yaw = p.yaw;
   a.size = Math.min(4, Math.max(0.25, +p.s || 1));
   a.group.scale.set(a.size, a.size * (p.cr ? 0.7 : 1), a.size);  // присел — фигурка ниже
+  a.group.visible = !p.dd;  // погибший пропадает, пока не возродится
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 16);
@@ -2313,7 +2390,7 @@ async function joinLobby(code, me) {
     }),
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
-      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size };
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0 };
       if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
@@ -2486,7 +2563,8 @@ function updateOnline(dt) {
 
 const menuEl = document.getElementById("menu");
 const lobbyEl = document.getElementById("lobby");
-let menuScreen = "main";   // "main" или "online"
+let menuScreen = "main";   // "main", "online" или "mode" (выбор режима)
+let pendingMode = null;    // что делаем после выбора режима: "single" — одиночная игра, "create" — создаём лобби
 let lobbyList = [];        // [{ code, name, players }]
 let stopLobbyList = null;  // отписка от обновлений списка лобби
 let menuNote = "";         // подсказка внизу: "загрузка…", ошибки
@@ -2518,6 +2596,11 @@ function drawMenu() {
     if (requestFullscreen) rows.push(line("[ ПОЛНЫЙ ЭКРАН ]", "fullscreen"), line());
     if (menuNote) rows.push(...noteLines(), line());
     rows.push("╚" + title("") + "╝");
+  } else if (menuScreen === "mode") {
+    rows.push("╔" + title("РЕЖИМ ИГРЫ") + "╗", line(),
+      line("[ ТВОРЧЕСКИЙ ]", "mode:creative"), line("строй и летай, урона нет"), line(),
+      line("[ ОБЫЧНЫЙ ]", "mode:survival"), line("есть HP, можно погибнуть"), line(),
+      "╟" + title("", "─") + "╢", line("[ НАЗАД ]", "backmode"), "╚" + title("") + "╝");
   } else {
     rows.push("╔" + title("СЕТЕВАЯ ИГРА") + "╗", line(),
       line(`Ник: ${nick}`), line("[ сменить ник ]", "nick"), line());
@@ -2543,13 +2626,19 @@ function drawMenu() {
 menuEl.addEventListener("click", e => {
   const act = e.target.closest(".item")?.dataset.act;
   if (!act || typing) return;
-  if (act === "single") startGame();
+  if (act === "single") { menuScreen = "mode"; pendingMode = "single"; }
+  if (act === "backmode") menuScreen = pendingMode === "create" ? "online" : "main";
+  if (act.startsWith("mode:")) {
+    const m = act.slice(5);
+    if (pendingMode === "single") { gameMode = m; startGame(); }
+    else createLobby(m).catch(err => showNote(err.message.length < 38 ? err.message : "не удалось создать лобби"));
+  }
   if (act === "gfx") toggleGfx();
   if (act === "fullscreen") toggleFullscreen();
   if (act === "online") { menuScreen = "online"; menuNote = ""; watchLobbies(); }
   if (act === "back") { menuScreen = "main"; stopLobbyList?.(); stopLobbyList = null; menuNote = ""; }
   if (act === "nick") changeNick().then(drawMenu);
-  if (act === "create") createLobby().catch(err => showNote(err.message.length < 38 ? err.message : "не удалось создать лобби"));
+  if (act === "create") { menuScreen = "mode"; pendingMode = "create"; }
   if (act === "code") ask("КОД ЛОББИ", "", 4).then(c => c && enterLobby(c));
   if (act.startsWith("join:")) enterLobby(act.slice(5));
   if (act.startsWith("del:")) confirmDeleteLobby(act.slice(4));
@@ -2582,7 +2671,7 @@ async function watchLobbies() {
   }
 }
 
-async function createLobby() {
+async function createLobby(mode) {
   const me = await signIn();
   const name = await ask("НАЗВАНИЕ ЛОББИ", `Лобби ${nick}`, 22);
   if (!name) return;
@@ -2593,7 +2682,8 @@ async function createLobby() {
   do code = Array.from({ length: 4 }, () => ABC[Math.floor(Math.random() * ABC.length)]).join("");
   while ((await get(ref(db, `lobbyInfo/${code}`))).exists());
   // update пишет поля по отдельности — так их проверяют правила базы
-  await update(ref(db, `lobbyInfo/${code}`), { name, created: Date.now() });
+  await update(ref(db, `lobbyInfo/${code}`), { name, created: Date.now(), mode });
+  gameMode = mode;
   startGame(code, name, me);
 }
 
@@ -2626,6 +2716,7 @@ async function enterLobby(code) {
     const { db, ref, get } = await loadFirebase();
     const info = await get(ref(db, `lobbyInfo/${code}`));
     if (!info.exists()) return showNote(`лобби ${code} не найдено`);
+    gameMode = info.val().mode === "survival" ? "survival" : "creative";  // у старых лобби режима нет — они творческие
     startGame(code, String(info.val().name || code), me);
   } catch (err) {
     showNote(err.message.length < 38 ? err.message : "нет связи с сервером");
@@ -2645,9 +2736,11 @@ function startGame(code, name, me) {
   menuEl.style.display = "none";
   document.body.classList.remove("in-menu");
   yaw = 0;
+  hp = MAX_HP; dead = false;
+  drawHp();
   if (code) {
     // Код видно, чтобы позвать друзей
-    lobbyEl.textContent = `${name} · код ${code}` + (isDev ? (TOUCH ? " · разработчик" : " · P — админ-меню") : "");
+    lobbyEl.textContent = `${name} · код ${code} · ${gameMode === "survival" ? "обычный" : "творческий"}` + (isDev ? (TOUCH ? " · разработчик" : " · P — админ-меню") : "");
     joinLobby(code, me).catch(() => addChat("* не удалось подключиться к лобби"));
     if (isDev) showAdminButton();
   }
