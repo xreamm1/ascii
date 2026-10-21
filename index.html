@@ -347,10 +347,11 @@ let REACH = 8;           // как далеко можно строить
 const SIZES = [0.25, 0.5, 1, 2, 4];
 const BASE = { RADIUS, HEIGHT, EYE, CROUCH_HEIGHT, CROUCH_EYE, STEP, MOVE_SPEED, REACH };
 let size = 1;
+let asVerity = false;  // админ превратил себя в шарик Верити: тело маленькое, как шарик
 function setSize(k) {
   size = k;
-  RADIUS = BASE.RADIUS * k; HEIGHT = BASE.HEIGHT * k; EYE = BASE.EYE * k;
-  CROUCH_HEIGHT = BASE.CROUCH_HEIGHT * k; CROUCH_EYE = BASE.CROUCH_EYE * k;
+  RADIUS = (asVerity ? 0.4 : BASE.RADIUS) * k; HEIGHT = (asVerity ? 0.84 : BASE.HEIGHT) * k; EYE = (asVerity ? 0.7 : BASE.EYE) * k;
+  CROUCH_HEIGHT = (asVerity ? 0.84 : BASE.CROUCH_HEIGHT) * k; CROUCH_EYE = (asVerity ? 0.7 : BASE.CROUCH_EYE) * k;
   STEP = BASE.STEP * k; MOVE_SPEED = BASE.MOVE_SPEED * k; REACH = BASE.REACH * k;
   JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25 * k);  // прыжок на 1.25 роста
   aimRay.far = REACH;
@@ -2824,7 +2825,7 @@ adminEl.addEventListener("click", e => {
     camMode = camMode === "free" ? "first" : "free";
     if (camMode === "free") freePos.copy(camera.position);
   }
-  if (a === "verity") asVerity = !asVerity;
+  if (a === "verity") { asVerity = !asVerity; setSize(size); }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
@@ -3088,7 +3089,6 @@ async function enterLobby(code) {
 // code не задан — одиночная игра
 let lobbyCode = null;  // код лобби, в котором сейчас игра (null — одиночная игра)
 let lobbyName = "", lobbyAccess = "all";
-let asVerity = false;  // админ превратил себя в шарик Верити
 // Кто может войти: все, разработчик и админы, только разработчик
 const ACCESS = ["all", "admins", "dev"];
 const ACCESS_NAME = { all: "все", admins: "админы", dev: "только я" };
@@ -3500,7 +3500,8 @@ const shotRay = new THREE.Raycaster();
 const tmpV = new THREE.Vector3();
 const tmpBox = new THREE.Box3();
 function bodyBox(a) {
-  const p = a.group.position, w = 0.35 * (a.size || 1), h = 1.9 * a.group.scale.y;
+  const ball = a.group.userData.verity?.visible;
+  const p = a.group.position, w = (ball ? 0.42 : 0.35) * (a.size || 1), h = (ball ? 0.9 : 1.9) * a.group.scale.y;
   return tmpBox.set(new THREE.Vector3(p.x - w, p.y, p.z - w), new THREE.Vector3(p.x + w, p.y + h, p.z + w));
 }
 // Кого и куда задел луч: ближайший игрок, не закрытый стеной. Возвращает { target: { id, a, dist, point, head } | null, wallDist }
