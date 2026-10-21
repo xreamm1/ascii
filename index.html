@@ -396,6 +396,7 @@ let prefixes = {};         // выданные разработчиком пре
 let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
+let drivingPlane = null;  // меш самолёта, которым управляет игрок
 let drivingCar = null;  // меш машины, в которой сидит игрок
 let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон, "car" — за рулём
 const freePos = new THREE.Vector3();  // где сейчас свободная камера
@@ -658,6 +659,18 @@ function edit(e, replace = false) {
     }
     if (feet < 0 && Math.abs(px - e.x - 0.5) < 3 && Math.abs(pz - e.z - 0.5) < 3) { px = pz = SIZE / 2; feet = 0; vy = 0; }  // был в яме — наверх
   }
+  if (e.op === "plane") {
+    const m = planes.get(e.id);
+    if (!m) {
+      const mesh = new THREE.Mesh(planeGeo, vmaterial(plainTex, 0));
+      mesh.rotation.order = "YXZ";
+      mesh.position.set(e.x, e.y, e.z);
+      mesh.rotation.set(e.pt || 0, e.yaw || 0, e.rl || 0);
+      addSolid(mesh, e);
+      planes.set(e.id, mesh);
+    } else if (m !== drivingPlane) m.userData.edit = m.userData.target = e;  // чужой самолёт плавно летит к новой точке
+  }
+  if (e.op === "unplane") removeSolid(planes.get(e.id));
   if (e.op === "uncar") removeSolid(cars.get(e.id));
   if (e.op === "ball") {
     const m = balls.get(e.id);
@@ -701,6 +714,7 @@ function removeSolid(mesh) {
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
   if (e.op === "ball") balls.delete(e.id);
+  if (e.op === "plane") { planes.delete(e.id); if (mesh === drivingPlane) exitPlane(); }
   lamps.delete(mesh);
   tvs.delete(mesh);
   barriers.delete(mesh);
@@ -1013,6 +1027,12 @@ const counterParts = () => [...P(0x2b2b2e, box(0.94, 0.1, 0.84, 0, -0.45, 0.02))
   box(0.3, 0.38, 0.015, -0.22, -0.05, -0.48), box(0.3, 0.38, 0.015, 0.22, -0.05, -0.48), ...P(0xc0c4c8, box(0.03, 0.18, 0.04, -0.04, 0.1, -0.49), box(0.03, 0.18, 0.04, 0.04, 0.1, -0.49))];
 // ТНТ: просто красный блок
 const tntGeo = mergeParts(P(0xd62a1e, box(1, 1, 1, 0, 0, 0)));
+// Самолёт: смотрит в -z, начало координат — центр фюзеляжа
+const planeGeo = mergeParts([...P(0xf2f2f2, box(0.9, 0.9, 5.2, 0, 0, 0.2), box(8, 0.14, 1.5, 0, 0.05, 0.2), box(2.6, 0.1, 0.8, 0, 0.25, 2.55)),
+  ...P(0xcc2a2a, box(0.76, 0.76, 0.7, 0, 0, -2.5), box(0.14, 1.2, 0.9, 0, 0.8, 2.45), box(0.7, 0.16, 1.5, -3.65, 0.06, 0.2), box(0.7, 0.16, 1.5, 3.65, 0.06, 0.2)),
+  ...P(0x6fb6e8, box(0.72, 0.38, 1.1, 0, 0.58, -0.5)),
+  ...P(0x222222, box(0.14, 1.7, 0.08, 0, 0, -2.9), box(1.7, 0.14, 0.08, 0, 0, -2.9), box(0.12, 0.5, 0.12, -0.9, -0.55, -0.3), box(0.12, 0.5, 0.12, 0.9, -0.55, -0.3), box(0.1, 0.4, 0.1, 0, -0.5, -1.7),
+    box(0.3, 0.3, 0.3, -0.9, -0.65, -0.3), box(0.3, 0.3, 0.3, 0.9, -0.65, -0.3), box(0.26, 0.26, 0.26, 0, -0.6, -1.7))]);
 const KITCHEN = {
   tnt: tntGeo,
   counter: mergeParts(counterParts()),
@@ -1401,9 +1421,20 @@ function nearestCar() {
   }
   return best;
 }
+function nearestPlane() {
+  let best = null, bestD = 8;
+  for (const m of planes.values()) {
+    const d = Math.hypot(m.position.x - px, m.position.z - pz);
+    if (d < bestD && Math.abs(m.position.y - feet) < 4) { best = m; bestD = d; }
+  }
+  return best;
+}
 function toggleCar() {
+  if (drivingPlane) return exitPlane();
   if (drivingCar) return exitCar();
   if (camMode !== "first" || !inGame) return;
+  const plane = nearestPlane();
+  if (plane && (isAdmin() || !online)) return enterPlane(plane);
   const best = nearestCar();
   if (!best) return;
   drivingCar = best;
@@ -1430,6 +1461,7 @@ function exitCar() {
 
 // Отлетающие машины: считает тот, кто врезался, остальные видят их через обычную рассылку машин
 const flung = new Map();
+const planes = new Map();
 const balls = new Map();
 function launchCar(m, vx, vz, speed) {
   const k = 0.3 + speed / 60;
@@ -1519,6 +1551,68 @@ function updateBalls(dt) {
     s.send -= dt;
     if (rest || s.send <= 0) { s.send = 0.125; online?.sendEdits([e]); }
   }
+}
+
+// Самолёт: A/D — поворот, W/S — нос вниз/вверх, пробел — сбросить ТНТ, E — выйти
+let planeYaw = 0, planePitch = 0, planeRoll = 0, planeBombAt = 0;
+function enterPlane(m) {
+  drivingPlane = m;
+  planeYaw = m.rotation.y; planePitch = m.userData.edit.pt || 0; planeRoll = 0;
+  camMode = "car";
+  vy = 0;
+}
+function exitPlane() {
+  const m = drivingPlane;
+  if (!m) return;
+  drivingPlane = null;
+  // Самолёт садится на землю там, где его бросили; игрок выходит рядом
+  const ground = groundHeight(m.position.x, m.position.y, m.position.z);
+  m.position.y = ground + 0.8; planePitch = planeRoll = 0;
+  m.rotation.set(0, planeYaw, 0);
+  Object.assign(m.userData.edit, { y: +m.position.y.toFixed(2), pt: 0, rl: 0, yaw: +planeYaw.toFixed(2) });
+  online?.sendEdits([m.userData.edit]);
+  px = m.position.x + Math.cos(planeYaw) * 5; pz = m.position.z - Math.sin(planeYaw) * 5;
+  feet = groundHeight(px, m.position.y + 1, pz); vy = 0;
+  scene.fog.near = 20; scene.fog.far = 70;
+  yaw = planeYaw;
+  if (camMode === "car") camMode = "first";
+}
+function updatePlane(dt) {
+  const m = drivingPlane;
+  const steer = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+  const nose = -((keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y);  // >0 — нос вверх
+  planeYaw -= steer * 1.1 * dt;
+  planePitch = Math.max(-1.2, Math.min(1.2, planePitch + nose * 1.0 * dt));
+  if (!nose) planePitch *= Math.exp(-0.4 * dt);
+  planeRoll += (-steer * 0.7 - planeRoll) * Math.min(1, dt * 4);
+  const speed = Math.max(12, 22 - 10 * Math.sin(planePitch));
+  const dir = new THREE.Vector3(-Math.sin(planeYaw) * Math.cos(planePitch), Math.sin(planePitch), -Math.cos(planeYaw) * Math.cos(planePitch));
+  let { x, y, z } = m.position;
+  if (!hitsBlock(x + dir.x * speed * dt, y - 0.3, z, 1)) x += dir.x * speed * dt;
+  if (!hitsBlock(x, y - 0.3, z + dir.z * speed * dt, 1)) z += dir.z * speed * dt;
+  if (!hitsBlock(x, y + dir.y * speed * dt - 0.3, z, 1)) y += dir.y * speed * dt;
+  const ground = groundHeight(x, y, z) + 0.8;
+  if (y < ground) { y = ground; if (planePitch < 0) planePitch = 0; }
+  m.position.set(x, y, z);
+  m.rotation.set(planePitch, planeYaw, planeRoll);
+  Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +planeYaw.toFixed(2), pt: +planePitch.toFixed(2), rl: +planeRoll.toFixed(2) });
+  px = x; pz = z; feet = y;
+  // Бомба: падает вместе с самолётом и взрывается при ударе
+  if (keys.Space && performance.now() > planeBombAt) {
+    planeBombAt = performance.now() + 700;
+    const v = [dir.x * speed, dir.y * speed - 2, dir.z * speed], bx = x, by = y - 1.1, bz = z;
+    startPrimed(bx, by, bz, 8, true, v, true);
+    online?.fx({ t: "tnt", x: +bx.toFixed(2), y: +by.toFixed(2), z: +bz.toFixed(2), f: 8, v: v.map(n => +n.toFixed(2)), imp: 1 });
+  }
+  // Камера сзади и выше
+  const head = new THREE.Vector3(x, y + 3, z), back = dir.clone().multiplyScalar(-1).add(new THREE.Vector3(0, 0.25, 0)).normalize();
+  camRay.set(head, back);
+  camRay.far = 14;
+  const hit = camRay.intersectObjects(solids.filter(s => s !== m))[0];
+  camera.position.copy(head).addScaledVector(back, hit ? Math.max(1, hit.distance - 0.3) : 14);
+  camera.lookAt(x + dir.x * 8, y + dir.y * 8 + 1, z + dir.z * 8);
+  yaw = planeYaw; pitch = planePitch;
+  scene.fog.near = 40; scene.fog.far = 90;
 }
 
 function updateCar(dt) {
@@ -1625,7 +1719,7 @@ function update(dt) {
     if (left <= 0) respawn();
     return;
   }
-  if (camMode === "car") return updateCar(dt);
+  if (camMode === "car") return drivingPlane ? updatePlane(dt) : updateCar(dt);
   if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
@@ -3109,6 +3203,7 @@ function drawAdmin() {
     row(`сейчас: ${views[camMode]}`),
     row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
     row("[ телепорт по координатам ]", "tpxyz"),
+    row("[ заспавнить самолёт ]", "plane"),
     ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -3147,6 +3242,11 @@ adminEl.addEventListener("click", e => {
   }
   if (a === "invis") asInvis = !asInvis;
   if (a === "tpxyz") askTeleport();
+  if (a === "plane") {
+    const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
+    share({ op: "plane", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +(groundHeight(x, feet + 2, z) + 0.8).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
+    addChat(TOUCH ? "* самолёт рядом: сядь кнопкой МАШИНА, бомба — ПРЫЖОК" : "* самолёт рядом: E — сесть, A/D — поворот, W/S — нос, пробел — бомба");
+  }
   if (a.startsWith("ball:")) { const t = a.slice(5); asBall = asBall === t ? null : BALL_TYPES[t] ? t : null; setSize(size); }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
@@ -3241,11 +3341,19 @@ function updateOnline(dt) {
     m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
   }
+  for (const m of planes.values()) {
+    const t = m.userData.target;
+    if (!t || m === drivingPlane) continue;
+    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
+    m.rotation.x += ((t.pt || 0) - m.rotation.x) * k; m.rotation.z += ((t.rl || 0) - m.rotation.z) * k;
+  }
   poseTimer += dt;
   if (online && poseTimer > 1 / 8) {
     poseTimer = 0;
     online.sendPose();
     if (drivingCar) online.sendEdits([drivingCar.userData.edit]);
+    if (drivingPlane) online.sendEdits([drivingPlane.userData.edit]);
   }
 }
 
@@ -3992,13 +4100,13 @@ function updateRockets(dt) {
 // Мир ломает тот, кто поджёг (остальные получают изменения через общий мир), а картинку взрыва и урон каждый считает у себя
 const TNT_R = 4.5, TNT_DMG = 70;
 const primed = [];
-function startPrimed(x, y, z, fuse, own, v) {
+function startPrimed(x, y, z, fuse, own, v, impact) {
   const mesh = new THREE.Mesh(tntGeo, vmaterial(plainTex, 0));
   const flash = new THREE.Mesh(new THREE.BoxGeometry(1.01, 1.01, 1.01), new THREE.MeshBasicMaterial({ color: 0xffffff }));  // мигает белым
   mesh.add(flash);
   mesh.position.set(x, y, z);
   scene.add(mesh);
-  primed.push({ mesh, flash, t: fuse, own, vx: v?.[0] || 0, vy: v?.[1] || 0, vz: v?.[2] || 0 });
+  primed.push({ mesh, flash, t: fuse, own, impact: !!impact, age: 0, vx: v?.[0] || 0, vy: v?.[1] || 0, vz: v?.[2] || 0 });
 }
 function igniteTnt(e, fuse, v) {
   if (blocks.get(key(e.x, e.y, e.z))?.userData.edit.k !== "tnt") return;
@@ -4039,19 +4147,23 @@ function updatePrimed(dt) {
     t.flash.visible = Math.floor(t.t * 5) % 2 === 0;
     // Отброшенный заряд летит по дуге, бьётся о стены и катится по земле
     const p = t.mesh.position;
+    t.age += dt;
+    let grounded = false;
     if (t.vx || t.vy || t.vz || p.y - 0.5 > groundHeight(p.x, p.y - 0.2, p.z) + 0.01) {
       t.vy -= 20 * dt;
-      if (!hitsBlock(p.x + t.vx * dt, p.y - 0.45, p.z, 0.9)) p.x += t.vx * dt; else t.vx *= -0.3;
-      if (!hitsBlock(p.x, p.y - 0.45, p.z + t.vz * dt, 0.9)) p.z += t.vz * dt; else t.vz *= -0.3;
+      if (!hitsBlock(p.x + t.vx * dt, p.y - 0.45, p.z, 0.9)) p.x += t.vx * dt; else { t.vx *= -0.3; t.hit = true; }
+      if (!hitsBlock(p.x, p.y - 0.45, p.z + t.vz * dt, 0.9)) p.z += t.vz * dt; else { t.vz *= -0.3; t.hit = true; }
       p.y += t.vy * dt;
       const ground = groundHeight(p.x, p.y - 0.2, p.z);
       if (p.y - 0.5 <= ground) {
         p.y = ground + 0.5;
+        grounded = true;
         t.vy = t.vy < -4 ? -t.vy * 0.3 : 0;
         const g = Math.exp(-5 * dt); t.vx *= g; t.vz *= g;
         if (Math.hypot(t.vx, t.vz) < 0.05) t.vx = t.vz = 0;
       }
     }
+    if (t.impact && t.age > 0.3 && (grounded || t.hit)) t.t = 0;  // бомба взрывается при ударе
     if (t.t <= 0) { scene.remove(t.mesh); primed.splice(i, 1); tntBoom(t.mesh.position.clone(), t.own); }
   }
 }
@@ -4188,7 +4300,7 @@ function handleFx(f) {
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
   if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
   if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
-  if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null);
+  if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null, !!f.imp);
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
 
@@ -4253,7 +4365,7 @@ function updateWeapons(dt) {
   updatePrimed(dt);
   updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
-  const canCar = !!(drivingCar || (inGame && camMode === "first" && nearestCar())) ? "" : "none";
+  const canCar = !!(drivingCar || drivingPlane || (inGame && camMode === "first" && (nearestCar() || ((isAdmin() || !online) && nearestPlane())))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
 }
 
