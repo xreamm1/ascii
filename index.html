@@ -688,7 +688,12 @@ const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, 
 const carGeo = mergeParts([
   box(0.85, 0.22, 1.7, 0, 0.28, 0),                                                               // нижняя часть кузова
   [box(0.8, 0.08, 0.6, 0, 0.42, -0.55)[0].rotateX(0.08), 0, 0.42, -0.55], box(0.8, 0.1, 0.42, 0, 0.42, 0.66),   // капот и багажник
-  box(0.7, 0.03, 0.7, 0, 0.72, 0.1), box(0.62, 0.16, 0.7, 0, 0.64, 0.1),                          // крыша и кабина
+  box(0.7, 0.03, 0.7, 0, 0.72, 0.1),                                                              // крыша
+  ...[-1, 1].map(x => box(0.03, 0.1, 0.72, x * 0.33, 0.44, 0.1)),                                  // низ дверей
+  // салон: кабина не сплошная, внутри видны сиденья, торпедо и руль
+  ...[-1, 1].flatMap(x => [box(0.22, 0.18, 0.24, x * 0.15, 0.48, 0.12), box(0.22, 0.28, 0.05, x * 0.15, 0.6, 0.25)]),
+  box(0.58, 0.14, 0.2, 0, 0.46, 0.38), box(0.58, 0.26, 0.05, 0, 0.58, 0.47), box(0.6, 0.12, 0.14, 0, 0.45, -0.2),
+  [new THREE.TorusGeometry(0.075, 0.012, 6, 14).rotateX(1.15), -0.15, 0.56, -0.12], box(0.04, 0.1, 0.04, 0, 0.45, 0.05),
   ...[-1, 1].flatMap(x => [box(0.04, 0.2, 0.04, x * 0.33, 0.6, -0.26), box(0.04, 0.2, 0.04, x * 0.33, 0.6, 0.46), // стойки
     box(0.08, 0.05, 0.06, x * 0.45, 0.55, -0.22), box(0.02, 0.02, 0.1, x * 0.43, 0.4, 0.15),                       // зеркала и ручки дверей
     box(0.18, 0.07, 0.03, x * 0.28, 0.33, -0.87), box(0.16, 0.06, 0.03, x * 0.3, 0.33, 0.87)]),                    // фары и стоп-сигналы
@@ -700,17 +705,33 @@ const carGeo = mergeParts([
   [new THREE.BoxGeometry(0.62, 0.2, 0.02).rotateX(0.55), 0, 0.62, -0.28, 1], [new THREE.BoxGeometry(0.62, 0.2, 0.02).rotateX(-0.55), 0, 0.62, 0.5, 1],
   box(0.02, 0.15, 0.55, -0.32, 0.64, 0.1, 1), box(0.02, 0.15, 0.55, 0.32, 0.64, 0.1, 1)]).scale(2, 2, 2);
 
-// Стоящая машина — препятствие: тело игрока (на высоте f, ростом h) против её прямоугольника
+// Стоящая машина — препятствие и поверхность: кабина высотой 1.45, капот и багажник — 0.92.
+// Точка (x, z) в системе координат машины: вперёд — -z, кабина занимает z от -0.55 до 0.95
+function carLocal(m, x, z) {
+  const dx = x - m.position.x, dz = z - m.position.z, c = Math.cos(m.rotation.y), sn = Math.sin(m.rotation.y);
+  return [dx * c - dz * sn, dx * sn + dz * c];
+}
 function carHits(x, f, z, h) {
   for (const m of cars.values()) {
-    if (m === drivingCar) continue;
-    const dx = x - m.position.x, dz = z - m.position.z;
-    if (dx * dx + dz * dz > 20) continue;
-    const c = Math.cos(m.rotation.y), sn = Math.sin(m.rotation.y);
-    const lx = dx * c - dz * sn, lz = dx * sn + dz * c;  // точка в системе машины
-    if (Math.abs(lx) < 0.9 + RADIUS && Math.abs(lz) < 1.8 + RADIUS && f < m.position.y + 1.45 && f + h > m.position.y) return true;
+    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > 20) continue;
+    const [lx, lz] = carLocal(m, x, z), y = m.position.y;
+    if (Math.abs(lx) >= 0.9 + RADIUS || f + h <= y) continue;
+    if (Math.abs(lz) < 1.8 + RADIUS && f < y + 0.92 - 0.01) return true;                       // капот, багажник, низ кузова
+    if (lz > -0.55 - RADIUS && lz < 0.95 + RADIUS && f < y + 1.45 - 0.01) return true;          // кабина
   }
   return false;
+}
+// Высота крыши или капота под точкой — на машину можно встать (запрыгнуть с блока)
+function carTop(x, z, f) {
+  let top = -Infinity;
+  for (const m of cars.values()) {
+    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > 20) continue;
+    const [lx, lz] = carLocal(m, x, z);
+    if (Math.abs(lx) >= 0.9 || Math.abs(lz) >= 1.8) continue;
+    const t = m.position.y + (lz > -0.55 && lz < 0.95 ? 1.45 : 0.92);
+    if (t <= f + STEP) top = Math.max(top, t);
+  }
+  return top;
 }
 // Решётка: рамка и прутья посреди клетки (клетка при этом занята целиком)
 const grateGeo = mergeParts([box(1, 0.1, 0.12, 0, 0.45, 0), box(1, 0.1, 0.12, 0, -0.45, 0),
@@ -1055,6 +1076,7 @@ function groundHeight(x, f, z) {
         if (cy < Math.floor(f + STEP) && cellBlocks(cx, cy, cz, x, z)) { g = Math.max(g, cy + 1); break; }
       }
 
+  g = Math.max(g, carTop(x, z, f));
   downRay.set(new THREE.Vector3(x, f + STEP, z), new THREE.Vector3(0, -1, 0));
   const hit = downRay.intersectObjects([...planks.values()])[0];
   if (hit) g = Math.max(g, f + STEP - hit.distance);
