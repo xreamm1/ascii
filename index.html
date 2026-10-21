@@ -349,6 +349,7 @@ let REACH = 8;           // как далеко можно строить
 const SIZES = [0.25, 0.5, 1, 2, 4];
 const BASE = { RADIUS, HEIGHT, EYE, CROUCH_HEIGHT, CROUCH_EYE, STEP, MOVE_SPEED, REACH };
 let size = 1;
+let asInvis = false;  // невидимость: другие игроки тебя не видят
 let asBall = null;  // админ превратил себя в шарик ("verity" или "fat"): тело маленькое, как у шарика
 function setSize(k) {
   size = k;
@@ -1919,6 +1920,7 @@ addEventListener("keydown", e => {
   }
   if (e.code === "Tab") { e.preventDefault(); if (!e.repeat) pageDown(); }
   if (e.code === "KeyE" && !e.repeat && !menuOpen) toggleCar();
+  if (e.code === "KeyT" && !e.repeat && !menuOpen && !typing && (isAdmin() || !online)) { e.preventDefault(); askTeleport(); }
   if (e.code === "KeyR" && !e.repeat) startReload();
   if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
   if (e.code === "KeyF" && !e.repeat) togglePalette();
@@ -2627,7 +2629,8 @@ function updateAvatar(id, p) {
   a.yaw = p.yaw;
   a.size = Math.min(4, Math.max(0.25, +p.s || 1));
   a.group.scale.set(a.size, a.size * (p.cr ? 0.7 : 1), a.size);  // присел — фигурка ниже
-  a.group.visible = !p.dd;  // погибший пропадает, пока не возродится
+  a.invis = p.i === 1;
+  a.group.visible = !p.dd && !a.invis;  // погибший и невидимый пропадают
   setHand(a.group, typeof p.w === "string" ? p.w : null);
   setBallLook(a.group, p.v === 1 ? "verity" : BALL_TYPES[p.v] ? p.v : null);
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
@@ -2786,6 +2789,7 @@ async function joinLobby(code, me) {
     if (was && !isAdmin()) {
       addChat("* у тебя забрали админ-панель");
       asBall = null;
+      asInvis = false;
       flying = false;
       setSize(1);
       endDrone();
@@ -2802,7 +2806,7 @@ async function joinLobby(code, me) {
     }),
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
-      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(asInvis ? { i: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
       if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
@@ -2880,6 +2884,30 @@ function showAnnouncement(text, by) {
   clearTimeout(announceTimer);
   announceTimer = setTimeout(() => announceEl.style.display = "none", 8000);
 }
+
+// ---------- Координаты в углу экрана (админам) и телепорт по ним ----------
+const coordsEl = Object.assign(document.createElement("pre"), { id: "coords" });
+coordsEl.style.cssText = "position:fixed;left:16px;top:56px;z-index:20;margin:0;display:none;cursor:pointer;color:#fff;background:rgba(0,0,0,.45);padding:2px 6px";
+document.body.append(coordsEl);
+let lastCoords = "";
+function updateCoords() {
+  const show = inGame && (isAdmin() || !online) && camMode !== "drone";
+  const text = show ? `X ${px.toFixed(1)}  Y ${feet.toFixed(1)}  Z ${pz.toFixed(1)}\n${TOUCH ? "нажми" : "T"} — телепорт` : "";
+  if (text !== lastCoords) { lastCoords = text; coordsEl.textContent = text; coordsEl.style.display = show ? "block" : "none"; }
+}
+// Принимает «x y z» или «x z» (тогда встаём на землю)
+function askTeleport() {
+  if (!isAdmin() && online) return;
+  ask("ТЕЛЕПОРТ: x y z", `${Math.round(px)} ${Math.round(feet)} ${Math.round(pz)}`, 40).then(text => {
+    const n = String(text || "").split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (n.length < 2 || n.length > 3 || !n.every(v => Number.isFinite(v) && Math.abs(v) < 5000)) return text && addChat("* не понял координаты: нужно x y z");
+    px = n[0]; pz = n[n.length - 1];
+    feet = n.length === 3 ? n[1] : groundHeight(px, 300, pz);
+    vy = 0;
+    addChat(`* телепорт: ${px.toFixed(1)} ${feet.toFixed(1)} ${pz.toFixed(1)}`);
+  });
+}
+coordsEl.addEventListener("click", askTeleport);
 
 // ---------- Тролль-функции: разработчик шлёт игроку шутку, а его клиент её показывает ----------
 
@@ -3079,6 +3107,8 @@ function drawAdmin() {
     row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
     "║ " + `размер x${size}`.padEnd(14) + `<span class="act" data-a="smaller">[ - ]</span> <span class="act" data-a="bigger">[ + ]</span>` + " ".repeat(W - 1 - 25) + "║",
     row(`сейчас: ${views[camMode]}`),
+    row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
+    row("[ телепорт по координатам ]", "tpxyz"),
     ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -3115,6 +3145,8 @@ adminEl.addEventListener("click", e => {
     camMode = camMode === "free" ? "first" : "free";
     if (camMode === "free") freePos.copy(camera.position);
   }
+  if (a === "invis") asInvis = !asInvis;
+  if (a === "tpxyz") askTeleport();
   if (a.startsWith("ball:")) { const t = a.slice(5); asBall = asBall === t ? null : BALL_TYPES[t] ? t : null; setSize(size); }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
@@ -3201,7 +3233,7 @@ function updateOnline(dt) {
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
 
-    placeLabel(a.label, a.group.position, true, 2 * (a.size || 1));
+    placeLabel(a.label, a.group.position, !a.invis, 2 * (a.size || 1));
   }
   for (const m of cars.values()) {
     const t = m.userData.target;
@@ -3485,6 +3517,7 @@ function updateSelfFigure(dt) {
   selfPx = px; selfPz = pz;
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
+  selfMat.transparent = asInvis; selfMat.opacity = asInvis ? 0.35 : 1;
 
   selfLabel.textContent = devPrefix(isDev, prefixes[meId]) + nick;
   selfLabel.classList.toggle("dev", isDev);
@@ -4232,6 +4265,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   updateTroll(dt);
+  updateCoords();
   update(dt);
   applyTrollCam();
   updateGhosts();
