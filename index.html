@@ -266,17 +266,17 @@ const PLATE = 300;         // размер плиты в блоках: она е
 // поэтому символы там мельче — иначе их помещается в разы меньше, чем на компьютере
 const CELL_W = TOUCH ? 3 : 4;
 const CELL_H = TOUCH ? 5 : 7;
-const MOVE_SPEED = 5;      // блоков в секунду
+let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
 const STICK_RADIUS = 50;   // радиус джойстика в пикселях
 const TAP_MOVE = 10;       // если палец сдвинулся больше — это не нажатие, а движение
 const HOLD_TIME = 500;     // столько миллисекунд держать палец, чтобы убрать блок
-const RADIUS = 0.3;        // половина ширины игрока
-const HEIGHT = 1.75;       // рост игрока
-const EYE = 1.5;           // высота глаз
-const CROUCH_HEIGHT = 1.2; // рост, когда присел
-const CROUCH_EYE = 0.95;   // высота глаз, когда присел
+let RADIUS = 0.3;        // половина ширины игрока
+let HEIGHT = 1.75;       // рост игрока
+let EYE = 1.5;           // высота глаз
+let CROUCH_HEIGHT = 1.2; // рост, когда присел
+let CROUCH_EYE = 0.95;   // высота глаз, когда присел
 const CROUCH_SPEED = 0.45; // присевший идёт медленнее — во столько раз
 const FLY_SPEED = 8;       // полёт разработчика: скорость вверх-вниз
 const FREECAM_SPEED = 12;  // скорость свободной камеры
@@ -286,10 +286,23 @@ const BOOM_RADIUS = 3;     // на каком расстоянии от дрон
 const THIRD_DIST = 4;      // вид от третьего лица: на столько блоков камера позади игрока
 const DEV_NICK = "xreamm"; // ник разработчика: с ним спрашивается пароль
 const DEV_EMAIL = "xreamm@ascii-baseplate.game";  // аккаунт разработчика в Firebase Authentication
-const STEP = 0.3;          // на такую высоту можно зайти без прыжка (доски, пандусы)
+let STEP = 0.3;          // на такую высоту можно зайти без прыжка (доски, пандусы)
 const GRAVITY = 25;
-const JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25);  // прыжок на 1.25 блока
-const REACH = 8;           // как далеко можно строить
+let JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25);  // прыжок на 1.25 блока
+let REACH = 8;           // как далеко можно строить
+
+// Размер игрока: всё, что зависит от роста, пересчитывается от базовых значений
+const SIZES = [0.25, 0.5, 1, 2, 4];
+const BASE = { RADIUS, HEIGHT, EYE, CROUCH_HEIGHT, CROUCH_EYE, STEP, MOVE_SPEED, REACH };
+let size = 1;
+function setSize(k) {
+  size = k;
+  RADIUS = BASE.RADIUS * k; HEIGHT = BASE.HEIGHT * k; EYE = BASE.EYE * k;
+  CROUCH_HEIGHT = BASE.CROUCH_HEIGHT * k; CROUCH_EYE = BASE.CROUCH_EYE * k;
+  STEP = BASE.STEP * k; MOVE_SPEED = BASE.MOVE_SPEED * k; REACH = BASE.REACH * k;
+  JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25 * k);  // прыжок на 1.25 роста
+  aimRay.far = REACH;
+}
 const AIR_DIST = 4;        // точка доски в воздухе — на таком расстоянии перед глазами
 const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
@@ -858,9 +871,9 @@ function update(dt) {
   if (camMode === "third") {
     const back = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     camRay.set(camera.position, back);
-    camRay.far = THIRD_DIST;
+    camRay.far = THIRD_DIST * size;
     const hit = camRay.intersectObjects(solids)[0];
-    camera.position.addScaledVector(back, hit ? Math.max(0.3, hit.distance - 0.2) : THIRD_DIST);
+    camera.position.addScaledVector(back, hit ? Math.max(0.3, hit.distance - 0.2) : THIRD_DIST * size);
   }
 }
 
@@ -1561,7 +1574,8 @@ function updateAvatar(id, p) {
   const a = avatar(id);
   a.target.set(p.x, p.f, p.z);
   a.yaw = p.yaw;
-  a.group.scale.y = p.cr ? 0.7 : 1;  // присел — фигурка ниже
+  a.size = Math.min(4, Math.max(0.25, +p.s || 1));
+  a.group.scale.set(a.size, a.size * (p.cr ? 0.7 : 1), a.size);  // присел — фигурка ниже
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 16);
@@ -1660,6 +1674,7 @@ async function joinLobby(code, me) {
     if (was && !isAdmin()) {
       addChat("* у тебя забрали админ-панель");
       flying = false;
+      setSize(1);
       endDrone();
       if (camMode !== "first") camMode = "first";
       if (panel === adminEl) togglePanel(adminEl);
@@ -1673,7 +1688,7 @@ async function joinLobby(code, me) {
     }),
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
-      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev };
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size };
       if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
@@ -1735,6 +1750,7 @@ function drawAdmin() {
     row(`[ вид от 3-го лица: ${camMode === "third" ? "ВКЛ" : "выкл"} ]`, "third"),
     row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"),
     row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
+    "║ " + `размер x${size}`.padEnd(14) + `<span class="act" data-a="smaller">[ - ]</span> <span class="act" data-a="bigger">[ + ]</span>` + " ".repeat(W - 1 - 25) + "║",
     row(`сейчас: ${views[camMode]}`)];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -1754,6 +1770,7 @@ adminEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
   if (!a || !isAdmin()) return;
   if (a === "fly") { flying = !flying; vy = 0; }
+  if (a === "smaller" || a === "bigger") setSize(SIZES[Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(size) + (a === "bigger" ? 1 : -1)))]);
   if (a === "third" || a === "free") endDrone();
   // FPV дрон стартует из глаз игрока, игрок стоит на месте
   if (a === "drone") {
@@ -1788,9 +1805,9 @@ adminEl.addEventListener("click", e => {
 // и 8 раз в секунду шлём свою позицию
 // Ник над головой фигурки: точка над головой → координаты на экране.
 // За спиной, за краем экрана или далеко ник прячем
-function placeLabel(label, pos, visible) {
+function placeLabel(label, pos, visible, h = 2) {
   const p = pos.clone();
-  p.y += 2.0;
+  p.y += h;
   const far = p.distanceTo(camera.position) > 40;
   p.project(camera);
   const screen = renderer.domElement.getBoundingClientRect();
@@ -1807,7 +1824,7 @@ function updateOnline(dt) {
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
 
-    placeLabel(a.label, a.group.position, true);
+    placeLabel(a.label, a.group.position, true, 2 * (a.size || 1));
   }
   poseTimer += dt;
   if (online && poseTimer > 1 / 8) {
@@ -2014,14 +2031,14 @@ function updateSelfFigure(dt) {
   selfFigure.visible = camMode !== "first" && inGame;
   selfFigure.position.set(px, feet, pz);
   selfFigure.rotation.y = yaw;
-  selfFigure.scale.y = crouching ? 0.7 : 1;
+  selfFigure.scale.set(size, size * (crouching ? 0.7 : 1), size);
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
 
   selfLabel.textContent = devPrefix(isDev, prefixes[meId]) + nick;
   selfLabel.classList.toggle("dev", isDev);
   selfLabel.style.color = `rgb(${r},${g},${b})`;
-  placeLabel(selfLabel, selfFigure.position, selfFigure.visible);
+  placeLabel(selfLabel, selfFigure.position, selfFigure.visible, 2 * size);
 }
 
 function updateWorld(dt) {
