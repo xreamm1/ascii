@@ -238,6 +238,7 @@
     <pre class="button big" data-weapon data-action="fire" style="display: none">ОГОНЬ</pre>
     <pre class="button" data-weapon data-action="scope" style="display: none">ПРИЦЕЛ</pre>
     <pre class="button" data-weapon data-action="reload" style="display: none">ПЕРЕЗАР.</pre>
+    <pre class="button" data-action="zoom">ЗУМ</pre>
     <pre class="button big" data-action="crouch">СЕСТЬ</pre>
     <pre class="button big" data-action="jump">ПРЫЖОК</pre>
   </div>
@@ -291,7 +292,7 @@ const COLORS = [
 const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
-  null, null, "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
+  "Верити", null, "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
@@ -414,7 +415,13 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.Fog(0x000000, 20, 70);  // дальше — темнее
 
-const FOV = 70, ZOOM_FOV = 25;  // зум — пока держишь C
+const FOV = 70, ZOOM_FOV = 25;  // зум — пока держишь C; колесо мыши меняет его силу
+let zoomFov = ZOOM_FOV;
+addEventListener("wheel", e => {
+  if (!keys.KeyC || typing || !inGame) return;
+  e.preventDefault();
+  zoomFov = Math.min(60, Math.max(3, zoomFov * (e.deltaY < 0 ? 0.85 : 1 / 0.85)));
+}, { passive: false });
 const camera = new THREE.PerspectiveCamera(FOV, 1, NEAR, FAR);
 camera.rotation.order = "YXZ";
 
@@ -802,15 +809,17 @@ function carLocal(m, x, z) {
   const dx = x - m.position.x, dz = z - m.position.z, c = Math.cos(m.rotation.y), sn = Math.sin(m.rotation.y);
   return [dx * c - dz * sn, dx * sn + dz * c];
 }
-function carHits(x, f, z, h) {
+const carHits = (x, f, z, h) => !!carAt(x, f, z, h);
+// Какая машина занимает это место (или null)
+function carAt(x, f, z, h) {
   for (const m of cars.values()) {
     if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > 20) continue;
     const [lx, lz] = carLocal(m, x, z), y = m.position.y;
     if (Math.abs(lx) >= 0.9 + RADIUS || f + h <= y) continue;
-    if (Math.abs(lz) < 1.8 + RADIUS && f < y + 0.92 - 0.01) return true;                       // капот, багажник, низ кузова
-    if (lz > -0.55 - RADIUS && lz < 0.95 + RADIUS && f < y + 1.45 - 0.01) return true;          // кабина
+    if (Math.abs(lz) < 1.8 + RADIUS && f < y + 0.92 - 0.01) return m;                          // капот, багажник, низ кузова
+    if (lz > -0.55 - RADIUS && lz < 0.95 + RADIUS && f < y + 1.45 - 0.01) return m;             // кабина
   }
-  return false;
+  return null;
 }
 // Высота крыши или капота под точкой — на машину можно встать (запрыгнуть с блока)
 function carTop(x, z, f) {
@@ -862,6 +871,10 @@ const cupGeo = mergeParts([
 const friesGeo = mergeParts([
   ...P(0xd8262b, [new THREE.CylinderGeometry(0.2, 0.15, 0.24, 4).rotateY(Math.PI / 4), 0, -0.38, 0, 0], box(0.3, 0.03, 0.02, 0, -0.27, -0.14)),                              // картонная коробка
   ...P(0xf5c542, ...times(18, i => { const a = i * 0.9, r = 0.02 + (i % 4) * 0.04; return tbox(0.03, 0.28 - (i % 3) * 0.05, 0.03, Math.cos(a) * r, -0.16 - (i % 3) * 0.02, Math.sin(a) * r, Math.sin(a) * 0.12, a, Math.cos(a) * 0.12, 0); }))]);   // картошка
+// Верити: жёлтый смайл-шар, лицо смотрит на того, кто его поставил
+const verityGeo = mergeParts([...P(0xffd21a, ball(0.42, 0, -0.08, 0, 0)),
+  ...P(0x161616, ball(0.05, -0.14, 0.1, 0.355, 0, 1, 1.7, 0.5), ball(0.05, 0.14, 0.1, 0.355, 0, 1, 1.7, 0.5),
+    [new THREE.TorusGeometry(0.2, 0.022, 6, 18, Math.PI).rotateZ(Math.PI), 0, 0.0, 0.372])]);
 const coneGeo = mergeParts([...P(0x2e2e30, box(0.56, 0.04, 0.56, 0, -0.48, 0)), ...P(0xff6a1a, [new THREE.ConeGeometry(0.22, 0.75, 12), 0, -0.1, 0], [new THREE.SphereGeometry(0.03, 6, 6), 0, 0.28, 0]),
   ...P(0xf5f5f5, [cyl(0.165, 0.07), 0, -0.26, 0], [cyl(0.115, 0.07), 0, -0.06, 0])]);
 
@@ -975,7 +988,7 @@ const GLASSY = {
     box(0.9, 0.5, 0.06, 0, 0.2, 0.05), box(0.88, 0.48, 0.02, 0, 0.2, -0.045, 1), box(0.1, 0.22, 0.05, 0, -0.2, 0.05), box(0.5, 0.03, 0.26, 0, -0.485, 0.05))),
 };
 const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"], pizza: [pizzaGeo, "съел пиццу"], wings: [wingsGeo, "съел крылышки"], ball: [ballGeo, ""],
-  cone: [coneGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
+  cone: [coneGeo, ""], verity: [verityGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
@@ -1294,14 +1307,19 @@ function droneHits(p) {
 // Машина: W/S — газ и тормоз, A/D — руль, пробел — ручник (с ним машину заносит). E — сесть и выйти
 let carV = { x: 0, z: 0 }, carYaw = 0;
 
-function toggleCar() {
-  if (drivingCar) return exitCar();
-  if (camMode !== "first" || !inGame) return;
+// Ближайшая машина, в которую можно сесть
+function nearestCar() {
   let best = null, bestD = 6;
   for (const m of cars.values()) {
     const d = Math.hypot(m.position.x - px, m.position.z - pz);
     if (d < bestD && Math.abs(m.position.y - feet) < 3) { best = m; bestD = d; }
   }
+  return best;
+}
+function toggleCar() {
+  if (drivingCar) return exitCar();
+  if (camMode !== "first" || !inGame) return;
+  const best = nearestCar();
   if (!best) return;
   drivingCar = best;
   carYaw = best.rotation.y;
@@ -1323,6 +1341,36 @@ function exitCar() {
   scene.fog.near = 20; scene.fog.far = 70;
   yaw = carYaw;
   if (camMode === "car") camMode = "first";
+}
+
+// Отлетающие машины: считает тот, кто врезался, остальные видят их через обычную рассылку машин
+const flung = new Map();
+function launchCar(m, vx, vz, speed) {
+  const k = 0.3 + speed / 60;
+  flung.set(m, { vx: vx * k, vz: vz * k, vy: 3 + speed * 0.25, spin: (Math.random() - 0.5) * 5, air: 0, send: 0 });
+}
+function updateFlying(dt) {
+  for (const [m, f] of flung) {
+    let { x, y, z } = m.position;
+    if (!hitsBlock(x + f.vx * dt, y + 0.2, z, 1)) x += f.vx * dt; else f.vx *= -0.3;
+    if (!hitsBlock(x, y + 0.2, z + f.vz * dt, 1)) z += f.vz * dt; else f.vz *= -0.3;
+    f.vy -= 18 * dt;
+    const air = Math.exp(-0.8 * dt);
+    f.vx *= air; f.vz *= air;
+    y += f.vy * dt;
+    const ground = Math.max(0, groundHeight(x, y + 0.3, z));
+    if (y <= ground) { y = ground; f.vy = f.vy < -3 ? -f.vy * 0.3 : 0; const g = Math.exp(-3 * dt); f.vx *= g; f.vz *= g; f.spin *= g; }
+    f.air = y > ground + 0.05 ? f.air + dt : 0;
+    m.position.set(x, y, z);
+    m.rotation.y += f.spin * dt;
+    m.rotation.z = y > ground + 0.05 ? Math.sin(f.air * 4) * 0.25 : 0;
+    const e = m.userData.edit;
+    Object.assign(e, { x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +m.rotation.y.toFixed(2) });
+    f.send -= dt;
+    const done = Math.hypot(f.vx, f.vz) < 0.3 && y <= ground + 0.01 && Math.abs(f.vy) < 0.1;
+    if (done || f.send <= 0) { f.send = 0.125; online?.sendEdits([e]); }
+    if (done) { m.rotation.z = 0; flung.delete(m); }
+  }
 }
 
 function updateCar(dt) {
@@ -1350,8 +1398,18 @@ function updateCar(dt) {
   const blocked = (cx, cz) => [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]
     .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1));
   let x = m.position.x, z = m.position.z;
-  if (!blocked(x + carV.x * dt, z)) x += carV.x * dt; else carV.x *= -0.3;
-  if (!blocked(x, z + carV.z * dt)) z += carV.z * dt; else carV.z *= -0.3;
+  const speed = Math.hypot(carV.x, carV.z);
+  // Врезались в чужую машину на скорости — она отлетает
+  const rammed = (cx, cz) => {
+    for (const [a, b] of [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]) {
+      const o = carAt(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1);
+      if (o && o !== m) return o;
+    }
+    return null;
+  };
+  const hitCar = (cx, cz) => { const o = speed > 7 && rammed(cx, cz); if (o && !flung.has(o)) launchCar(o, carV.x, carV.z, speed); };
+  if (!blocked(x + carV.x * dt, z)) x += carV.x * dt; else { hitCar(x + carV.x * dt, z); carV.x *= -0.3; }
+  if (!blocked(x, z + carV.z * dt)) z += carV.z * dt; else { hitCar(x, z + carV.z * dt); carV.z *= -0.3; }
   m.position.set(x, Math.max(0, groundHeight(x, y, z)), z);
   m.rotation.y = carYaw;
   Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +carYaw.toFixed(2) });
@@ -1572,7 +1630,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Телевизор": "tv", "Раковина": "sink", "Верити": "verity", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -1865,9 +1923,15 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "fire") { firing = true; tryFire(); }
     if (action === "reload") startReload();
     if (action === "scope") toggleScope();
+    if (action === "zoom") {  // нажатия по кругу: 25° → 12° → 6° → выкл
+      const next = !keys.KeyC ? ZOOM_FOV : zoomFov > 20 ? 12 : zoomFov > 9 ? 6 : 0;
+      keys.KeyC = !!next;
+      if (next) zoomFov = next;
+      button.classList.toggle("active", !!next);
+    }
   });
   button.addEventListener("touchend", () => {
-    button.classList.remove("active");
+    if (action !== "zoom") button.classList.remove("active");
     if (action === "jump") keys.Space = false;
     if (action === "crouch") keys.ControlLeft = false;
     if (action === "fire") firing = false;
@@ -1882,7 +1946,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ " };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -2702,7 +2766,7 @@ function updateOnline(dt) {
   }
   for (const m of cars.values()) {
     const t = m.userData.target;
-    if (!t || m === drivingCar) continue;
+    if (!t || m === drivingCar || flung.has(m)) continue;
     m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
   }
@@ -3636,6 +3700,10 @@ function updateWeapons(dt) {
   updateRockets(dt);
   updateFx(dt);
   updateHelpers(dt);
+  updateFlying(dt);
+  const carBtn = document.querySelector('#touch [data-action="car"]');
+  const canCar = !!(drivingCar || (inGame && camMode === "first" && nearestCar())) ? "" : "none";
+  if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
 }
 
 // ---------- Главный цикл ----------
@@ -3684,7 +3752,8 @@ renderer.setAnimationLoop(now => {
     } else goodSince = 0;
   }
   // Зум на C: угол обзора плавно сужается, пока клавиша зажата
-  const fovTarget = scoped ? SCOPE_FOV : keys.KeyC && !typing ? ZOOM_FOV : FOV;
+  if (!keys.KeyC) zoomFov = ZOOM_FOV;
+  const fovTarget = scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 12);
     camera.updateProjectionMatrix();
