@@ -258,7 +258,9 @@ const COLORS = [
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
 const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа", "Машина", "Решётка", "Дерево", "Забор", "Бочка", "Ящик", "Кровать", "Диван",
-  "Вилка", "Ложка", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Вилка", "Ложка", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
+  "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Колонна", "Окно", "Клумба", "Телевизор", "Шкаф", "Раковина",
+  null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -315,13 +317,12 @@ const TEXT_H = 0.6;        // высота надписи в блоках
 const CHAT_TIME = 15000;   // через столько миллисекунд сообщение чата исчезает
 const NEAR = 0.1, FAR = 90;  // дальше тумана (70) всё равно чёрное — не рисуем
 
-// Символы для заливки. Порядок не важен: при запуске каждый измеряется по количеству
+// Символы для заливки — только блочные. Порядок не важен: при запуске каждый измеряется по количеству
 // "чернил" и раскладывается по SHADES ступеням яркости
-const CHARS = " .'`^\",:;Il!i><~+?][}{1)(tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$░▒▓█" +
-  "·¨¸¯´°¦¬¡¿|/\\_=-—×÷±²³µ§¶ÆØÅÐÞßЖЩЮЯБДЛПФЦЧШЭЪЫжщюяфцчшэ€£¥©®ΩΣΔΨΞ¤¢¥%$&@#";
+const CHARS = " ▮▁▂▃▄▣▆▇█▉▊▋▌▍▬▖❚❙❘𖣯▟▞▝▜▛▚▙▘▗∎▀▭▯▓▒░";
 const SHADES = 96;
 // Символы для контуров — по направлению грани
-const EDGES = "|\\-/";
+const EDGES = "▌▚▬▞";
 
 // ---------- Состояние игрока и интерфейса ----------
 
@@ -473,7 +474,7 @@ function updateLamps() {
     // Число источников света в сцене меняется только когда ламп нет совсем или появилась первая
     if (lamps.size && !light.parent) scene.add(light);
     if (!lamps.size && light.parent) scene.remove(light);
-    if (lamp) light.position.set(lamp.position.x, lamp.position.y + 0.8, lamp.position.z);
+    if (lamp) light.position.set(lamp.position.x, lamp.position.y + (lamp.userData.lightY ?? 0.8), lamp.position.z);
     light.intensity = lamp ? 2 * Math.PI : 0;
   });
 }
@@ -648,6 +649,7 @@ const MORE = {  // мебель и всякое: [геометрия, текст
   barrel: mergeParts([[cyl(0.4, 1), 0, 0, 0], [cyl(0.44, 0.08), 0, 0.3, 0], [cyl(0.44, 0.08), 0, -0.3, 0]]),
   crate: mergeParts([box(0.96, 0.96, 0.96, 0, 0, 0)]),
   bed: mergeParts([box(0.95, 0.5, 1, 0, -0.25, 0), box(0.95, 0.5, 0.1, 0, 0.25, 0.45), box(0.6, 0.1, 0.25, 0, 0.05, 0.3)]),
+  bench: mergeParts([box(1, 0.08, 0.45, 0, -0.06, 0), box(1, 0.35, 0.06, 0, 0.2, 0.2), box(0.08, 0.4, 0.4, -0.4, -0.3, 0), box(0.08, 0.4, 0.4, 0.4, -0.3, 0)]),
   sofa: mergeParts([box(0.95, 0.45, 0.9, 0, -0.275, -0.05), box(0.95, 0.5, 0.2, 0, 0.2, 0.4), box(0.15, 0.3, 0.9, -0.4, 0, -0.05), box(0.15, 0.3, 0.9, 0.4, 0, -0.05)]),
 };
 const forkGeo = mergeParts([box(0.05, 0.03, 0.55, 0, -0.47, 0.1), box(0.2, 0.03, 0.1, 0, -0.47, -0.22),
@@ -660,6 +662,21 @@ const friesGeo = mergeParts([box(0.36, 0.24, 0.16, 0, -0.38, 0),
   ...[-0.12, -0.08, -0.04, 0, 0.04, 0.08, 0.12].map((x, i) => box(0.04, 0.3, 0.04, x, -0.16 + (i % 2) * 0.04, (i % 3 - 1) * 0.03))]);
 // Предметы для кафе: прилавок, касса, терминал, витрина, плита, холодильник, урна (клетку занимают целиком)
 const counterParts = () => [box(1, 0.86, 0.9, 0, -0.07, 0), box(1, 0.07, 1, 0, 0.395, 0)];
+const coneGeo = mergeParts([[new THREE.ConeGeometry(0.22, 0.6, 10), 0, -0.2, 0], box(0.5, 0.05, 0.5, 0, -0.475, 0)]);
+const STREET = {  // улица и дом: тоже занимают клетку целиком
+  streetlamp: mergeParts([[cyl(0.2, 0.1), 0, -0.45, 0], [cyl(0.06, 3.2), 0, 1.1, 0], box(0.5, 0.12, 0.3, 0, 2.75, 0), box(0.3, 0.06, 0.2, 0, 2.66, 0)]),
+  traffic: mergeParts([[cyl(0.07, 2.6), 0, 0.8, 0], box(0.4, 1.1, 0.3, 0, 1.9, 0),
+    ...[2.2, 1.9, 1.6].map(y => [cyl(0.1, 0.05).rotateX(Math.PI / 2), 0, y, -0.17])]),
+  sign: mergeParts([[cyl(0.04, 1.8), 0, 0.4, 0], [new THREE.CylinderGeometry(0.38, 0.38, 0.05, 8).rotateX(Math.PI / 2), 0, 1.5, 0]]),
+  column: mergeParts([[cyl(0.4, 1), 0, 0, 0], box(0.9, 0.15, 0.9, 0, -0.425, 0), box(0.9, 0.15, 0.9, 0, 0.425, 0)]),
+  window: mergeParts([box(1, 0.12, 0.2, 0, 0.44, 0), box(1, 0.12, 0.2, 0, -0.44, 0), box(0.12, 1, 0.2, 0.44, 0, 0), box(0.12, 1, 0.2, -0.44, 0, 0),
+    box(0.04, 0.76, 0.08, 0, 0, 0), box(0.76, 0.04, 0.08, 0, 0, 0)]),
+  planter: mergeParts([box(0.9, 0.4, 0.9, 0, -0.3, 0), [new THREE.SphereGeometry(0.38, 10, 8), 0, 0.0, 0],
+    ...[[-0.25, 0.2], [0.25, -0.2], [0.2, 0.25]].map(([x, z]) => box(0.1, 0.1, 0.1, x, 0.38, z))]),
+  tv: mergeParts([box(0.9, 0.55, 0.08, 0, 0.1, 0), box(0.1, 0.25, 0.1, 0, -0.25, 0), box(0.5, 0.04, 0.3, 0, -0.48, 0)]),
+  wardrobe: mergeParts([box(0.95, 1.9, 0.6, 0, 0.45, 0), box(0.02, 1.7, 0.02, 0, 0.45, -0.31), box(0.04, 0.2, 0.04, -0.08, 0.45, -0.33), box(0.04, 0.2, 0.04, 0.08, 0.45, -0.33)]),
+  sink: mergeParts([...counterParts(), box(0.5, 0.04, 0.4, 0, 0.45, 0), [cyl(0.03, 0.3), 0, 0.58, 0.3], box(0.03, 0.03, 0.2, 0, 0.72, 0.2)]),
+};
 const KITCHEN = {
   counter: mergeParts(counterParts()),
   register: mergeParts([...counterParts(), box(0.55, 0.2, 0.4, 0, 0.53, 0.05), box(0.4, 0.3, 0.05, 0, 0.75, -0.08)]),
@@ -671,11 +688,11 @@ const KITCHEN = {
   bin: mergeParts([[cyl(0.3, 0.75), 0, -0.125, 0], [cyl(0.33, 0.06), 0, 0.28, 0]]),
 };
 const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"], pizza: [pizzaGeo, "съел пиццу"], wings: [wingsGeo, "съел крылышки"], ball: [ballGeo, ""],
-  fork: [forkGeo, ""], spoon: [spoonGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
+  fork: [forkGeo, ""], cone: [coneGeo, ""], spoon: [spoonGeo, ""], tray: [trayGeo, ""], cup: [cupGeo, "выпил напиток"], fries: [friesGeo, "съел картошку фри"] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
-const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45 };
+const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.48 };
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
@@ -688,8 +705,9 @@ function lowTop(cx, cy, cz, x, z) {
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
-  if (e.k in KITCHEN) {
-    const m = new THREE.Mesh(KITCHEN[e.k], material(foodTex, e.c));
+  if (e.k in KITCHEN || e.k in STREET) {
+    const m = new THREE.Mesh(KITCHEN[e.k] || STREET[e.k], material(foodTex, e.c));
+    if (e.k === "streetlamp") { lamps.add(m); m.userData.lightY = 2.7; }
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     m.rotation.y = (e.r || 0) * Math.PI / 2;
     return m;
@@ -1197,7 +1215,8 @@ function updateGhosts() {
 // Какой предмет хотбара какой "вид" блока ставит
 const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table",
   "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Дерево": "tree", "Забор": "fence", "Бочка": "barrel", "Ящик": "crate", "Кровать": "bed", "Диван": "sofa", "Вилка": "fork", "Ложка": "spoon", "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter",
-  "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove", "Холодильник": "fridge", "Урна": "bin", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove", "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Колонна": "column",
+  "Окно": "window", "Клумба": "planter", "Телевизор": "tv", "Шкаф": "wardrobe", "Раковина": "sink", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car") return;
@@ -1229,7 +1248,7 @@ function use(action, screen) {
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "chair", "stairs", "barrier", "grate", "fence", "bed", "sofa", ...Object.keys(KITCHEN), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["ramp", "chair", "stairs", "barrier", "grate", "fence", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "barrier") {
       e.open = false;
       // Стрела не должна упираться в чужие блоки
@@ -1497,7 +1516,8 @@ const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
 const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Дерево": " ▲▲ ", "Забор": "┼─┼─", "Бочка": "(▒▒)", "Ящик": "[##]", "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Вилка": "╥╥╥ ", "Ложка": " ◖─ ", "Поднос": "▂▂▂▂", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤",
-  "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐", "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
+  "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐", "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Колонна": "▐██▌", "Окно": "╬╬╬╬",
+  "Клумба": "▄♣▄ ", "Телевизор": "▐▓▓▌", "Шкаф": "┃┃┃┃", "Раковина": "╤▄╤ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1753,20 +1773,56 @@ function buildFont(cw, ch) {
   font.width = cw * (SHADES + EDGES.length);
   font.height = ch;
   const ctx = font.getContext("2d", { willReadFrequently: true });
-  ctx.font = Math.min(ch, cw / 0.6) + "px Consolas, 'Courier New', monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
+  // Блочные символы рисуем сами, прямоугольниками: так они одинаковые на любом устройстве,
+  // без швов и не зависят от того, есть ли такой знак в шрифте
+  // четверти клетки: [столбец, строка]
+  const quads = (...list) => list.map(q => ["rect", q[0] / 2, q[1] / 2, (q[0] + 1) / 2, (q[1] + 1) / 2]);
+  const SHAPES = {
+    " ": [], "█": [["rect", 0, 0, 1, 1]], "▀": [["rect", 0, 0, 1, 0.5]],
+    "▁": [["rect", 0, 7 / 8, 1, 1]], "▂": [["rect", 0, 6 / 8, 1, 1]], "▃": [["rect", 0, 5 / 8, 1, 1]], "▄": [["rect", 0, 0.5, 1, 1]],
+    "▆": [["rect", 0, 2 / 8, 1, 1]], "▇": [["rect", 0, 1 / 8, 1, 1]],
+    "▉": [["rect", 0, 0, 7 / 8, 1]], "▊": [["rect", 0, 0, 6 / 8, 1]], "▋": [["rect", 0, 0, 5 / 8, 1]], "▌": [["rect", 0, 0, 0.5, 1]], "▍": [["rect", 0, 0, 3 / 8, 1]],
+    "▘": quads([0, 0]), "▝": quads([1, 0]), "▖": quads([0, 1]), "▗": quads([1, 1]),
+    "▚": quads([0, 0], [1, 1]), "▞": quads([1, 0], [0, 1]),
+    "▙": quads([0, 0], [0, 1], [1, 1]), "▛": quads([0, 0], [1, 0], [0, 1]), "▜": quads([0, 0], [1, 0], [1, 1]), "▟": quads([1, 0], [0, 1], [1, 1]),
+    "░": [["dots", 4]], "▒": [["dots", 2]], "▓": [["dots", 3]],
+    "▮": [["rect", 0.3, 0.1, 0.7, 0.9]], "▬": [["rect", 0.1, 0.4, 0.9, 0.6]], "∎": [["rect", 0.3, 0.35, 0.7, 0.65]],
+    "▯": [["frame", 0.3, 0.1, 0.7, 0.9]], "▭": [["frame", 0.1, 0.3, 0.9, 0.7]],
+    "▣": [["frame", 0.1, 0.2, 0.9, 0.8], ["rect", 0.4, 0.4, 0.6, 0.6]],
+    "❚": [["rect", 0.35, 0.1, 0.65, 0.9]], "❙": [["rect", 0.4, 0.1, 0.6, 0.9]], "❘": [["rect", 0.45, 0.1, 0.55, 0.9]],
+    "𖣯": [["ring"]],
+  };
+  const R = (v, n) => Math.round(v * n);
   function draw(c, i) {
+    const x0 = i * cw;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(i * cw, 0, cw, ch);  // символ не вылезает за свою клетку
+    ctx.rect(x0, 0, cw, ch);  // символ не вылезает за свою клетку
     ctx.clip();
     ctx.fillStyle = "#000";
-    ctx.fillRect(i * cw, 0, cw, ch);
+    ctx.fillRect(x0, 0, cw, ch);
     ctx.fillStyle = "#fff";
-    if (c === "█") ctx.fillRect(i * cw, 0, cw, ch);  // сплошной блок без щелей
-    else ctx.fillText(c, i * cw + cw / 2, ch / 2);
+    for (const [kind, ...v] of SHAPES[c] || []) {
+      if (kind === "rect") ctx.fillRect(x0 + R(v[0], cw), R(v[1], ch), Math.max(1, R(v[2], cw) - R(v[0], cw)), Math.max(1, R(v[3], ch) - R(v[1], ch)));
+      if (kind === "frame") {
+        const [x1, y1, x2, y2] = [x0 + R(v[0], cw), R(v[1], ch), x0 + R(v[2], cw), R(v[3], ch)];
+        ctx.fillRect(x1, y1, x2 - x1, 1); ctx.fillRect(x1, y2 - 1, x2 - x1, 1);
+        ctx.fillRect(x1, y1, 1, y2 - y1); ctx.fillRect(x2 - 1, y1, 1, y2 - y1);
+      }
+      if (kind === "dots") {  // тени ░▒▓ — шахматка: каждая 4-я, 2-я или 3 из 4 точек
+        for (let py = 0; py < ch; py++) for (let px = 0; px < cw; px++) {
+          const on = v[0] === 4 ? px % 2 === 0 && py % 2 === 0 : v[0] === 2 ? (px + py) % 2 === 0 : !(px % 2 === 1 && py % 2 === 1);
+          if (on) ctx.fillRect(x0 + px, py, 1, 1);
+        }
+      }
+      if (kind === "ring") {
+        ctx.beginPath();
+        ctx.arc(x0 + cw / 2, ch / 2, Math.min(cw, ch) * 0.35, 0, Math.PI * 2);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
@@ -1785,6 +1841,8 @@ function buildFont(cw, ch) {
     const want = i / (SHADES - 1) * maxInk;
     let best = measured[0];
     for (const m of measured) if (Math.abs(m.ink - want) < Math.abs(best.ink - want)) best = m;
+    // Ровные символы (пусто, ░▒▓, █) берём, если они почти так же подходят: иначе поверхности выходят полосатыми
+    for (const m of measured) if (" ░▒▓█".includes(m.c) && Math.abs(m.ink - want) <= 0.07) best = m;
     draw(best.c, i);
   }
   [...EDGES].forEach((c, i) => draw(c, SHADES + i));
