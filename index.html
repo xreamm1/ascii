@@ -319,7 +319,9 @@ const NEAR = 0.1, FAR = 90;  // дальше тумана (70) всё равно
 
 // Символы для заливки — только блочные. Порядок не важен: при запуске каждый измеряется по количеству
 // "чернил" и раскладывается по SHADES ступеням яркости
-const CHARS = " ▮▁▂▃▄▣▆▇█▉▊▋▌▍▬▖❚❙❘𖣯▟▞▝▜▛▚▙▘▗∎▀▭▯▓▒░";
+const CHARS = " ▮▁▂▃▄▣▆▇█▉▊▋▌▍▬▖❚❙❘𖣯▟▞▝▜▛▚▙▘▗∎▀▭▯▓▒░" +
+  "𖡎☡  ༘෴؄ᔐᔑᔓᔕ𖡬𖢦꧖𖨂𖦹⎛⎝⎞⎠⌇⦚𓎆𓍲𓍱𓏲𓂅𓂃𖨘𖥾𖤩𖣿𖣸𖥷𖣢⫸𓇮∆∇◿◺◹◸◮◭◬◥◤◣◢◅⊿▲△▴▵▷▸▹►▻▼▽▾▿◁◂◄" +
+  "𝕏Ⓧ🅧🅇🆇⛝⛒⛌𒉽×☓✕⨯☐☒✗✘Χχꭓᚷ⊗⨷ₓˣ⨉";
 const SHADES = 96;
 // Символы для контуров — по направлению грани
 const EDGES = "▌▚▬▞";
@@ -1791,7 +1793,38 @@ function buildFont(cw, ch) {
     "▣": [["frame", 0.1, 0.2, 0.9, 0.8], ["rect", 0.4, 0.4, 0.6, 0.6]],
     "❚": [["rect", 0.35, 0.1, 0.65, 0.9]], "❙": [["rect", 0.4, 0.1, 0.6, 0.9]], "❘": [["rect", 0.45, 0.1, 0.55, 0.9]],
     "𖣯": [["ring"]],
+    "◢": [["poly", 1, 0, 1, 1, 0, 1]], "◿": [["poly", 1, 0, 1, 1, 0, 1]], "⊿": [["poly", 1, 0, 1, 1, 0, 1]],
+    "◣": [["poly", 0, 0, 0, 1, 1, 1]], "◺": [["poly", 0, 0, 0, 1, 1, 1]],
+    "◤": [["poly", 0, 0, 1, 0, 0, 1]], "◸": [["poly", 0, 0, 1, 0, 0, 1]],
+    "◥": [["poly", 0, 0, 1, 0, 1, 1]], "◹": [["poly", 0, 0, 1, 0, 1, 1]],
+    "▲": [["poly", 0.5, 0.1, 0.9, 0.9, 0.1, 0.9]], "▴": [["poly", 0.5, 0.25, 0.8, 0.75, 0.2, 0.75]], "∆": [["poly", 0.5, 0.1, 0.9, 0.9, 0.1, 0.9]],
+    "▼": [["poly", 0.1, 0.1, 0.9, 0.1, 0.5, 0.9]], "▾": [["poly", 0.2, 0.25, 0.8, 0.25, 0.5, 0.75]], "∇": [["poly", 0.1, 0.1, 0.9, 0.1, 0.5, 0.9]],
+    "►": [["poly", 0.1, 0.1, 0.9, 0.5, 0.1, 0.9]], "▸": [["poly", 0.2, 0.25, 0.8, 0.5, 0.2, 0.75]],
+    "◄": [["poly", 0.9, 0.1, 0.1, 0.5, 0.9, 0.9]], "◂": [["poly", 0.8, 0.25, 0.2, 0.5, 0.8, 0.75]],
   };
+  // Остальные знаки рисуем шрифтом, если он есть на устройстве; недостающие просто пропускаются
+  const FONT = '"Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", "Noto Sans Egyptian Hieroglyphs", "Noto Sans Bamum", "Noto Sans Math", "DejaVu Sans", "Apple Symbols", "Arial Unicode MS", monospace';
+  const probe = document.createElement("canvas");
+  probe.width = probe.height = 32;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  const look = c => {
+    pctx.clearRect(0, 0, 32, 32);
+    pctx.font = `24px ${FONT}`;
+    pctx.textAlign = "center";
+    pctx.textBaseline = "middle";
+    pctx.fillStyle = "#000";
+    pctx.fillText(c + "\uFE0E", 16, 16);
+    return pctx.getImageData(0, 0, 32, 32).data;
+  };
+  const missing = look("\u{10FFFE}").join();  // как выглядит "нет такого знака"
+  const hasGlyph = c => {
+    if (SHAPES[c]) return true;
+    const d = look(c);
+    let ink = 0;
+    for (let i = 3; i < d.length; i += 4) ink += d[i];
+    return ink > 0 && d.join() !== missing;
+  };
+
   const R = (v, n) => Math.round(v * n);
   function draw(c, i) {
     const x0 = i * cw;
@@ -1802,6 +1835,12 @@ function buildFont(cw, ch) {
     ctx.fillStyle = "#000";
     ctx.fillRect(x0, 0, cw, ch);
     ctx.fillStyle = "#fff";
+    if (!SHAPES[c]) {
+      ctx.font = `${Math.round(ch * 0.9)}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(c + "\uFE0E", x0 + cw / 2, ch / 2);
+    }
     for (const [kind, ...v] of SHAPES[c] || []) {
       if (kind === "rect") ctx.fillRect(x0 + R(v[0], cw), R(v[1], ch), Math.max(1, R(v[2], cw) - R(v[0], cw)), Math.max(1, R(v[3], ch) - R(v[1], ch)));
       if (kind === "frame") {
@@ -1815,6 +1854,14 @@ function buildFont(cw, ch) {
           if (on) ctx.fillRect(x0 + px, py, 1, 1);
         }
       }
+      if (kind === "poly") {
+        ctx.beginPath();
+        ctx.moveTo(x0 + v[0] * cw, v[1] * ch);
+        ctx.lineTo(x0 + v[2] * cw, v[3] * ch);
+        ctx.lineTo(x0 + v[4] * cw, v[5] * ch);
+        ctx.closePath();
+        ctx.fill();
+      }
       if (kind === "ring") {
         ctx.beginPath();
         ctx.arc(x0 + cw / 2, ch / 2, Math.min(cw, ch) * 0.35, 0, Math.PI * 2);
@@ -1827,7 +1874,7 @@ function buildFont(cw, ch) {
   }
 
   // Сколько "чернил" у каждого символа: рисуем его и считаем среднюю яркость
-  const measured = [...CHARS].map(c => {
+  const measured = [...new Set(CHARS)].filter(hasGlyph).map(c => {
     draw(c, 0);
     const data = ctx.getImageData(0, 0, cw, ch).data;
     let sum = 0;
