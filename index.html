@@ -291,7 +291,8 @@ const COLORS = [
 const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
-  null, null, "Нож", "Меч", "АК", "АВП", "Базука",  // страница оружия (Q — быстро открыть)  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  null, null, "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
+  null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -1793,7 +1794,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -2947,61 +2948,129 @@ gameEl.addEventListener("click", e => {
   if (a === "exit") leave("");
 });
 
-// ---------- Оружие: нож, меч, АК, АВП, базука ----------
-// Модели собраны из частей, как остальные предметы. Материалы: 0 — металл, 1 — тёмный пластик и сталь, 2 — дерево, 3 — светлая сталь (клинки, линзы).
+// ---------- Оружие: ближний бой, пистолеты, автоматы, дробовик, снайперка, базука и гранаты ----------
+// Модели собраны из десятков частей. Материалы: 0 — металл, 1 — тёмный пластик и воронёная сталь, 2 — дерево и кожа, 3 — светлая сталь (клинки, линзы).
 // У всех оружий ствол или клинок смотрит в -z, начало координат — у рукояти.
 
 const weaponMats = [0x9aa0a8, 0x35373d, 0x8b5a2b, 0xe6eaee].map(c => new THREE.MeshLambertMaterial({ color: c }));
-const zcyl = (r, len, x, y, z, mat) => [new THREE.CylinderGeometry(r, r, len, 14).rotateX(Math.PI / 2), x, y, z, mat];
+const zcyl = (r, len, x, y, z, mat, seg = 16) => [new THREE.CylinderGeometry(r, r, len, seg).rotateX(Math.PI / 2), x, y, z, mat];
+// Конус вдоль z: rFront — радиус у переднего (-z) конца, rBack — у заднего
+const zcone = (rFront, rBack, len, x, y, z, mat, seg = 16) => [new THREE.CylinderGeometry(rBack, rFront, len, seg).rotateX(Math.PI / 2), x, y, z, mat];
+const xcyl = (r, len, x, y, z, mat) => [new THREE.CylinderGeometry(r, r, len, 10).rotateZ(Math.PI / 2), x, y, z, mat];
+const ring = (r, tube, x, y, z, mat) => [new THREE.TorusGeometry(r, tube, 6, 18), x, y, z, mat];
+const sph = (r, x, y, z, mat, sx = 1, sy = 1, sz = 1) => [new THREE.SphereGeometry(r, 12, 10).scale(sx, sy, sz), x, y, z, mat];
 const rbox = (w, h, d, x, y, z, rx, mat) => [new THREE.BoxGeometry(w, h, d).rotateX(rx), x, y, z, mat];
 const blade = (w, len, z, mat) => [new THREE.ConeGeometry(w * 0.72, len, 4).rotateY(Math.PI / 4).rotateX(-Math.PI / 2).scale(1, 0.2, 1), 0, 0, z, mat];
+const range = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 
 const WEAPON_GEO = {
   "Нож": mergeParts([
-    box(0.04, 0.01, 0.2, 0, 0, -0.18, 3), blade(0.045, 0.1, -0.33, 3), box(0.044, 0.012, 0.16, 0, 0.008, -0.16, 0),                  // клинок, остриё, обух
-    box(0.075, 0.022, 0.016, 0, 0, -0.075, 1),                                                                                       // гарда
-    box(0.036, 0.05, 0.13, 0, 0, 0, 2), box(0.04, 0.055, 0.02, 0, 0, 0.075, 1), box(0.01, 0.054, 0.01, 0, 0, -0.03, 3), box(0.01, 0.054, 0.01, 0, 0, 0.03, 3)]),
+    box(0.038, 0.007, 0.17, 0, 0, -0.175, 3), blade(0.04, 0.075, -0.298, 3), box(0.034, 0.014, 0.15, 0, 0.007, -0.165, 0), box(0.012, 0.009, 0.1, 0, -0.004, -0.15, 1),   // клинок, остриё, обух, дол
+    ...range(5, i => box(0.01, 0.01, 0.012, 0, 0.016, -0.12 - i * 0.022, 3)),                                                                                          // пила на обухе
+    box(0.075, 0.02, 0.014, 0, 0, -0.082, 1), box(0.052, 0.028, 0.022, 0, 0, -0.068, 0),                                                                               // гарда и болстер
+    box(0.034, 0.046, 0.125, 0, 0, 0, 1), ...[-0.04, -0.02, 0, 0.02, 0.04].map(z => box(0.038, 0.05, 0.007, 0, 0, z, 1)),                                                // рукоять с насечками
+    box(0.04, 0.052, 0.018, 0, 0, 0.074, 0), [new THREE.TorusGeometry(0.008, 0.003, 6, 10).rotateY(Math.PI / 2), 0, 0, 0.09, 0],                                         // навершие и ушко
+    xcyl(0.005, 0.04, 0, 0, -0.02, 3), xcyl(0.005, 0.04, 0, 0, 0.03, 3)]),                                                                                                // заклёпки
   "Меч": mergeParts([
-    box(0.065, 0.012, 0.7, 0, 0, -0.5, 3), blade(0.065, 0.16, -0.93, 3), box(0.022, 0.014, 0.5, 0, 0, -0.45, 0),                    // клинок, остриё, долы
-    box(0.28, 0.03, 0.04, 0, 0, -0.12, 1), box(0.03, 0.04, 0.055, -0.14, 0, -0.12, 1), box(0.03, 0.04, 0.055, 0.14, 0, -0.12, 1),   // гарда
-    zcyl(0.018, 0.2, 0, 0, 0.0, 2), zcyl(0.022, 0.014, 0, 0, -0.05, 1), zcyl(0.022, 0.014, 0, 0, 0.0, 1), zcyl(0.022, 0.014, 0, 0, 0.05, 1),
-    [new THREE.SphereGeometry(0.03, 10, 8), 0, 0, 0.125, 1]]),
+    box(0.07, 0.01, 0.3, 0, 0, -0.3, 3), box(0.064, 0.01, 0.2, 0, 0, -0.55, 3), box(0.056, 0.01, 0.16, 0, 0, -0.73, 3), blade(0.05, 0.16, -0.89, 3),                   // клинок с сужением и остриём
+    box(0.02, 0.013, 0.62, 0, 0, -0.5, 0), box(0.008, 0.014, 0.6, 0, 0, -0.5, 3),                                                                                        // дол
+    box(0.052, 0.014, 0.04, 0, 0, -0.14, 3),                                                                                                                              // рикассо
+    box(0.05, 0.035, 0.045, 0, 0, -0.1, 1),                                                                                                                               // центр гарды
+    [new THREE.BoxGeometry(0.11, 0.025, 0.03).rotateY(0.18), -0.08, 0, -0.105, 1], [new THREE.BoxGeometry(0.11, 0.025, 0.03).rotateY(-0.18), 0.08, 0, -0.105, 1],      // изогнутые рога
+    sph(0.018, -0.14, 0, -0.115, 0), sph(0.018, 0.14, 0, -0.115, 0),
+    zcone(0.016, 0.02, 0.2, 0, 0, 0.0, 2), ...range(8, i => zcyl(0.021, 0.007, 0, 0, -0.085 + i * 0.024, 1)),                                                            // рукоять в оплётке
+    sph(0.03, 0, 0, 0.125, 1), zcyl(0.034, 0.012, 0, 0, 0.1, 0)]),                                                                                                       // яблоко
+  "Топор": mergeParts([
+    zcone(0.02, 0.026, 0.8, 0, 0, -0.25, 2), ...range(6, i => zcyl(0.028, 0.012, 0, 0, 0.1 - i * 0.03, 1)), sph(0.03, 0, 0, 0.17, 2),                                    // топорище, обмотка, пятка
+    box(0.05, 0.12, 0.09, 0, 0, -0.62, 1), box(0.06, 0.04, 0.1, 0, 0.07, -0.62, 0), box(0.06, 0.04, 0.1, 0, -0.07, -0.62, 0),                                          // проух
+    [new THREE.BoxGeometry(0.014, 0.26, 0.17).rotateX(0), 0.05, 0, -0.64, 3], [new THREE.BoxGeometry(0.01, 0.3, 0.1).rotateX(0), 0.078, 0, -0.655, 3],               // лезвие и фаска
+    box(0.01, 0.31, 0.012, 0.087, 0, -0.7, 3),                                                                                                                            // кромка
+    box(0.05, 0.03, 0.12, -0.05, 0, -0.6, 0), box(0.03, 0.025, 0.06, -0.09, 0, -0.58, 0),                                                                                // обух и шип
+    sph(0.012, 0.06, 0.12, -0.6, 3), sph(0.012, 0.06, -0.12, -0.6, 3)]),
+  "Бита": mergeParts([
+    zcone(0.045, 0.017, 0.8, 0, 0, -0.35, 2), zcyl(0.047, 0.012, 0, 0, -0.74, 1), zcyl(0.02, 0.22, 0, 0, 0.02, 1),                                                         // бита, торец, обмотка
+    ...range(7, i => zcyl(0.021, 0.006, 0, 0, -0.07 + i * 0.03, 0)), sph(0.024, 0, 0, 0.08, 2, 1, 1, 0.5),                                                              // кольца и пятка
+    zcyl(0.046, 0.004, 0, 0, -0.55, 1), zcyl(0.04, 0.004, 0, 0, -0.38, 1)]),
+  "Пистолет": mergeParts([
+    box(0.032, 0.036, 0.19, 0, 0.03, -0.04, 1), ...range(5, i => box(0.034, 0.03, 0.004, 0, 0.03, 0.04 + i * 0.01, 0)),                                                    // затвор и насечки
+    box(0.034, 0.012, 0.045, 0, 0.04, -0.035, 0), box(0.008, 0.012, 0.008, 0, 0.054, -0.125, 0), box(0.024, 0.01, 0.01, 0, 0.054, 0.04, 0),                                // окно, мушка, целик
+    zcyl(0.008, 0.012, 0, 0.026, -0.14, 0),                                                                                                                              // дульный срез
+    box(0.03, 0.025, 0.2, 0, 0.003, -0.03, 1), box(0.02, 0.008, 0.045, 0, -0.012, -0.075, 1),                                                                           // рамка и рельс
+    box(0.022, 0.006, 0.05, 0, -0.018, -0.02, 1), box(0.022, 0.02, 0.006, 0, -0.008, -0.048, 1), box(0.006, 0.018, 0.006, 0, -0.012, -0.005, 0),                          // скоба, спуск
+    rbox(0.032, 0.1, 0.05, 0, -0.06, 0.065, -0.2, 1), ...range(3, i => rbox(0.034, 0.008, 0.052, 0, -0.04 - i * 0.025, 0.07 - i * 0.005, -0.2, 0)),                      // рукоять и насечки
+    rbox(0.034, 0.01, 0.056, 0, -0.112, 0.08, -0.2, 0)]),
+  "Дробовик": mergeParts([
+    box(0.05, 0.075, 0.22, 0, 0, 0.05, 1), box(0.052, 0.02, 0.08, 0, 0.015, 0.03, 0), box(0.056, 0.006, 0.2, 0, 0.04, 0.05, 0),                                          // ствольная коробка
+    zcyl(0.017, 0.7, 0, 0.02, -0.6, 1), zcyl(0.015, 0.55, 0, -0.012, -0.5, 1), zcyl(0.02, 0.02, 0, -0.012, -0.78, 1), sph(0.008, 0, 0.042, -0.95, 0),                    // ствол, трубчатый магазин, колпачок, мушка
+    box(0.055, 0.045, 0.18, 0, -0.015, -0.4, 2), ...range(6, i => box(0.058, 0.048, 0.006, 0, -0.015, -0.33 - i * 0.025, 1)),                                            // цевьё с ребристостью
+    rbox(0.05, 0.11, 0.3, 0, -0.03, 0.34, 0.08, 2), box(0.052, 0.14, 0.02, 0, -0.04, 0.5, 1), box(0.05, 0.03, 0.2, 0, 0.04, 0.3, 2),                                      // приклад, затылок, щека
+    rbox(0.04, 0.1, 0.045, 0, -0.07, 0.17, -0.35, 2), box(0.025, 0.006, 0.07, 0, -0.045, 0.09, 1), box(0.006, 0.02, 0.006, 0, -0.03, 0.1, 0),                              // рукоять, скоба, спуск
+    box(0.012, 0.012, 0.04, 0.03, 0.01, 0.05, 3), sph(0.012, 0.035, 0.01, 0.08, 3)]),                                                                                    // рукоять затвора
+  "МП5": mergeParts([
+    box(0.045, 0.07, 0.28, 0, 0, 0.02, 1), box(0.04, 0.015, 0.26, 0, 0.043, 0.02, 0),                                                                                    // коробка
+    zcyl(0.022, 0.2, 0, 0.01, -0.26, 1), ...range(4, i => ring(0.023, 0.003, 0, 0.01, -0.18 - i * 0.045, 0)), zcyl(0.01, 0.1, 0, 0.01, -0.42, 0), zcyl(0.014, 0.03, 0, 0.01, -0.47, 1), // кожух, рёбра, ствол, ПБС
+    box(0.052, 0.055, 0.14, 0, -0.005, -0.2, 1), ...range(4, i => box(0.054, 0.057, 0.005, 0, -0.005, -0.15 - i * 0.03, 0)),                                              // цевьё
+    rbox(0.03, 0.09, 0.05, 0, -0.075, 0.01, 0, 1), rbox(0.03, 0.09, 0.05, 0, -0.15, -0.01, 0.2, 1), rbox(0.03, 0.09, 0.05, 0, -0.22, -0.04, 0.4, 1),                    // изогнутый магазин
+    zcyl(0.012, 0.02, 0, 0.058, 0.12, 1), ring(0.017, 0.003, 0, 0.06, -0.38, 0), box(0.006, 0.03, 0.006, 0, 0.055, -0.38, 0),                                            // диоптр и мушка
+    rbox(0.035, 0.1, 0.04, 0, -0.075, 0.1, -0.3, 1), box(0.022, 0.006, 0.07, 0, -0.04, 0.05, 1),                                                                         // рукоять, скоба
+    zcyl(0.007, 0.2, -0.02, 0, 0.3, 0), zcyl(0.007, 0.2, 0.02, 0, 0.3, 0), box(0.045, 0.075, 0.015, 0, 0, 0.4, 1)]),                                                    // телескопический приклад
   "АК": mergeParts([
-    box(0.07, 0.095, 0.4, 0, 0, 0, 0), box(0.06, 0.025, 0.36, 0, 0.058, 0, 0), box(0.04, 0.03, 0.05, 0, 0.085, 0.14, 1),            // ствольная коробка, крышка, целик
-    zcyl(0.014, 0.52, 0, 0.012, -0.52, 1), zcyl(0.011, 0.3, 0, 0.052, -0.4, 0), box(0.035, 0.05, 0.05, 0, 0.03, -0.56, 1),           // ствол, газовая трубка, газовый блок
-    box(0.012, 0.045, 0.012, 0, 0.065, -0.72, 1), zcyl(0.02, 0.06, 0, 0.012, -0.8, 1),                                              // мушка, дульный тормоз
-    box(0.068, 0.065, 0.26, 0, -0.005, -0.4, 2), box(0.056, 0.03, 0.24, 0, 0.045, -0.4, 2),                                          // цевьё
-    rbox(0.05, 0.1, 0.075, 0, -0.09, -0.03, 0, 1), rbox(0.05, 0.1, 0.075, 0, -0.18, -0.05, 0.2, 1), rbox(0.05, 0.1, 0.075, 0, -0.265, -0.09, 0.4, 1), // магазин
-    rbox(0.05, 0.13, 0.05, 0, -0.1, 0.17, -0.35, 2), box(0.012, 0.012, 0.09, 0, -0.058, 0.1, 1),                                    // рукоять, спуск
-    rbox(0.05, 0.11, 0.2, 0, -0.02, 0.3, 0.08, 2), box(0.05, 0.14, 0.1, 0, -0.04, 0.46, 2)]),                                        // приклад
+    box(0.07, 0.095, 0.4, 0, 0, 0, 0), box(0.06, 0.025, 0.36, 0, 0.058, 0, 0), box(0.065, 0.05, 0.12, 0, -0.05, 0.0, 0),                                                // ствольная коробка, крышка, шахта магазина
+    box(0.01, 0.006, 0.3, -0.02, 0.073, 0, 1), box(0.01, 0.006, 0.3, 0.02, 0.073, 0, 1),                                                                                 // рёбра крышки
+    rbox(0.03, 0.012, 0.08, 0, 0.085, 0.12, -0.2, 1), box(0.04, 0.03, 0.05, 0, 0.085, 0.14, 1),                                                                          // целик
+    zcyl(0.014, 0.52, 0, 0.012, -0.52, 1), zcyl(0.011, 0.3, 0, 0.052, -0.4, 0), box(0.04, 0.06, 0.04, 0, 0.04, -0.58, 1), zcyl(0.006, 0.28, 0, -0.02, -0.4, 0),          // ствол, трубка, газовый блок, шомпол
+    ring(0.018, 0.003, 0, 0.055, -0.72, 1), box(0.008, 0.04, 0.008, 0, 0.065, -0.72, 1),                                                                                 // колпак мушки
+    zcyl(0.022, 0.07, 0, 0.012, -0.8, 1), ...range(3, i => zcyl(0.024, 0.006, 0, 0.012, -0.78 - i * 0.02, 0)),                                                          // пламегаситель
+    box(0.068, 0.065, 0.26, 0, -0.005, -0.4, 2), box(0.056, 0.03, 0.24, 0, 0.045, -0.4, 2), ...range(5, i => box(0.07, 0.067, 0.004, 0, -0.005, -0.3 - i * 0.04, 1)),   // цевьё с насечками
+    rbox(0.05, 0.1, 0.075, 0, -0.09, -0.03, 0, 1), rbox(0.05, 0.1, 0.075, 0, -0.18, -0.05, 0.2, 1), rbox(0.05, 0.1, 0.075, 0, -0.265, -0.09, 0.4, 1),                    // изогнутый магазин
+    rbox(0.054, 0.006, 0.07, 0, -0.14, -0.04, 0.1, 0), rbox(0.054, 0.006, 0.07, 0, -0.225, -0.07, 0.3, 0),                                                              // рёбра магазина
+    rbox(0.05, 0.13, 0.05, 0, -0.1, 0.17, -0.35, 2), box(0.022, 0.006, 0.09, 0, -0.058, 0.1, 1), box(0.006, 0.02, 0.006, 0, -0.045, 0.1, 0),                              // рукоять, скоба, спуск
+    box(0.012, 0.012, 0.04, 0.042, 0.02, 0.02, 3), sph(0.012, 0.045, 0.02, 0.04, 3), box(0.004, 0.04, 0.2, 0.037, 0.0, 0.04, 0),                                          // рукоять затвора, предохранитель
+    rbox(0.05, 0.11, 0.2, 0, -0.02, 0.3, 0.08, 2), box(0.05, 0.14, 0.1, 0, -0.04, 0.46, 2), box(0.052, 0.15, 0.012, 0, -0.04, 0.515, 1), ring(0.012, 0.003, 0.03, -0.01, 0.4, 0)]), // приклад, затылок, антабка
   "АВП": mergeParts([
-    box(0.075, 0.1, 0.5, 0, 0, 0.05, 0), zcyl(0.022, 0.7, 0, 0.02, -0.6, 1), zcyl(0.034, 0.09, 0, 0.02, -0.98, 1),                  // корпус, ствол, дульный тормоз
-    box(0.01, 0.045, 0.02, 0, 0.02, -0.98, 0),
-    zcyl(0.03, 0.34, 0, 0.115, -0.05, 1), zcyl(0.04, 0.07, 0, 0.115, -0.24, 1), zcyl(0.036, 0.06, 0, 0.115, 0.14, 1),                // прицел
-    zcyl(0.034, 0.01, 0, 0.115, -0.277, 3), zcyl(0.03, 0.01, 0, 0.115, 0.17, 3), box(0.03, 0.05, 0.03, 0, 0.075, -0.12, 1), box(0.03, 0.05, 0.03, 0, 0.075, 0.06, 1),
-    [new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8).rotateZ(Math.PI / 2), 0.055, 0.03, 0.12, 0], [new THREE.SphereGeometry(0.016, 8, 6), 0.095, 0.03, 0.12, 0], // затвор
-    box(0.055, 0.08, 0.14, 0, -0.09, -0.0, 1),                                                                                       // магазин
-    rbox(0.07, 0.14, 0.3, 0, -0.03, 0.4, 0.05, 0), box(0.06, 0.04, 0.2, 0, 0.055, 0.38, 0), box(0.075, 0.17, 0.03, 0, -0.03, 0.56, 1), // ложа, щека, затылок
-    rbox(0.055, 0.13, 0.05, 0, -0.1, 0.2, -0.35, 0),
-    rbox(0.012, 0.14, 0.012, -0.045, -0.07, -0.42, 0.3, 1), rbox(0.012, 0.14, 0.012, 0.045, -0.07, -0.42, -0.3, 1)]),                // сошки
+    box(0.075, 0.1, 0.5, 0, 0, 0.05, 0), box(0.06, 0.02, 0.4, 0, 0.06, 0.05, 1), zcone(0.022, 0.026, 0.7, 0, 0.02, -0.6, 1), zcyl(0.034, 0.09, 0, 0.02, -0.98, 1),    // корпус, шина, ствол, дульный тормоз
+    box(0.012, 0.045, 0.02, 0, 0.02, -0.98, 0), box(0.012, 0.012, 0.02, 0, 0.055, -0.98, 0), ...range(3, i => zcyl(0.036, 0.004, 0, 0.02, -0.94 - i * 0.02, 0)),         // щели тормоза
+    zcyl(0.03, 0.34, 0, 0.115, -0.05, 1), zcone(0.04, 0.03, 0.07, 0, 0.115, -0.24, 1), zcone(0.03, 0.036, 0.06, 0, 0.115, 0.14, 1),                                      // прицел
+    zcyl(0.034, 0.01, 0, 0.115, -0.277, 3), zcyl(0.03, 0.01, 0, 0.115, 0.17, 3), zcyl(0.04, 0.01, 0, 0.115, -0.285, 1),                                                // линзы и бленда
+    zcyl(0.012, 0.03, 0, 0.15, -0.05, 1), xcyl(0.012, 0.03, 0.04, 0.115, -0.05, 1),                                                                                       // барабаны наводки
+    box(0.03, 0.05, 0.03, 0, 0.075, -0.12, 1), box(0.03, 0.05, 0.03, 0, 0.075, 0.06, 1), ring(0.032, 0.004, 0, 0.115, -0.12, 0), ring(0.032, 0.004, 0, 0.115, 0.06, 0),   // кронштейны и кольца
+    xcyl(0.008, 0.07, 0.055, 0.03, 0.12, 0), sph(0.016, 0.095, 0.03, 0.12, 0),                                                                                            // затвор
+    box(0.055, 0.08, 0.14, 0, -0.09, 0, 1), box(0.058, 0.01, 0.15, 0, -0.135, 0, 0),                                                                                      // магазин
+    rbox(0.07, 0.14, 0.3, 0, -0.03, 0.4, 0.05, 0), box(0.06, 0.04, 0.2, 0, 0.055, 0.38, 0), box(0.075, 0.17, 0.03, 0, -0.03, 0.56, 1), box(0.07, 0.03, 0.2, 0, -0.1, 0.4, 1), // ложа, щека, затылок
+    rbox(0.055, 0.13, 0.05, 0, -0.1, 0.2, -0.35, 0), box(0.02, 0.006, 0.08, 0, -0.058, 0.12, 1),
+    rbox(0.012, 0.16, 0.012, -0.045, -0.07, -0.42, 0.3, 1), rbox(0.012, 0.16, 0.012, 0.045, -0.07, -0.42, -0.3, 1), box(0.1, 0.012, 0.03, 0, 0.0, -0.42, 1)]),             // сошки
   "Базука": mergeParts([
-    zcyl(0.09, 1.1, 0, 0, -0.05, 0), zcyl(0.11, 0.1, 0, 0, 0.53, 1), zcyl(0.115, 0.1, 0, 0, -0.6, 1),                                 // труба и раструбы
-    zcyl(0.095, 0.03, 0, 0, -0.3, 1), zcyl(0.095, 0.03, 0, 0, 0.2, 1), zcyl(0.095, 0.03, 0, 0, 0.4, 1),                              // обручи
-    [new THREE.ConeGeometry(0.075, 0.16, 12).rotateX(-Math.PI / 2), 0, 0, -0.74, 3],                                                  // нос ракеты
-    box(0.025, 0.08, 0.1, 0, 0.13, -0.1, 1), [new THREE.TorusGeometry(0.03, 0.006, 6, 14), 0, 0.17, -0.1, 1],                          // прицел
-    rbox(0.045, 0.14, 0.045, 0, -0.14, -0.3, 0.1, 2), rbox(0.05, 0.14, 0.05, 0, -0.13, 0.1, -0.3, 2), box(0.12, 0.04, 0.14, 0, 0.1, 0.35, 2)]),
+    zcyl(0.09, 1.1, 0, 0, -0.05, 0, 20), zcone(0.12, 0.095, 0.12, 0, 0, -0.62, 1, 20), zcone(0.13, 0.1, 0.12, 0, 0, 0.55, 1, 20),                                         // труба и раструбы
+    ...[-0.3, -0.05, 0.2, 0.4].map(z => zcyl(0.098, 0.03, 0, 0, z, 1, 20)), ring(0.1, 0.006, 0, 0, -0.45, 0), ring(0.1, 0.006, 0, 0, 0.05, 0),                           // обручи
+    [new THREE.ConeGeometry(0.075, 0.16, 12).rotateX(-Math.PI / 2), 0, 0, -0.76, 3], zcyl(0.075, 0.1, 0, 0, -0.67, 3),                                                    // ракета в стволе
+    box(0.03, 0.08, 0.14, 0, 0.13, -0.1, 1), ring(0.032, 0.006, 0, 0.17, -0.12, 1), ring(0.022, 0.004, 0, 0.17, 0.0, 1), box(0.008, 0.04, 0.008, 0, 0.15, -0.35, 1),   // прицел
+    box(0.045, 0.03, 0.4, 0, 0.1, 0.05, 2), box(0.12, 0.04, 0.14, 0, 0.1, 0.38, 2), box(0.1, 0.02, 0.1, 0, 0.12, 0.38, 1),                                                // ручка для переноски, плечевой упор
+    rbox(0.045, 0.14, 0.045, 0, -0.14, -0.3, 0.1, 2), rbox(0.05, 0.14, 0.05, 0, -0.13, 0.1, -0.3, 2), box(0.022, 0.006, 0.07, 0, -0.1, 0.05, 1), box(0.006, 0.02, 0.006, 0, -0.085, 0.06, 0), // рукояти, спуск
+    box(0.14, 0.02, 0.06, 0, 0.0, 0.62, 1)]),
+  "Граната": mergeParts([  // держится вертикально: y — вверх
+    sph(0.045, 0, 0, 0, 0, 1, 1.18, 1), ...[-0.03, -0.01, 0.01, 0.03].map(y => [new THREE.CylinderGeometry(0.047, 0.047, 0.006, 14), 0, y, 0, 1]),                      // корпус с насечками
+    ...[0, 1, 2, 3, 4, 5].map(i => box(0.006, 0.09, 0.006, Math.cos(i * 1.05) * 0.046, 0, Math.sin(i * 1.05) * 0.046, 1)),
+    [new THREE.CylinderGeometry(0.014, 0.018, 0.03, 10), 0, 0.062, 0, 0], [new THREE.CylinderGeometry(0.01, 0.01, 0.02, 8), 0, 0.085, 0, 1],                             // запал
+    box(0.012, 0.075, 0.016, 0.03, 0.05, 0, 3), box(0.03, 0.012, 0.016, 0.02, 0.09, 0, 3),                                                                                // рычаг
+    [new THREE.TorusGeometry(0.014, 0.002, 6, 12), -0.026, 0.07, 0, 3]]),
 };
 const rocketGeo = mergeParts([zcyl(0.04, 0.32, 0, 0, 0, 0), [new THREE.ConeGeometry(0.04, 0.12, 10).rotateX(-Math.PI / 2), 0, 0, -0.22, 0],
   ...[0, 1, 2, 3].map(i => [new THREE.BoxGeometry(0.14, 0.012, 0.09).rotateZ(i * Math.PI / 2), 0, 0, 0.14, 0])]);
 const rocketMat = new THREE.MeshBasicMaterial({ color: 0xffb347 });
 
-// Характеристики: dmg — урон, cd — пауза между выстрелами (сек), mag — патронов в магазине, reload — перезарядка (сек), spread — разброс
+// Характеристики: dmg — урон, cd — пауза между выстрелами (сек), mag — патронов в магазине, reload — перезарядка (сек), spread — разброс, pellets — дробинок в выстреле
 const WEAPONS = {
-  "Нож":    { kind: "melee", dmg: 28, range: 2.3, cd: 0.45 },
-  "Меч":    { kind: "melee", dmg: 45, range: 3.0, cd: 0.8 },
-  "АК":     { kind: "gun", dmg: 22, cd: 0.1, mag: 30, reload: 2.2, spread: 0.014, kick: 0.012, auto: true, range: 90 },
-  "АВП":    { kind: "gun", dmg: 110, cd: 1.4, mag: 5, reload: 3.2, spread: 0.0006, kick: 0.05, range: 200, scope: true },
-  "Базука": { kind: "rocket", dmg: 95, cd: 1, mag: 1, reload: 3, radius: 5, speed: 26 },
+  "Нож":      { kind: "melee", dmg: 28, range: 2.3, cd: 0.45, stab: true },
+  "Меч":      { kind: "melee", dmg: 45, range: 3.0, cd: 0.8 },
+  "Топор":    { kind: "melee", dmg: 62, range: 2.8, cd: 1.1 },
+  "Бита":     { kind: "melee", dmg: 36, range: 2.6, cd: 0.6 },
+  "Пистолет": { kind: "gun", dmg: 24, cd: 0.28, mag: 12, reload: 1.6, spread: 0.01, kick: 0.02, range: 70 },
+  "Дробовик": { kind: "gun", dmg: 13, pellets: 8, cd: 0.9, mag: 8, reload: 2.6, spread: 0.07, kick: 0.07, range: 35 },
+  "МП5":      { kind: "gun", dmg: 15, cd: 0.07, mag: 30, reload: 2.0, spread: 0.022, kick: 0.01, auto: true, range: 70 },
+  "АК":       { kind: "gun", dmg: 22, cd: 0.1, mag: 30, reload: 2.2, spread: 0.014, kick: 0.012, auto: true, range: 90 },
+  "АВП":      { kind: "gun", dmg: 110, cd: 1.4, mag: 5, reload: 3.2, spread: 0.0006, kick: 0.05, range: 200, scope: true },
+  "Базука":   { kind: "rocket", dmg: 95, cd: 1, mag: 1, reload: 3, radius: 5, speed: 26 },
+  "Граната":  { kind: "grenade", dmg: 85, cd: 1, mag: 3, reload: 4, radius: 5, fuse: 2.2, speed: 14 },
 };
 const SCOPE_FOV = 12;
 const ammo = {};
@@ -3020,11 +3089,17 @@ resetWeapons();
 
 // --- Оружие в руке (вид от первого лица): ребёнок камеры
 const VIEW = {  // положение, поворот и размер оружия на экране
-  "Нож":    { p: [0.15, -0.16, -0.3], r: [0.15, 0.1, 0], s: 0.9 },
-  "Меч":    { p: [0.18, -0.2, -0.32], r: [0.85, 0.25, -0.25], s: 0.5 },
-  "АК":     { p: [0.15, -0.13, -0.3], r: [0, -0.05, 0], s: 0.5 },
-  "АВП":    { p: [0.15, -0.12, -0.3], r: [0, -0.04, 0], s: 0.4 },
-  "Базука": { p: [0.17, -0.12, -0.3], r: [0, -0.06, 0], s: 0.38 },
+  "Нож":      { p: [0.15, -0.16, -0.3], r: [0.15, 0.1, 0], s: 0.9 },
+  "Меч":      { p: [0.18, -0.2, -0.32], r: [0.85, 0.25, -0.25], s: 0.5 },
+  "Топор":    { p: [0.18, -0.2, -0.3], r: [0.85, 0.25, -0.2], s: 0.45 },
+  "Бита":     { p: [0.18, -0.2, -0.3], r: [0.85, 0.25, -0.2], s: 0.5 },
+  "Пистолет": { p: [0.1, -0.1, -0.26], r: [0, -0.03, 0], s: 1.0 },
+  "Дробовик": { p: [0.15, -0.12, -0.3], r: [0, -0.05, 0], s: 0.45 },
+  "МП5":      { p: [0.14, -0.12, -0.28], r: [0, -0.05, 0], s: 0.6 },
+  "АК":       { p: [0.15, -0.13, -0.3], r: [0, -0.05, 0], s: 0.5 },
+  "АВП":      { p: [0.15, -0.12, -0.3], r: [0, -0.04, 0], s: 0.4 },
+  "Базука":   { p: [0.17, -0.12, -0.3], r: [0, -0.06, 0], s: 0.38 },
+  "Граната":  { p: [0.12, -0.12, -0.3], r: [0.1, 0, 0], s: 0.85 },
 };
 const viewRoot = new THREE.Group();
 camera.add(viewRoot);
@@ -3040,6 +3115,7 @@ for (const n in WEAPONS) {
 }
 
 // --- Оружие в руке у фигурки (у других игроков и у себя в виде сбоку)
+const HAND_UP = new Set(["Меч", "Топор", "Бита"]);  // клинок смотрит вверх
 function setHand(group, name) {
   let hand = group.userData.hand;
   if (hand && hand.userData.w === name) return;
@@ -3048,8 +3124,8 @@ function setHand(group, name) {
   hand = new THREE.Mesh(WEAPON_GEO[name], weaponMats);
   hand.userData.w = name;
   hand.position.set(0.36, 1.0, -0.1);
-  hand.rotation.set(name === "Меч" ? 0.9 : 0, -0.08, 0);
-  hand.scale.setScalar(name === "Нож" ? 1 : 0.75);
+  hand.rotation.set(HAND_UP.has(name) ? 0.9 : 0, -0.08, 0);
+  hand.scale.setScalar(name === "Нож" || name === "Пистолет" || name === "Граната" ? 1.2 : 0.75);
   hand.castShadow = true;
   group.add(hand);
   group.userData.hand = hand;
@@ -3063,12 +3139,12 @@ function bodyBox(a) {
   const p = a.group.position, w = 0.35 * (a.size || 1), h = 1.9 * a.group.scale.y;
   return tmpBox.set(new THREE.Vector3(p.x - w, p.y, p.z - w), new THREE.Vector3(p.x + w, p.y + h, p.z + w));
 }
-// Кого и куда задел луч: ближайший игрок, не закрытый стеной. Возвращает { id, a, dist, point, head } или null
-function rayTarget(origin, dir, range) {
+// Кого и куда задел луч: ближайший игрок, не закрытый стеной. Возвращает { target: { id, a, dist, point, head } | null, wallDist }
+function rayTarget(origin, dir, rangeLen) {
   shotRay.set(origin, dir);
-  shotRay.far = range;
+  shotRay.far = rangeLen;
   const wall = shotRay.intersectObjects(solids, false)[0];
-  const wallDist = wall ? wall.distance : range;
+  const wallDist = wall ? wall.distance : rangeLen;
   let best = null;
   for (const [id, a] of others) {
     if (!a.group.visible) continue;
@@ -3102,7 +3178,7 @@ function tryFire() {
   if (W.kind === "melee") { swing = 1; meleeHit(n, W); return; }
   ammo[n]--;
   kick = 1;
-  if (W.kind === "gun") fireGun(n, W); else fireRocket(n, W);
+  if (W.kind === "gun") fireGun(n, W); else if (W.kind === "rocket") fireRocket(n, W); else throwGrenade(n, W);
   if (ammo[n] <= 0) startReload();
 }
 
@@ -3112,25 +3188,32 @@ function meleeHit(n, W) {
 }
 
 function fireGun(n, W) {
-  const o = camera.position.clone(), dir = camDir();
+  const o = camera.position.clone();
   const spread = W.scope && !scoped ? 0.05 : W.spread;
-  dir.x += (Math.random() - 0.5) * spread * 2; dir.y += (Math.random() - 0.5) * spread * 2; dir.z += (Math.random() - 0.5) * spread * 2;
-  dir.normalize();
-  const { target, wallDist } = rayTarget(o, dir, W.range);
-  const end = o.clone().addScaledVector(dir, target ? target.dist : Math.min(wallDist, W.range));
-  const from = o.clone().addScaledVector(dir, 0.8).add(new THREE.Vector3(0.12, -0.1, 0).applyQuaternion(camera.quaternion));
-  spawnTracer(from, end);
-  if (target) {
-    online?.hit(target.id, target.head ? W.dmg * 2 : W.dmg, n, target.head);
-    addImpact(target.point);
-  } else if (wallDist < W.range) addImpact(end);
-  online?.fx({ t: "shot", o: from.toArray().map(v => +v.toFixed(2)), p: end.toArray().map(v => +v.toFixed(2)) });
+  const from = o.clone().addScaledVector(camDir(), 0.8).add(new THREE.Vector3(0.12, -0.1, 0).applyQuaternion(camera.quaternion));
+  const dmgById = new Map(), ends = [];
+  for (let i = 0; i < (W.pellets || 1); i++) {
+    const dir = camDir();
+    dir.x += (Math.random() - 0.5) * spread * 2; dir.y += (Math.random() - 0.5) * spread * 2; dir.z += (Math.random() - 0.5) * spread * 2;
+    dir.normalize();
+    const { target, wallDist } = rayTarget(o, dir, W.range);
+    const end = o.clone().addScaledVector(dir, target ? target.dist : Math.min(wallDist, W.range));
+    ends.push(end);
+    spawnTracer(from, end);
+    if (target) {
+      const d = target.head ? W.dmg * 2 : W.dmg, prev = dmgById.get(target.id);
+      dmgById.set(target.id, { dmg: (prev?.dmg || 0) + d, head: prev?.head || target.head });
+      addImpact(target.point);
+    } else if (wallDist < W.range) addImpact(end);
+  }
+  for (const [id, h] of dmgById) online?.hit(id, h.dmg, n, h.head);
+  online?.fx({ t: "shot", o: from.toArray().map(v => +v.toFixed(2)), ps: ends.slice(0, 4).map(e => e.toArray().map(v => +v.toFixed(2))) });
   // Отдача: ствол подбрасывает вверх и чуть в сторону
   pitch = Math.min(Math.PI / 2 - 0.01, pitch + W.kick);
   yaw += (Math.random() - 0.5) * W.kick * 0.6;
 }
 
-// --- Ракеты
+// --- Ракеты и гранаты: летят и взрываются
 const rockets = [];
 function spawnRocket(o, dir, own, W) {
   const mesh = new THREE.Mesh(rocketGeo, rocketMat);
@@ -3143,7 +3226,19 @@ function fireRocket(n, W) {
   const dir = camDir(), o = camera.position.clone().addScaledVector(dir, 0.9);
   spawnRocket(o, dir, true, W);
   online?.fx({ t: "rocket", o: o.toArray().map(v => +v.toFixed(2)), d: dir.toArray().map(v => +v.toFixed(3)) });
-  kick = 1;
+}
+function spawnGrenade(o, vel, own, W) {
+  const mesh = new THREE.Mesh(WEAPON_GEO["Граната"], weaponMats);
+  mesh.position.copy(o);
+  scene.add(mesh);
+  rockets.push({ mesh, vel: vel.clone(), life: W.fuse, own, W, spin: new THREE.Vector3(Math.random() * 8 - 4, Math.random() * 8 - 4, Math.random() * 8 - 4) });
+}
+function throwGrenade(n, W) {
+  const dir = camDir(), o = camera.position.clone().addScaledVector(dir, 0.6);
+  const vel = dir.clone().multiplyScalar(W.speed);
+  vel.y += 3;
+  spawnGrenade(o, vel, true, W);
+  online?.fx({ t: "grenade", o: o.toArray().map(v => +v.toFixed(2)), v: vel.toArray().map(v => +v.toFixed(2)) });
 }
 // Точка внутри чего-то твёрдого: пол, блок, машина
 function solidPoint(p) {
@@ -3158,10 +3253,21 @@ function updateRockets(dt) {
     const r = rockets[i];
     r.life -= dt;
     let boom = r.life <= 0;
-    const steps = Math.ceil(r.W.speed * dt / 0.4);
-    for (let s = 0; s < steps && !boom; s++) {
-      r.mesh.position.addScaledVector(r.dir, r.W.speed * dt / steps);
-      boom = solidPoint(r.mesh.position) || [...others.values()].some(a => a.group.visible && bodyBox(a).containsPoint(r.mesh.position));
+    if (r.vel) {  // граната: падает по дуге и отскакивает от стен и пола
+      r.vel.y -= 22 * dt;
+      for (const axis of ["x", "y", "z"]) {
+        const test = r.mesh.position.clone();
+        test[axis] += r.vel[axis] * dt;
+        if (solidPoint(test)) { r.vel[axis] *= -0.45; if (axis === "y") { r.vel.x *= 0.75; r.vel.z *= 0.75; } }
+        else r.mesh.position[axis] = test[axis];
+      }
+      r.mesh.rotation.x += r.spin.x * dt; r.mesh.rotation.y += r.spin.y * dt; r.mesh.rotation.z += r.spin.z * dt;
+    } else {
+      const steps = Math.ceil(r.W.speed * dt / 0.4);
+      for (let s = 0; s < steps && !boom; s++) {
+        r.mesh.position.addScaledVector(r.dir, r.W.speed * dt / steps);
+        boom = solidPoint(r.mesh.position) || [...others.values()].some(a => a.group.visible && bodyBox(a).containsPoint(r.mesh.position));
+      }
     }
     if (boom) { scene.remove(r.mesh); rockets.splice(i, 1); rocketBoom(r.mesh.position.clone(), r.own, r.W); }
   }
@@ -3173,10 +3279,10 @@ function rocketBoom(pos, own, W) {
   explode(pos, W.radius - 1);
   const hurt = (d) => W.dmg * (1 - d / W.radius);
   const me = Math.hypot(px - pos.x, feet + 1 - pos.y, pz - pos.z);
-  if (me < W.radius) damage(hurt(me) * 0.6, "своей ракеты");
+  if (me < W.radius) damage(hurt(me) * 0.6, W.kind === "grenade" ? "своей гранаты" : "своей ракеты");
   for (const [id, a] of others) {
     const d = a.group.position.clone().add(new THREE.Vector3(0, 0.9, 0)).distanceTo(pos);
-    if (a.group.visible && d < W.radius) online?.hit(id, Math.round(hurt(d)), "Базука", false);
+    if (a.group.visible && d < W.radius) online?.hit(id, Math.round(hurt(d)), W.kind === "grenade" ? "Граната" : "Базука", false);
   }
 }
 
@@ -3215,10 +3321,12 @@ function updateFx(dt) {
     if (f.life <= 0) { scene.remove(f.mesh); if (f.kind !== "tracer") f.mesh.material.dispose(); fxList.splice(i, 1); }
   }
 }
-// Выстрел или ракета другого игрока (пришло по сети): только картинка, урон считает стрелявший
+// Выстрел, ракета или граната другого игрока (пришло по сети): только картинка, урон считает стрелявший
 function handleFx(f) {
-  if (f.t === "shot" && Array.isArray(f.o) && Array.isArray(f.p)) spawnTracer(new THREE.Vector3(...f.o), new THREE.Vector3(...f.p));
-  if (f.t === "rocket" && Array.isArray(f.o) && Array.isArray(f.d)) spawnRocket(new THREE.Vector3(...f.o), new THREE.Vector3(...f.d), false, WEAPONS["Базука"]);
+  const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
+  if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
+  if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS["Базука"]);
+  if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
 
 // --- Каждый кадр: автоогонь, перезарядка, анимации оружия, строка с патронами
@@ -3254,9 +3362,12 @@ function updateWeapons(dt) {
     const walk = (keys.KeyW || keys.KeyS || keys.KeyA || keys.KeyD) && onGround ? 1 : 0;
     m.position.set(v.p[0] + Math.sin(t * 8) * 0.004 * walk, v.p[1] + Math.abs(Math.sin(t * 8)) * 0.006 * walk, v.p[2] + kick * 0.06);
     m.rotation.set(v.r[0] + kick * 0.12, v.r[1], v.r[2]);
-    if (W.kind === "melee") {  // замах: нож колет вперёд, меч рубит сверху вниз
+    if (W.kind === "melee") {  // замах: нож колет вперёд, остальные рубят сверху вниз
       const s = Math.sin(Math.min(1, 1 - swing) * Math.PI) * (swing > 0 ? 1 : 0);
-      if (n === "Нож") m.position.z -= s * 0.22; else { m.rotation.x -= s * 1.5; m.position.y -= s * 0.04; }
+      if (W.stab) m.position.z -= s * 0.22; else { m.rotation.x -= s * 1.5; m.position.y -= s * 0.04; }
+    }
+    if (W.kind === "grenade") {  // бросок: рука отводится назад и бросает вперёд
+      m.position.z += kick * 0.1; m.position.y -= kick * 0.05;
     }
     if (reloadEnd) {  // перезарядка: оружие опускается и покачивается
       const left = (reloadEnd - now) / W.reload, s = Math.sin(Math.min(1, Math.max(0, 1 - left)) * Math.PI);
