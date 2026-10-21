@@ -297,7 +297,8 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
-  "Огниво", "ТНТ", "Трамплин", "Танк",  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Огниво", "ТНТ", "Трамплин", "Танк",
+  "Самолёт", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -1547,7 +1548,7 @@ function toggleCar() {
   const tank = nearestTank();
   if (tank) return enterTank(tank);
   const plane = nearestPlane();
-  if (plane && (isAdmin() || !online)) return enterPlane(plane);
+  if (plane) return enterPlane(plane);
   const best = nearestCar();
   if (!best) return;
   drivingCar = best;
@@ -1984,7 +1985,7 @@ function update(dt) {
     const ground = groundHeight(px, prevFeet, pz);
     onGround = feet <= ground;
     // Трамплин подбрасывает и игрока
-    const jp = onGround && blocks.get(key(Math.floor(px), Math.floor(feet + 0.2), Math.floor(pz)));
+    const jp = onGround ? blocks.get(key(Math.floor(px), Math.floor(feet + 0.2), Math.floor(pz))) : null;
     if (jp?.userData.edit.k === "jump" && feet - jp.userData.edit.y > 0.5) { vy = JUMP_SPEED * 1.5; onGround = false; feet = ground + 0.01; }
     if (onGround) {
       if (vy < -FALL_SAFE) damage((-vy - FALL_SAFE) * 6);  // удар о землю: чем быстрее падал, тем больнее
@@ -2150,6 +2151,10 @@ function use(action, screen) {
   if (ballType && hit) {
     const p = hit.point.clone().addScaledVector(hit.normal, BALL_TYPES[ballType].r + 0.03);
     share({ op: "ball", id: `${myId}-${idCount++}`, t: ballType, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(2), o: myId });
+  }
+  if (HOTBAR[slot] === "Самолёт" && hit && hit.normal.y > 0.5) {
+    const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
+    share({ op: "plane", id: `${myId}-${idCount++}`, x, y: +(y + 0.8).toFixed(2), z, yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
   }
   if (HOTBAR[slot] === "Танк" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
@@ -2431,7 +2436,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█", "Танк": "▟██▙" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█", "Танк": "▟██▙", "Самолёт": "─╋╋─" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -3466,7 +3471,6 @@ function drawAdmin() {
     row(`сейчас: ${views[camMode]}`),
     row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
     row("[ телепорт по координатам ]", "tpxyz"),
-    row("[ заспавнить самолёт ]", "plane"),
     ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -3505,11 +3509,6 @@ adminEl.addEventListener("click", e => {
   }
   if (a === "invis") asInvis = !asInvis;
   if (a === "tpxyz") askTeleport();
-  if (a === "plane") {
-    const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
-    share({ op: "plane", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +(groundHeight(x, feet + 2, z) + 0.8).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
-    addChat(TOUCH ? "* самолёт рядом: сядь кнопкой МАШИНА, бомба — ПРЫЖОК" : "* самолёт рядом: E — сесть, W — вверх, S — вниз, A/D — поворот, пробел — бомба");
-  }
   if (a.startsWith("ball:")) { const t = a.slice(5); asBall = asBall === t ? null : BALL_TYPES[t] ? t : null; setSize(size); }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
@@ -4646,7 +4645,7 @@ function updateWeapons(dt) {
   updatePrimed(dt);
   updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
-  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || ((isAdmin() || !online) && nearestPlane())))) ? "" : "none";
+  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
   // Кнопка бега: за рулём она включает нитро
   const nitroBtn = document.querySelector('#touch [data-action="nitro"]'), nitroText = drivingCar ? "НИТРО" : "БЕГ";
