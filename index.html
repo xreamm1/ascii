@@ -259,7 +259,9 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
-const SIZE = 64;           // размер плиты в блоках
+const SIZE = 64;           // где игрок появляется (центр стартовой плиты)
+const PLATE = 300;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
+
 // Размер одного символа в пикселях (меньше — детальнее). У телефона экран узкий,
 // поэтому символы там мельче — иначе их помещается в разы меньше, чем на компьютере
 const CELL_W = TOUCH ? 3 : 4;
@@ -278,6 +280,8 @@ const CROUCH_EYE = 0.95;   // высота глаз, когда присел
 const CROUCH_SPEED = 0.45; // присевший идёт медленнее — во столько раз
 const FLY_SPEED = 8;       // полёт разработчика: скорость вверх-вниз
 const FREECAM_SPEED = 12;  // скорость свободной камеры
+const DRONE_SPEED = 16;    // скорость FPV дрона
+const BOOM_TIME = 0.8;     // сколько секунд длится взрыв дрона
 const THIRD_DIST = 4;      // вид от третьего лица: на столько блоков камера позади игрока
 const DEV_NICK = "xreamm"; // ник разработчика: с ним спрашивается пароль
 const DEV_EMAIL = "xreamm@ascii-baseplate.game";  // аккаунт разработчика в Firebase Authentication
@@ -307,8 +311,11 @@ let yaw = 0, pitch = 0;
 let crouching = false, bodyH = HEIGHT, eye = EYE;  // присел ли, текущий рост и высота глаз
 let inGame = false;     // false — открыто главное меню
 let isDev = false;      // вошёл разработчик (проверено паролем на сервере Firebase)
+let adminGranted = false;  // разработчик выдал админ-панель в этом лобби
+let adminIds = {};         // у кого в лобби есть админ-панель: { id: true }
+const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
-let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера
+let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон
 const freePos = new THREE.Vector3();  // где сейчас свободная камера
 let slot = 0, color = 0, menuOpen = false;
 let typing = false;     // открыто окошко ввода — клавиши идут в него, а не в игру
@@ -364,10 +371,10 @@ const plateTex = canvasTexture(64, 64, ctx => {
   ctx.beginPath(); ctx.arc(32, 32, 14, 0, Math.PI * 2); ctx.stroke();
 });
 plateTex.wrapS = plateTex.wrapT = THREE.RepeatWrapping;
-plateTex.repeat.set(SIZE, SIZE);
+plateTex.repeat.set(PLATE, PLATE);
 
 const plate = new THREE.Mesh(
-  new THREE.PlaneGeometry(SIZE, SIZE),
+  new THREE.PlaneGeometry(PLATE, PLATE),
   new THREE.MeshLambertMaterial({ map: plateTex })
 );
 plate.rotation.x = -Math.PI / 2;
@@ -587,8 +594,6 @@ scene.add(ghostBlock, ghostPlank, ghostPoint);
 
 // ---------- Физика игрока ----------
 
-const inside = (x, z) => x >= 0 && z >= 0 && x < SIZE && z < SIZE;
-
 // Мешает ли то, что стоит в клетке, игроку с центром (x, z): блок и стекло — всей клеткой,
 // палка — только тонким столбиком посередине, открытая дверь — не мешает
 function cellBlocks(cx, cy, cz, x, z) {
@@ -645,7 +650,7 @@ function hitsSolid(x, f, z, h = bodyH) {
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
 const downRay = new THREE.Raycaster();
 function groundHeight(x, f, z) {
-  let g = inside(x, z) ? 0 : -Infinity;  // за краем плиты — пустота
+  let g = 0;
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
       for (let cy = Math.floor(f + STEP) - 1; cy >= 0; cy--)
@@ -659,11 +664,66 @@ function groundHeight(x, f, z) {
 
 const camRay = new THREE.Raycaster();
 
+// FPV дрон: камера отделяется от игрока и летит туда, куда смотришь. Коснулся блока, доски или пола — взрыв
+const dronePos = new THREE.Vector3();
+let boom = 0;  // сколько секунд взрыва осталось (0 — дрон летит)
+const boomMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, fog: false })
+);
+boomMesh.visible = false;
+scene.add(boomMesh);
+
+function endDrone() {
+  if (camMode !== "drone") return;
+  boom = 0;
+  boomMesh.visible = false;
+  camMode = "first";
+}
+
+function droneHits(p) {
+  return p.y <= 0.1 || cellBlocks(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), p.x, p.z) ||
+    [...planks.values()].some(m => hitsPlank(m, p.x, p.y - STEP, p.z, STEP));
+}
+
+function updateDrone(dt) {
+  if (boom > 0) {
+    boom -= dt;
+    const t = 1 - Math.max(boom, 0) / BOOM_TIME;
+    boomMesh.scale.setScalar(0.3 + t * 3);
+    boomMesh.material.opacity = 1 - t;
+    if (boom <= 0) endDrone();
+  } else {
+    const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+    const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+    const up = (keys.Space ? 1 : 0) - ((keys.KeyC || keys.ControlLeft || keys.ControlRight) ? 1 : 0);
+    const look = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const move = look.multiplyScalar(forward).addScaledVector(right, strafe);
+    move.y += up;
+    move.multiplyScalar(DRONE_SPEED * dt);
+    // Идём мелкими шагами, чтобы на скорости не пролететь сквозь тонкую стену
+    const n = Math.max(1, Math.ceil(move.length() / 0.2));
+    for (let i = 0; i < n && boom <= 0; i++) {
+      const next = dronePos.clone().addScaledVector(move, 1 / n);
+      if (droneHits(next)) {
+        boom = BOOM_TIME;
+        boomMesh.position.copy(dronePos);
+        boomMesh.visible = true;
+      } else dronePos.copy(next);
+    }
+  }
+  camera.position.copy(dronePos);
+  camera.rotation.set(pitch, yaw, 0);
+}
+
 function update(dt) {
   const crouchKey = keys.KeyC || keys.ControlLeft || keys.ControlRight;
   // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда (или джойстик)
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+
+  if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
   // W/S — туда, куда смотришь, A/D — вбок, пробел — вверх, C или Ctrl — вниз
@@ -774,7 +834,7 @@ function placeCell(hit, item) {
 function blockCell(hit) {
   const p = hit.point.clone().addScaledVector(hit.normal, 0.5);
   const [x, y, z] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
-  if (y < 0 || !inside(x, z)) return null;
+  if (y < 0) return null;
   // Нельзя ставить блок внутрь себя
   const overlapsPlayer = x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
                          y < feet + bodyH && y + 1 > feet;
@@ -1108,7 +1168,7 @@ function togglePanel(el, draw) {
   }
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
-function toggleAdmin() { if (isDev) togglePanel(adminEl, drawAdmin); }
+function toggleAdmin() { if (isAdmin()) togglePanel(adminEl, drawAdmin); }
 
 palette.addEventListener("click", e => {
   const option = e.target.closest(".option");
@@ -1504,7 +1564,22 @@ async function joinLobby(code, me) {
   // Объявление разработчика — крупно сверху экрана
   onValue(ref(db, `announce/${code}`), s => {
     const a = s.val();
-    if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80));
+    if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80), String(a.by || "").slice(0, 16));
+  });
+  // Разработчик выдал или забрал админ-панель
+  onValue(ref(db, `admins/${code}`), s => {
+    const was = isAdmin();
+    adminIds = s.val() || {};
+    adminGranted = !!adminIds[me];
+    showAdminButton();
+    if (!was && isAdmin()) addChat(TOUCH ? "* тебе выдали админ-панель (кнопка АДМИН)" : "* тебе выдали админ-панель (P)");
+    if (was && !isAdmin()) {
+      addChat("* у тебя забрали админ-панель");
+      flying = false;
+      endDrone();
+      if (camMode !== "first") camMode = "first";
+      if (panel === adminEl) togglePanel(adminEl);
+    } else if (panel === adminEl) drawAdmin();
   });
 
   online = {
@@ -1523,7 +1598,9 @@ async function joinLobby(code, me) {
     kick: id => set(ref(db, `kicks/${code}/${id}`), true),
     ban: id => set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }),
     // Если правила базы не дают записать — говорим об этом, а не молчим
-    announce: text => set(ref(db, `announce/${code}`), { text, t: serverTimestamp() })
+    grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
+      .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
+    announce: text => set(ref(db, `announce/${code}`), { text, by: nick, t: serverTimestamp() })
       .catch(() => addChat("* объявление не отправилось: обнови правила базы в Firebase")),
   };
 }
@@ -1541,15 +1618,15 @@ function leave(note) {
 
 const announceEl = document.getElementById("announce");
 let announceTimer = 0;
-function showAnnouncement(text) {
-  const w = Math.max(24, text.length + 2);
-  const t = " ОБЪЯВЛЕНИЕ ";
+function showAnnouncement(text, by) {
+  const t = by ? ` ОБЪЯВЛЕНИЕ от ${by} ` : " ОБЪЯВЛЕНИЕ ";
+  const w = Math.max(24, text.length + 2, t.length + 2);
   announceEl.textContent =
     "╔" + t.padStart(w / 2 + t.length / 2, "═").padEnd(w, "═") + "╗\n" +
     "║ " + text.padEnd(w - 2) + " ║\n" +
     "╚" + "═".repeat(w) + "╝";
   announceEl.style.display = "block";
-  addChat(`[Объявление] ${text}`);
+  addChat(`[Объявление${by ? " от " + by : ""}] ${text}`);
   clearTimeout(announceTimer);
   announceTimer = setTimeout(() => announceEl.style.display = "none", 8000);
 }
@@ -1565,18 +1642,21 @@ function drawAdmin() {
     return "║ " + (act ? `<span class="act" data-a="${esc(act)}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
   };
   const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
-  const views = { first: "от 1-го лица", third: "от 3-го лица", free: "свободная камера" };
+  const views = { first: "от 1-го лица", third: "от 3-го лица", free: "свободная камера", drone: "FPV дрон" };
   const rows = ["╔" + title("АДМИН", "═") + "╗",
     row(`[ полёт: ${flying ? "ВКЛ" : "выкл"} ]`, "fly"),
     row(`[ вид от 3-го лица: ${camMode === "third" ? "ВКЛ" : "выкл"} ]`, "third"),
     row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"),
+    row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
     row(`сейчас: ${views[camMode]}`)];
   if (online) {
-    rows.push(row("[ объявление ]", "announce"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
-    if (!others.size) rows.push(row("в лобби больше никого"));
-    for (const [id, a] of others) {
-      const name = a.nick.slice(0, 14).padEnd(14);
-      rows.push("║ " + esc(name) + ` <span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span>` + " ".repeat(W - 1 - 26) + "║");
+    rows.push(row("[ объявление ]", "announce"));
+    if (isDev) rows.push(row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev && !others.size) rows.push(row("в лобби больше никого"));
+    for (const [id, a] of isDev ? others : []) {
+      const name = a.nick.slice(0, 12).padEnd(12);
+      const adm = adminIds[id] ? "[-адм]" : "[+адм]";
+      rows.push("║ " + esc(name) + ` <span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span>` + " ".repeat(W - 1 - 31) + "║");
     }
   }
   rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
@@ -1585,8 +1665,14 @@ function drawAdmin() {
 
 adminEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
-  if (!a || !isDev) return;
+  if (!a || !isAdmin()) return;
   if (a === "fly") { flying = !flying; vy = 0; }
+  if (a === "third" || a === "free") endDrone();
+  // FPV дрон стартует из глаз игрока, игрок стоит на месте
+  if (a === "drone") {
+    if (camMode === "drone") endDrone();
+    else { dronePos.copy(camera.position); camMode = "drone"; }
+  }
   // Вид от 3-го лица и свободная камера: повторное нажатие — обратно глазами
   if (a === "third") camMode = camMode === "third" ? "first" : "third";
   if (a === "free") {
@@ -1594,7 +1680,14 @@ adminEl.addEventListener("click", e => {
     if (camMode === "free") freePos.copy(camera.position);
   }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
+  // Остальное — только разработчику (сервер всё равно проверит)
+  if (!isDev) return drawAdmin();
   if (a === "dellobby" && lobbyCode) confirmDeleteLobby(lobbyCode);
+  if (a.startsWith("adm:")) {
+    const id = a.slice(4), on = !adminIds[id];
+    online?.grant(id, on);
+    addChat(`* ${others.get(id)?.nick} ${on ? "получает" : "теряет"} админ-панель`);
+  }
   if (a.startsWith("kick:")) { online?.kick(a.slice(5)); addChat(`* ${others.get(a.slice(5))?.nick} кикнут`); }
   if (a.startsWith("ban:")) { online?.ban(a.slice(4)); addChat(`* ${others.get(a.slice(4))?.nick} забанен в лобби`); }
   drawAdmin();
@@ -1751,7 +1844,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
@@ -1786,6 +1879,8 @@ async function enterLobby(code) {
 // code не задан — одиночная игра
 let lobbyCode = null;  // код лобби, в котором сейчас игра (null — одиночная игра)
 
+const showAdminButton = () => document.querySelector('[data-action="admin"]').style.display = isAdmin() ? "" : "none";
+
 function startGame(code, name, me) {
   inGame = true;
   lobbyCode = code || null;
@@ -1798,7 +1893,7 @@ function startGame(code, name, me) {
     // Код видно, чтобы позвать друзей
     lobbyEl.textContent = `${name} · код ${code}` + (isDev ? (TOUCH ? " · разработчик" : " · P — админ-меню") : "");
     joinLobby(code, me).catch(() => addChat("* не удалось подключиться к лобби"));
-    if (isDev) document.querySelector('[data-action="admin"]').style.display = "";
+    if (isDev) showAdminButton();
   }
   if (!TOUCH) {
     lockKeyboard();
@@ -1843,6 +1938,11 @@ function updateSelfFigure(dt) {
 
 function updateWorld(dt) {
   updateSelfFigure(dt);
+  // Пол и солнце едут за камерой целыми блоками, чтобы плитки не сдвигались
+  const cx = Math.round(camera.position.x), cz = Math.round(camera.position.z);
+  plate.position.set(cx, 0, cz);
+  sun.target.position.set(cx, 0, cz);
+  sun.position.set(cx + 30, 50, cz + 15);
 }
 
 // ---------- Пауза (Esc или кнопка МЕНЮ) ----------
