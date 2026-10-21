@@ -302,9 +302,22 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
-// Слабые телефоны (Huawei Y61, Realme C55 и подобные): модель узнаём по строке браузера, а слабые «железом» — по памяти и ядрам
+// Слабые телефоны: определяем по видеочипу (его имя отдаёт браузер) и по модели. Данные из характеристик:
+// Realme C55 — Helio G88 / Mali-G52 MC2, 90 Гц, 1080×2400; Huawei nova 14i — Snapdragon 680 / Adreno 610, 90 Гц, 1080×2376;
+// Huawei nova Y61 — Kirin 710A / Mali-G51, 60 Гц, 720×1600. У всех слабый видеочип и много пикселей — главное для них снижать разрешение сцены
 const PHONE_UA = navigator.userAgent;
-const LOWEND = TOUCH && (/Y61|RMX37|realme c55/i.test(PHONE_UA) || (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4));
+const GPU_NAME = (() => {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return name;
+  } catch { return ""; }
+})();
+const VERY_WEAK_GPU = TOUCH && (/Mali-(G31|G51|T\d+|4\d\d)|PowerVR/i.test(GPU_NAME) || /Y61/i.test(PHONE_UA));
+const WEAK_GPU = TOUCH && (VERY_WEAK_GPU || /Adreno \(TM\) ?(3\d\d|5\d\d|60\d|61[0-3])|Mali-G52/i.test(GPU_NAME) || /RMX37|realme c55|nova 14i/i.test(PHONE_UA));
+const LOWEND = TOUCH && (WEAK_GPU || (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4));
 
 const SIZE = 64;           // где игрок появляется (центр стартовой плиты)
 const PLATE = 900;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
@@ -2715,7 +2728,9 @@ function resize() {
   applyLook();
   if (is3d()) {
     // Обычная 3D-картинка без символов и без второго прохода: рисуем сцену прямо на экран, разрешение подстраивается под тяжесть
-    const k = Math.min(dpr, TOUCH ? 1.5 : 1.25) * QUALITY[quality][0] / 100;  // потолок: 1.5 пикселя на css-пиксель на телефоне
+    const cap = !TOUCH ? 1.25 : VERY_WEAK_GPU ? 1.0 : WEAK_GPU ? 1.15 : LOWEND ? 1.25 : 1.5;  // потолок разрешения: пикселей сцены на css-пиксель
+    const k = Math.min(dpr, cap) * QUALITY[quality][0] / 100;
+    camera.far = LOWEND ? 260 : FAR;  // слабому телефону — меньше дальность
     renderer.setPixelRatio(k);
     renderer.setSize(innerWidth, innerHeight, false);
     renderer.domElement.style.width = innerWidth + "px";
@@ -2732,6 +2747,7 @@ function resize() {
     return;
   }
   target3d?.dispose(); target3d = null;
+  camera.far = FAR;
   renderer.setPixelRatio(1);
   const [CELL_W, CELL_H] = QUALITY[quality];
   // Всё считаем в настоящих пикселях экрана и рисуем 1 в 1: если холст растягивается браузером
@@ -4665,6 +4681,7 @@ function updateWeapons(dt) {
 // ---------- Главный цикл ----------
 
 let last = performance.now();
+let refreshMs = 100, refreshN = 0, frameAtPrev = 0;  // самый короткий кадр = частота экрана (на 90 Гц слабым телефонам рисуем через кадр)
 let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
@@ -4721,6 +4738,9 @@ renderer.setAnimationLoop(now => {
   if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
   rebuildChunks();
+  if (++refreshN > 10 && refreshN < 240) refreshMs = Math.min(refreshMs, now - frameAtPrev);
+  frameAtPrev = now;
+  if (LOWEND && is3d() && refreshMs < 13.5 && frameNo % 2) return;  // экран 90 Гц: 45 кадров в секунду вместо рваных 90
   if (is3d()) {  // без символов; со сглаживанием — через цель с MSAA, потом на экран
     if (target3d) { renderer.setRenderTarget(target3d); renderer.render(scene, camera); renderer.setRenderTarget(null); renderer.render(blitScene, asciiCamera); }
     else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
