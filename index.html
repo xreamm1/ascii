@@ -1556,8 +1556,9 @@ function updateDrone(dt) {
 function update(dt) {
   const crouchKey = keys.ControlLeft || keys.ControlRight;
   // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда (или джойстик)
-  const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
-  const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+  const tm = trollMove();  // 0 — заморожен, -1 — управление наоборот
+  const forward = tm * ((keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y);
+  const strafe = tm * ((keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x);
 
   if (dead) {
     // Лежим на месте и ждём возрождения
@@ -2679,6 +2680,14 @@ async function joinLobby(code, me) {
     if ([v.x, v.y, v.z].every(Number.isFinite)) { px = v.x; feet = v.y; pz = v.z; vy = 0; addChat("* тебя телепортировал разработчик"); }
     remove(tp);
   });
+  // Шутка от разработчика: показываем и стираем запись
+  const trollRef = ref(db, `troll/${code}/${me}`);
+  onValue(trollRef, s => {
+    const v = s.val();
+    if (!v) return;
+    remove(trollRef);
+    if (typeof v.type === "string" && Math.abs(serverNow() - v.t) < 60000) runTroll(v.type);
+  });
   onValue(ref(db, `prefixes/${code}`), s => {
     prefixes = s.val() || {};
     for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick;
@@ -2750,6 +2759,7 @@ async function joinLobby(code, me) {
     grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Помощники «Вкусно и точка» летают как игроки: пишем их позиции, чтобы их видели все
+    troll: (id, type) => set(ref(db, `troll/${code}/${id}`), { type, t: Date.now() }).catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     setHelpers: list => list.forEach((h, i) => {
       const r = ref(db, `players/${code}/vit-${i}`);
       if (!helperSeen.has(i)) { helperSeen.add(i); onDisconnect(r).remove(); }
@@ -2787,11 +2797,111 @@ function showAnnouncement(text, by) {
   announceTimer = setTimeout(() => announceEl.style.display = "none", 8000);
 }
 
+// ---------- Тролль-функции: разработчик шлёт игроку шутку, а его клиент её показывает ----------
+
+const TROLLS = [["jump", "jumpscare"], ["fake", "фейк-кик"], ["bsod", "синий экран"], ["flip", "перевернуть экран"], ["spin", "раскрутить"], ["shake", "тряска"],
+  ["launch", "подбросить"], ["freeze", "заморозить"], ["invert", "инверсия цвета"], ["reverse", "обратное управление"], ["fisheye", "рыбий глаз"]];
+const trollUntil = {};  // до какого момента (мс) длится шутка
+const trollOn = k => performance.now() < (trollUntil[k] || 0);
+const trollMove = () => trollOn("freeze") ? 0 : trollOn("reverse") ? -1 : 1;
+const trollEl = Object.assign(document.createElement("pre"), { id: "troll" });
+trollEl.style.cssText = "position:fixed;inset:0;z-index:60;display:none;margin:0;align-items:center;justify-content:center;pointer-events:none;white-space:pre;text-align:center;overflow:hidden;line-height:1.05";
+document.body.append(trollEl);
+let trollTimer = 0, audioCtx = null;
+function trollScreen(text, bg, color, size, ms) {
+  Object.assign(trollEl.style, { display: "flex", background: bg, color, fontSize: size });
+  trollEl.textContent = text;
+  clearTimeout(trollTimer);
+  trollTimer = setTimeout(() => trollEl.style.display = "none", ms);
+}
+function scream() {
+  try {
+    const ac = audioCtx ??= new AudioContext();
+    ac.resume();
+    const t = ac.currentTime, g = ac.createGain();
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+    g.connect(ac.destination);
+    for (const f of [180, 233, 700]) {
+      const o = ac.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 2.4, t + 1);
+      o.connect(g); o.start(t); o.stop(t + 1.3);
+    }
+  } catch {}
+}
+const SCARE = `       ▄▄▄▄▄▄▄▄▄▄▄▄▄
+    ▄████████████████▄
+  ▄███████████████████▄
+ █████▀▀▀▀▀███▀▀▀▀▀█████
+ ████▌  ◉  ▐███▌  ◉  ▐████
+ █████▄▄▄▄▄████▄▄▄▄▄█████
+  ██████▀▀▀  ▄▄  ▀▀▀██████
+   ▀███▀    ████    ▀███▀
+    ██▄ ▄█▀█▀▀▀▀█▀█▄ ▄██
+    ██████▄ ▀██▀ ▄██████
+     ▀█▀█▀█▄▄▄▄█▀█▀█▀█▀
+        ▀▀▀▀▀▀▀▀▀▀▀▀`;
+function runTroll(type) {
+  const now = performance.now();
+  if (type === "jump") {
+    scream();
+    trollScreen(SCARE, "#000", "#e00", "min(4.2vw, 4.6vh)", 1700);
+    setTimeout(() => { trollEl.style.background = "#a00"; trollEl.style.color = "#000"; }, 350);
+    setTimeout(() => { trollEl.style.background = "#000"; trollEl.style.color = "#e00"; }, 700);
+    trollUntil.shake = now + 1700;
+  }
+  if (type === "fake") {
+    trollScreen("тебя кикнул разработчик\n\nпричина: слишком умный", "#000", "#fff", "3vmin", 3500);
+    setTimeout(() => { if (trollEl.style.display !== "none") trollEl.textContent = "шутка :)"; }, 2800);
+  }
+  if (type === "bsod") trollScreen(":(\n\nНа вашем ПК возникла проблема, и ему нужно перезагрузиться.\n\nКод остановки: ВКУСНО_И_ТОЧКА\n\n0% завершено", "#0a50b4", "#fff", "2.6vmin", 4500);
+  if (type === "flip") trollUntil.flip = now + 10000;
+  if (type === "spin") trollUntil.spin = now + 4000;
+  if (type === "shake") trollUntil.shake = now + 6000;
+  if (type === "freeze") trollUntil.freeze = now + 5000;
+  if (type === "reverse") trollUntil.reverse = now + 12000;
+  if (type === "fisheye") trollUntil.fisheye = now + 8000;
+  if (type === "invert") trollUntil.invert = now + 7000;
+  if (type === "launch" && !dead) { vy = gameMode === "survival" ? 12 : 30; onGround = false; }
+}
+function updateTroll(dt) {
+  if (trollOn("spin")) yaw += 9 * dt;
+  const inv = trollOn("invert") ? "invert(1)" : "";
+  if (renderer.domElement.style.filter !== inv) renderer.domElement.style.filter = inv;
+}
+function applyTrollCam() {
+  if (trollOn("flip")) camera.rotation.z = Math.PI;
+  if (trollOn("shake")) { camera.position.x += (Math.random() - 0.5) * 0.18; camera.position.y += (Math.random() - 0.5) * 0.18; camera.rotation.z += (Math.random() - 0.5) * 0.06; }
+}
+let trollPage = false, trollTarget = "all";  // цель шуток: "all", "me" или id игрока
+function drawTroll() {
+  const W = 34;
+  const row = (text, act) => {
+    const t = text.slice(0, W - 2);
+    return "║ " + (act ? `<span class="act" data-a="${esc(act)}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
+  };
+  const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
+  const who = trollTarget === "all" ? "все" : trollTarget === "me" ? "я (проверка)" : others.get(trollTarget)?.nick || "?";
+  adminEl.innerHTML = ["╔" + title("ТРОЛЛЬ", "═") + "╗", row(`[ цель: ${who} ]`, "trtarget"), "╟" + title("", "─") + "╢",
+    ...TROLLS.map(([id, name]) => row(`[ ${name} ]`, "tr:" + id)),
+    "╟" + title("", "─") + "╢", row("[ назад ]", "trback"), "╚" + title("", "═") + "╝"].join("\n");
+}
+function sendTroll(type) {
+  if (!TROLLS.some(t => t[0] === type)) return;
+  if (trollTarget === "me" || !online) return runTroll(type);
+  const ids = trollTarget === "all" ? [...others.keys()].filter(id => !id.startsWith("vit-")) : [trollTarget];
+  for (const id of ids) online.troll(id, type);
+  addChat(`* шутка «${TROLLS.find(t => t[0] === type)[1]}» отправлена: ${ids.length}`);
+}
+
 // ---------- Админ-меню разработчика (P или кнопка АДМИН) ----------
 
 const adminEl = document.getElementById("admin");
 
 function drawAdmin() {
+  if (trollPage && isDev) return drawTroll();
   const W = 34;
   const row = (text, act) => {
     const t = text.slice(0, W - 2);
@@ -2810,7 +2920,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !id.startsWith("vit-"));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -2846,6 +2956,13 @@ adminEl.addEventListener("click", e => {
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
+  if (a === "trollmenu") trollPage = true;
+  if (a === "trback") trollPage = false;
+  if (a === "trtarget") {
+    const order = ["all", ...[...others.keys()].filter(id => !id.startsWith("vit-")), "me"], i = order.indexOf(trollTarget);
+    trollTarget = order[(i + 1) % order.length];
+  }
+  if (a.startsWith("tr:")) sendTroll(a.slice(3));
   if (a === "ghosts") online?.cleanGhosts().catch(() => addChat("* не вышло: обнови правила базы в Firebase"));
   if (a === "dellobby" && lobbyCode) confirmDeleteLobby(lobbyCode);
   if (a.startsWith("half:")) {
@@ -3071,7 +3188,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "sizes", "hits", "fx", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "troll", "sizes", "hits", "fx", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
@@ -3861,7 +3978,9 @@ let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noU
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
+  updateTroll(dt);
   update(dt);
+  applyTrollCam();
   updateGhosts();
   updateOnline(dt);
   updateWorld(dt);
@@ -3901,7 +4020,7 @@ renderer.setAnimationLoop(now => {
   }
   // Зум на C: угол обзора плавно сужается, пока клавиша зажата
   if (!keys.KeyC) zoomFov = ZOOM_FOV;
-  const fovTarget = scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
+  const fovTarget = trollOn("fisheye") ? 140 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 12);
     camera.updateProjectionMatrix();
