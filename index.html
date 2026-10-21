@@ -268,8 +268,8 @@ const PLATE = 300;         // размер плиты в блоках: она е
 
 // Размер одного символа в пикселях (меньше — детальнее). У телефона экран узкий,
 // поэтому символы там мельче — иначе их помещается в разы меньше, чем на компьютере
-const CELL_W = TOUCH ? 3 : 4;
-const CELL_H = TOUCH ? 5 : 7;
+const CELL_W = TOUCH ? 2 : 3;
+const CELL_H = TOUCH ? 4 : 5;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -904,6 +904,7 @@ function exitCar() {
   feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
   vy = 0;
   crouching = false;
+  scene.fog.near = 20; scene.fog.far = 70;
   yaw = carYaw;
   if (camMode === "car") camMode = "first";
 }
@@ -949,6 +950,7 @@ function updateCar(dt) {
   camRay.far = 12;
   const hit = camRay.intersectObjects(solids)[0];
   camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 12);
+  scene.fog.near = 40; scene.fog.far = 140;  // за рулём видно дальше
   camera.rotation.set(pitch, yaw, 0);
 }
 
@@ -1674,7 +1676,7 @@ function resize() {
   const rows = Math.floor(innerHeight / CELL_H);
   renderer.setPixelRatio(dpr);
   renderer.setSize(cols * CELL_W, rows * CELL_H);
-  sceneTarget.setSize(cols * 2, rows * 2);
+  sceneTarget.setSize(cols * 3, rows * 3);
   asciiMat.uniforms.grid.value.set(cols, rows);
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
   camera.updateProjectionMatrix();
