@@ -280,9 +280,12 @@ const PLATE = 300;         // размер плиты в блоках: она е
 
 // Размер одного символа в настоящих пикселях экрана (меньше — детальнее). Считаем в них, а не в css-пикселях:
 // у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере.
-// Если игра тормозит, качество само падает на ступень вниз (символы крупнее — рисовать меньше)
-const QUALITY = [[3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]];
-let quality = 0;
+// Качество подстраивается под устройство: тормозит — символы крупнее, идёт ровно — пробуем мельче (см. главный цикл)
+const QUALITY = [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]];
+let quality = 1;
+// Слабые телефоны (мало памяти или ядер) не пробуют самую мелкую сетку
+const WEAK = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+const BEST_QUALITY = WEAK ? 1 : 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -369,6 +372,7 @@ const renderer = new THREE.WebGLRenderer();
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;  // обновляем сами, см. главный цикл
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -1866,6 +1870,12 @@ asciiQuad.frustumCulled = false;
 asciiScene.add(asciiQuad);
 const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+// Смена качества: пересчитываем сетку, а на грубых ступенях выключаем тени
+function setQuality() {
+  resize();
+  sun.castShadow = quality < 4;
+}
+
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -2666,7 +2676,7 @@ gameEl.addEventListener("click", e => {
 // ---------- Главный цикл ----------
 
 let last = performance.now();
-let tvTimer = 0, lampTimer = 0, frameMs = 16, frameAt = last, lastQuality = 0;
+let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
@@ -2688,15 +2698,27 @@ renderer.setAnimationLoop(now => {
   tvTimer += dt;
   if (tvs.size && tvTimer > 0.2) { tvTimer = 0; drawTv(now / 1000); tvTex.needsUpdate = true; }
 
-  // Следим за скоростью: если кадр дольше ~24 мс, символы становятся крупнее (сначала через 3 секунды после старта)
+  // Подстраиваем качество. Кадр дольше ~24 мс — символы крупнее. Ровные 60 кадров 8 секунд подряд — пробуем мельче;
+  // если после такой пробы снова тормозит, мелкую сетку не трогаем 2 минуты
   frameMs += (Math.min(now - frameAt, 100) - frameMs) * 0.05;
   frameAt = now;
-  if (now > 3000 && now - lastQuality > 2500 && frameMs > 24 && quality < QUALITY.length - 1 && document.visibilityState === "visible") {
-    quality++;
-    lastQuality = now;
-    frameMs = 16;
-    resize();
+  if (now > 3000 && document.visibilityState === "visible") {
+    if (frameMs > 24 && quality < QUALITY.length - 1 && now - lastQuality > 2500) {
+      quality++;
+      if (now - lastUpgrade < 6000) noUpgradeUntil = now + 120000;
+      lastQuality = now; goodSince = 0; frameMs = 16;
+      setQuality();
+    } else if (frameMs < 18.5) {
+      goodSince ||= now;
+      if (now - goodSince > 8000 && quality > BEST_QUALITY && now > noUpgradeUntil && now - lastQuality > 8000) {
+        quality--;
+        lastQuality = lastUpgrade = now; goodSince = 0; frameMs = 16;
+        setQuality();
+      }
+    } else goodSince = 0;
   }
+  // Тени обновляем через кадр-два: это почти не заметно, а отрисовка теней — самая дорогая часть кадра
+  if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
   renderer.setRenderTarget(sceneTarget);
   renderer.render(scene, camera);
