@@ -388,6 +388,8 @@ let gameMode = "creative";  // "creative" — творческий, "survival" �
 let hp = 100, dead = false, respawnAt = 0, invulnUntil = 0;
 const MAX_HP = 100;
 let adminGranted = false;  // разработчик выдал админ-панель в этом лобби
+let godSelf = false, godGranted = false, godIds = {};  // режим бога: себе (разработчик) или выдан разработчиком
+const isGod = () => godSelf || godGranted;
 let adminIds = {};         // у кого в лобби есть админ-панель: { id: true }
 let prefixes = {};         // выданные разработчиком префиксы: { id: "текст" }
 let meId = "";             // мой id в лобби
@@ -1292,13 +1294,13 @@ function drawHp() {
   const show = gameMode === "survival" && inGame;
   hpEl.style.display = show ? "block" : "none";
   if (!show) return;
-  const t = `♥ ${Math.max(0, Math.ceil(hp))}\n` + "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10));
+  const t = isGod() ? "♥ БОГ\n" + "█".repeat(10) : `♥ ${Math.max(0, Math.ceil(hp))}\n` + (isGod() ? "" : "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10)));
   if (t !== lastHpText) { lastHpText = t; hpEl.textContent = t; }
 }
 
 // Урон: в творческом режиме его нет. by — кто виноват (для сообщения о гибели)
 function damage(n, by) {
-  if (gameMode !== "survival" || dead || performance.now() < invulnUntil || n <= 0) return;
+  if (gameMode !== "survival" || dead || isGod() || performance.now() < invulnUntil || n <= 0) return;
   hp -= n;
   flashEl.style.transition = "none"; flashEl.style.opacity = 0.35;
   requestAnimationFrame(() => { flashEl.style.transition = "opacity 0.4s"; flashEl.style.opacity = 0; });
@@ -2745,6 +2747,16 @@ async function joinLobby(code, me) {
     for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick;
     if (panel === adminEl) drawAdmin();
   });
+  // Разработчик выдал или забрал режим бога
+  onValue(ref(db, `gods/${code}`), s => {
+    const was = isGod();
+    godIds = s.val() || {};
+    godGranted = !!godIds[me];
+    if (!was && isGod()) { hp = MAX_HP; addChat("* тебе выдали режим бога: тебя нельзя убить"); }
+    if (was && !isGod()) addChat("* режим бога у тебя забрали");
+    drawHp();
+    if (panel === adminEl) drawAdmin();
+  });
   // Разработчик выдал или забрал админ-панель
   onValue(ref(db, `admins/${code}`), s => {
     const was = isAdmin();
@@ -2811,6 +2823,8 @@ async function joinLobby(code, me) {
     grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Помощники «Вкусно и точка» летают как игроки: пишем их позиции, чтобы их видели все
+    setGod: (id, on) => (on ? set(ref(db, `gods/${code}/${id}`), true) : remove(ref(db, `gods/${code}/${id}`)))
+      .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     troll: (id, type, text) => set(ref(db, `troll/${code}/${id}`), { type, t: Date.now(), ...(text ? { text: String(text).slice(0, 60) } : {}) }).catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     setHelpers: list => list.forEach((h, i) => {
       const r = ref(db, `players/${code}/vit-${i}`);
@@ -3050,14 +3064,14 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !id.startsWith("vit-"));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
       const adm = adminIds[id] ? "[-адм]" : "[+адм]";
       rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""} x${a.size || 1}`),
         "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║",
-        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span> <span class="act" data-a="sz-:${esc(id)}">[-]</span><span class="act" data-a="sz+:${esc(id)}">[+]</span>` + " ".repeat(W - 1 - 24) + "║");
+        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span> <span class="act" data-a="sz-:${esc(id)}">[-]</span><span class="act" data-a="sz+:${esc(id)}">[+]</span> <span class="act" data-a="god:${esc(id)}">${godIds[id] ? "[-бог]" : "[+бог]"}</span>` + " ".repeat(W - 1 - 31) + "║");
     }
   }
   rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
@@ -3086,6 +3100,12 @@ adminEl.addEventListener("click", e => {
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
+  if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
+  if (a.startsWith("god:")) {
+    const id = a.slice(4), on = !godIds[id];
+    online?.setGod(id, on);
+    addChat(`* ${others.get(id)?.nick} ${on ? "получает" : "теряет"} режим бога`);
+  }
   if (a === "trollmenu") trollPage = true;
   if (a === "trback") trollPage = false;
   if (a === "trnext") trollNo = (trollNo + 1) % Math.ceil(TROLLS.length / 12);
@@ -3319,7 +3339,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "troll", "sizes", "hits", "fx", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "troll", "gods", "sizes", "hits", "fx", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
