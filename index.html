@@ -387,7 +387,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.Fog(0x000000, 20, 70);  // дальше — темнее
 
-const camera = new THREE.PerspectiveCamera(70, 1, NEAR, FAR);
+const FOV = 70, ZOOM_FOV = 25;  // зум — пока держишь C
+const camera = new THREE.PerspectiveCamera(FOV, 1, NEAR, FAR);
 camera.rotation.order = "YXZ";
 
 // В three.js яркость света делится на π, поэтому умножаем на π
@@ -1194,7 +1195,7 @@ function updateDrone(dt) {
   } else {
     const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
     const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
-    const up = (keys.Space ? 1 : 0) - ((keys.KeyC || keys.ControlLeft || keys.ControlRight) ? 1 : 0);
+    const up = (keys.Space ? 1 : 0) - ((keys.ControlLeft || keys.ControlRight) ? 1 : 0);
     const look = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const move = look.multiplyScalar(forward).addScaledVector(right, strafe);
@@ -1217,7 +1218,7 @@ function updateDrone(dt) {
 }
 
 function update(dt) {
-  const crouchKey = keys.KeyC || keys.ControlLeft || keys.ControlRight;
+  const crouchKey = keys.ControlLeft || keys.ControlRight;
   // Ходьба: W/S — вперёд-назад, A/D — вбок, относительно взгляда (или джойстик)
   const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
@@ -1226,7 +1227,7 @@ function update(dt) {
   if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
-  // W/S — туда, куда смотришь, A/D — вбок, пробел — вверх, C или Ctrl — вниз
+  // W/S — туда, куда смотришь, A/D — вбок, пробел — вверх, Ctrl — вниз
   if (camMode === "free") {
     const look = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -1238,7 +1239,7 @@ function update(dt) {
     return;
   }
 
-  // Присед: пока держишь C или Ctrl — ниже и медленнее. Встать можно, только если над головой свободно
+  // Присед: пока держишь Ctrl — ниже и медленнее. Встать можно, только если над головой свободно
   if (crouchKey && !flying) crouching = true;
   else if (crouching && !hitsSolid(px, feet, pz, HEIGHT)) crouching = false;
   bodyH = crouching ? CROUCH_HEIGHT : HEIGHT;
@@ -1263,7 +1264,7 @@ function update(dt) {
 
   const prevFeet = feet;
   if (flying) {
-    // Полёт разработчика: пробел — вверх, C или Ctrl — вниз, гравитации нет
+    // Полёт разработчика: пробел — вверх, Ctrl — вниз, гравитации нет
     const up = ((keys.Space ? 1 : 0) - (crouchKey ? 1 : 0)) * FLY_SPEED * dt;
     if (up < 0 || !hitsSolid(px, feet + up, pz)) feet += up;
     feet = Math.max(feet, groundHeight(px, prevFeet, pz));
@@ -1527,7 +1528,7 @@ function turn(dx, dy, speed) {
 }
 
 addEventListener("mousemove", e => {
-  if (document.pointerLockElement) turn(e.movementX, e.movementY, MOUSE_SPEED);
+  if (document.pointerLockElement) turn(e.movementX, e.movementY, MOUSE_SPEED * camera.fov / FOV);
 });
 addEventListener("mousedown", e => {
   if (!document.pointerLockElement) return;
@@ -1650,7 +1651,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     e.preventDefault();
     button.classList.add("active");
     if (action === "jump") keys.Space = true;
-    if (action === "crouch") keys.KeyC = true;
+    if (action === "crouch") keys.ControlLeft = true;
     if (action === "color") togglePalette();
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
@@ -1661,7 +1662,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
   button.addEventListener("touchend", () => {
     button.classList.remove("active");
     if (action === "jump") keys.Space = false;
-    if (action === "crouch") keys.KeyC = false;
+    if (action === "crouch") keys.ControlLeft = false;
   });
 }
 
@@ -2764,6 +2765,12 @@ renderer.setAnimationLoop(now => {
         setQuality();
       }
     } else goodSince = 0;
+  }
+  // Зум на C: угол обзора плавно сужается, пока клавиша зажата
+  const fovTarget = keys.KeyC && !typing ? ZOOM_FOV : FOV;
+  if (Math.abs(camera.fov - fovTarget) > 0.05) {
+    camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 12);
+    camera.updateProjectionMatrix();
   }
   // Тени обновляем через кадр-два: это почти не заметно, а отрисовка теней — самая дорогая часть кадра
   if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
