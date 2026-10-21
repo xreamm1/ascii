@@ -294,7 +294,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
-  "Огниво", "ТНТ", null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Огниво", "ТНТ", "Трамплин", null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -400,6 +400,7 @@ let prefixes = {};         // выданные разработчиком пре
 let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
+let drivingTank = null;  // меш танка, которым управляет игрок
 let drivingPlane = null;  // меш самолёта, которым управляет игрок
 let drivingCar = null;  // меш машины, в которой сидит игрок
 let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон, "car" — за рулём
@@ -674,6 +675,21 @@ function edit(e, replace = false) {
     } else if (m !== drivingPlane) m.userData.edit = m.userData.target = e;  // чужой самолёт плавно летит к новой точке
   }
   if (e.op === "unplane") removeSolid(planes.get(e.id));
+  if (e.op === "tank") {
+    const m = tanks.get(e.id);
+    if (!m) {
+      const mesh = new THREE.Mesh(tankHullGeo, vmaterial(plainTex, 0));
+      const turret = new THREE.Mesh(tankTurretGeo, vmaterial(plainTex, 0)), barrel = new THREE.Mesh(tankBarrelGeo, vmaterial(plainTex, 0));
+      turret.position.y = 1.55; barrel.position.set(0, 0.05, -1.3);
+      turret.add(barrel); mesh.add(turret);
+      mesh.userData.turret = turret; mesh.userData.barrel = barrel;
+      mesh.position.set(e.x, e.y, e.z);
+      poseTank(mesh, e.yaw || 0, e.tu ?? e.yaw ?? 0, e.bp || 0);
+      addSolid(mesh, e);
+      tanks.set(e.id, mesh);
+    } else if (m !== drivingTank) m.userData.edit = m.userData.target = e;  // чужой танк плавно едет к новой точке
+  }
+  if (e.op === "untank") removeSolid(tanks.get(e.id));
   if (e.op === "uncar") removeSolid(cars.get(e.id));
   if (e.op === "ball") {
     const m = balls.get(e.id);
@@ -784,6 +800,7 @@ function removeSolid(mesh) {
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
   if (e.op === "ball") balls.delete(e.id);
   if (e.op === "plane") { planes.delete(e.id); if (mesh === drivingPlane) exitPlane(); }
+  if (e.op === "tank") { tanks.delete(e.id); if (mesh === drivingTank) exitTank(); }
   lamps.delete(mesh);
   tvs.delete(mesh);
   barriers.delete(mesh);
@@ -1102,6 +1119,13 @@ const planeGeo = mergeParts([...P(0xf2f2f2, box(0.9, 0.9, 5.2, 0, 0, 0.2), box(8
   ...P(0x6fb6e8, box(0.72, 0.38, 1.1, 0, 0.58, -0.5)),
   ...P(0x222222, box(0.14, 1.7, 0.08, 0, 0, -2.9), box(1.7, 0.14, 0.08, 0, 0, -2.9), box(0.12, 0.5, 0.12, -0.9, -0.55, -0.3), box(0.12, 0.5, 0.12, 0.9, -0.55, -0.3), box(0.1, 0.4, 0.1, 0, -0.5, -1.7),
     box(0.3, 0.3, 0.3, -0.9, -0.65, -0.3), box(0.3, 0.3, 0.3, 0.9, -0.65, -0.3), box(0.26, 0.26, 0.26, 0, -0.6, -1.7))]);
+// Танк: корпус смотрит в -z, начало координат — на земле под центром. Башня и ствол — отдельные части, которые поворачиваются
+const tankHullGeo = mergeParts([...P(0x56693f, box(2.8, 0.75, 4.4, 0, 0.8, 0.1), box(2.2, 0.35, 1.2, 0, 0.55, -2.4)),
+  ...P(0x2b2b2b, box(0.85, 0.95, 5.1, -1.85, 0.5, 0), box(0.85, 0.95, 5.1, 1.85, 0.5, 0),
+    ...times(5, i => box(0.95, 0.4, 0.4, -1.85, 0.3, -2 + i * 1)), ...times(5, i => box(0.95, 0.4, 0.4, 1.85, 0.3, -2 + i * 1)))]);
+const tankTurretGeo = mergeParts([...P(0x4b5d37, box(2.0, 0.8, 2.4, 0, 0, 0.2), box(0.7, 0.55, 0.55, 0, 0.05, -1.15)), ...P(0x3a4a2e, box(0.6, 0.25, 0.6, 0.45, 0.5, 0.7))]);
+const tankBarrelGeo = mergeParts(P(0x3a4a2e, [new THREE.CylinderGeometry(0.13, 0.13, 3.4, 10).rotateX(Math.PI / 2), 0, 0, -1.7]));
+const TANK_SHELL = { kind: "rocket", dmg: 90, radius: 5, speed: 45 };
 const KITCHEN = {
   tnt: tntGeo,
   counter: mergeParts(counterParts()),
@@ -1164,10 +1188,12 @@ const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
 const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
+let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
+  if (ignoreJump && e?.k === "jump") return null;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
-  const dir = (e?.k === "ramp" || e?.k === "stairs") && RAMP_DIR[e.r];
+  const dir = (e?.k === "ramp" || e?.k === "stairs" || e?.k === "jump") && RAMP_DIR[e.r];
   // Склон считаем только там, где стоит центр игрока: иначе ступеньки, идущие подряд, не дают подняться
   if (!dir || Math.floor(x) !== cx || Math.floor(z) !== cz) return null;
   const t = Math.min(1, Math.max(0, 0.5 + (x - cx - 0.5) * dir[0] + (z - cz - 0.5) * dir[1]));
@@ -1213,7 +1239,7 @@ function blockMesh(e) {
     m.rotation.y = (e.r || 0) * Math.PI / 2;  // стул смотрит туда же, куда и ты при установке
     return m;
   }
-  if (e.k === "ramp") {
+  if (e.k === "ramp" || e.k === "jump") {
     const m = new THREE.Mesh(rampGeo, material(brickTex, e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     m.rotation.y = (e.r || 0) * Math.PI / 2;
@@ -1314,7 +1340,7 @@ function cellBlocks(cx, cy, cz, x, z) {
   if (!m) return false;
   const e = m.userData.edit;
   if (e.k === "door" || e.k === "barrier") return !e.open;
-  if (e.k === "ramp" || e.k === "stairs" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
+  if (e.k === "ramp" || e.k === "stairs" || e.k === "jump" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
   if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
   return true;
 }
@@ -1480,7 +1506,7 @@ function droneHits(p) {
 }
 
 // Машина: W/S — газ и тормоз, A/D — руль, пробел — ручник (с ним машину заносит). E — сесть и выйти
-let carV = { x: 0, z: 0 }, carYaw = 0, nitroOn = false;
+let carV = { x: 0, z: 0 }, carYaw = 0, nitroOn = false, carVy = 0;
 
 // Ближайшая машина, в которую можно сесть
 function nearestCar() {
@@ -1499,15 +1525,27 @@ function nearestPlane() {
   }
   return best;
 }
+function nearestTank() {
+  let best = null, bestD = 8;
+  for (const m of tanks.values()) {
+    const d = Math.hypot(m.position.x - px, m.position.z - pz);
+    if (d < bestD && Math.abs(m.position.y - feet) < 4) { best = m; bestD = d; }
+  }
+  return best;
+}
 function toggleCar() {
+  if (drivingTank) return exitTank();
   if (drivingPlane) return exitPlane();
   if (drivingCar) return exitCar();
   if (camMode !== "first" || !inGame) return;
+  const tank = nearestTank();
+  if (tank && (isAdmin() || !online)) return enterTank(tank);
   const plane = nearestPlane();
   if (plane && (isAdmin() || !online)) return enterPlane(plane);
   const best = nearestCar();
   if (!best) return;
   drivingCar = best;
+  carVy = 0;
   carYaw = best.rotation.y;
   carV = { x: 0, z: 0 };
   camMode = "car";
@@ -1533,6 +1571,7 @@ function exitCar() {
 // Отлетающие машины: считает тот, кто врезался, остальные видят их через обычную рассылку машин
 const flung = new Map();
 const planes = new Map();
+const tanks = new Map();
 const balls = new Map();
 function launchCar(m, vx, vz, speed) {
   const k = 0.3 + speed / 60;
@@ -1624,6 +1663,72 @@ function updateBalls(dt) {
   }
 }
 
+// Танк: W/S — вперёд/назад, A/D — поворот корпуса, мышь (палец) — башня и ствол, ЛКМ или пробел — выстрел, E — выйти
+let tankYaw = 0, tankSpeed = 0, tankFireAt = 0;
+function poseTank(m, hullYaw, turretYaw, pitchUp) {
+  m.rotation.y = hullYaw;
+  m.userData.turret.rotation.y = turretYaw - hullYaw;
+  m.userData.barrel.rotation.x = pitchUp;
+}
+function enterTank(m) {
+  drivingTank = m;
+  tankYaw = m.rotation.y; tankSpeed = 0;
+  yaw = tankYaw; pitch = 0;
+  camMode = "car";
+  addChat(TOUCH ? "* танк: джойстик — ехать, палец — башня, ПРЫЖОК — выстрел" : "* танк: W/S — ехать, A/D — корпус, мышь — башня, ЛКМ или пробел — выстрел, E — выйти");
+}
+function exitTank() {
+  const m = drivingTank;
+  if (!m) return;
+  drivingTank = null;
+  px = m.position.x + Math.cos(tankYaw) * 3.5; pz = m.position.z - Math.sin(tankYaw) * 3.5;
+  feet = groundHeight(px, m.position.y + 1, pz); vy = 0;
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
+  yaw = tankYaw;
+  if (camMode === "car") camMode = "first";
+}
+function fireTank() {
+  const m = drivingTank, now = performance.now();
+  if (!m || now < tankFireAt) return;
+  tankFireAt = now + 1500;
+  const tu = yaw, bp = Math.max(-0.25, Math.min(0.7, pitch));
+  const dir = new THREE.Vector3(-Math.sin(tu) * Math.cos(bp), Math.sin(bp), -Math.cos(tu) * Math.cos(bp));
+  const o = new THREE.Vector3(m.position.x, m.position.y + 2.0, m.position.z).addScaledVector(dir, 3.6);
+  spawnRocket(o, dir, true, TANK_SHELL);
+  online?.fx({ t: "rocket", o: o.toArray().map(v => +v.toFixed(2)), d: dir.toArray().map(v => +v.toFixed(3)), tank: 1 });
+  tankSpeed -= 3;  // отдача
+  addExplosion(o, 1.2);
+}
+function updateTank(dt) {
+  const m = drivingTank;
+  const throttle = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+  const steer = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + stick.x;
+  tankYaw -= steer * 1.1 * dt;
+  tankSpeed += throttle * 9 * dt;
+  if (!throttle) tankSpeed -= tankSpeed * Math.min(1, 3 * dt);
+  tankSpeed = Math.max(-4, Math.min(8, tankSpeed));
+  const f = [-Math.sin(tankYaw), -Math.cos(tankYaw)], r = [Math.cos(tankYaw), -Math.sin(tankYaw)], y = m.position.y;
+  const blocked = (cx, cz) => [[0, 0], [2.3, 0], [-2.3, 0], [0, 1.3], [0, -1.3], [2.2, 1.2], [2.2, -1.2], [-2.2, 1.2], [-2.2, -1.2]]
+    .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1.2));
+  let x = m.position.x, z = m.position.z;
+  const dx = f[0] * tankSpeed * dt, dz = f[1] * tankSpeed * dt;
+  if (!blocked(x + dx, z)) x += dx; else tankSpeed *= 0.5;
+  if (!blocked(x, z + dz)) z += dz; else tankSpeed *= 0.5;
+  m.position.set(x, groundHeight(x, y, z), z);
+  poseTank(m, tankYaw, yaw, Math.max(-0.25, Math.min(0.7, pitch)));
+  Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +tankYaw.toFixed(2), tu: +yaw.toFixed(2), bp: +m.userData.barrel.rotation.x.toFixed(2) });
+  px = x; pz = z; feet = m.position.y;
+  if (keys.Space) fireTank();
+  // Камера за башней, куда смотрит ствол
+  const head = new THREE.Vector3(x, m.position.y + 3, z), back = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), 0.15 - Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).normalize();
+  camRay.set(head, back);
+  camRay.far = 10;
+  const hit = camRay.intersectObjects(solids.filter(s => s !== m))[0];
+  camera.position.copy(head).addScaledVector(back, hit ? Math.max(1, hit.distance - 0.3) : 10);
+  camera.rotation.set(pitch, yaw, 0);
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
+}
+
 // Самолёт: A/D — поворот, W — нос вверх, S — вниз, пробел — сбросить ТНТ, E — выйти
 let planeYaw = 0, planePitch = 0, planeRoll = 0, planeBombAt = 0;
 function enterPlane(m) {
@@ -1710,8 +1815,13 @@ function updateCar(dt) {
   // Едем по каждой оси отдельно; в стену — отскок. Машина большая, поэтому проверяем пять точек:
   // центр, нос, зад и оба борта
   const y = m.position.y;
-  const blocked = (cx, cz) => [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]
-    .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1));
+  const blocked = (cx, cz) => {
+    ignoreJump = true;
+    const hit = [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]
+      .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1));
+    ignoreJump = false;
+    return hit;
+  };
   let x = m.position.x, z = m.position.z;
   const speed = Math.hypot(carV.x, carV.z);
   // Врезались в чужую машину на скорости — она отлетает
@@ -1725,7 +1835,16 @@ function updateCar(dt) {
   const hitCar = (cx, cz) => { const o = speed > 7 && rammed(cx, cz); if (o && !flung.has(o)) launchCar(o, carV.x, carV.z, speed); };
   if (!blocked(x + carV.x * dt, z)) x += carV.x * dt; else { hitCar(x + carV.x * dt, z); carV.x *= -0.3; }
   if (!blocked(x, z + carV.z * dt)) z += carV.z * dt; else { hitCar(x, z + carV.z * dt); carV.z *= -0.3; }
-  m.position.set(x, groundHeight(x, y, z), z);
+  // Вертикаль: на земле машина прилипает к поверхности, а с трамплина или обрыва летит по дуге
+  let ny = groundHeight(x, y, z);
+  const jc = blocks.get(key(Math.floor(x), Math.floor(y + 0.05), Math.floor(z)));
+  if (carVy === 0 && jc?.userData.edit.k === "jump" && y - jc.userData.edit.y > 0.6 && speed > 3) carVy = 5 + speed * 0.45;  // верх трамплина — взлёт
+  if (carVy !== 0 || y > ny + 0.05) {
+    carVy -= 25 * dt;
+    const up = y + carVy * dt;
+    if (carVy <= 0 && up <= ny) carVy = 0; else ny = up;  // приземлился или ещё в воздухе
+  }
+  m.position.set(x, ny, z);
   m.rotation.y = carYaw;
   Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +carYaw.toFixed(2) });
   px = x; pz = z; feet = m.position.y;
@@ -1792,7 +1911,7 @@ function update(dt) {
     if (left <= 0) respawn();
     return;
   }
-  if (camMode === "car") return drivingPlane ? updatePlane(dt) : updateCar(dt);
+  if (camMode === "car") return drivingTank ? updateTank(dt) : drivingPlane ? updatePlane(dt) : updateCar(dt);
   if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
@@ -1849,6 +1968,9 @@ function update(dt) {
 
     const ground = groundHeight(px, prevFeet, pz);
     onGround = feet <= ground;
+    // Трамплин подбрасывает и игрока
+    const jp = onGround && blocks.get(key(Math.floor(px), Math.floor(feet + 0.2), Math.floor(pz)));
+    if (jp?.userData.edit.k === "jump" && feet - jp.userData.edit.y > 0.5) { vy = JUMP_SPEED * 1.5; onGround = false; feet = ground + 0.01; }
     if (onGround) {
       if (vy < -FALL_SAFE) damage((-vy - FALL_SAFE) * 6);  // удар о землю: чем быстрее падал, тем больнее
       feet = ground; vy = 0;
@@ -1948,7 +2070,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Телевизор": "tv", "Раковина": "sink", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -1998,9 +2120,10 @@ function use(action, screen) {
     const cell = placeCell(hit, HOTBAR[slot]);
     const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
+    if (e.k === "jump" && color === 0) e.c = 3;  // трамплин по умолчанию жёлтый
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["ramp", "jump", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "barrier") e.open = false;
     // Длинные предметы (шлагбаум, кровать, диван) не ставим, если их продолжение упирается в чужие блоки
     if (cell && extraCells(e).some(c => blocks.has(key(...c)))) return;
@@ -2134,7 +2257,7 @@ addEventListener("mousemove", e => {
 });
 addEventListener("mousedown", e => {
   if (!document.pointerLockElement) return;
-  if (e.button === 0) { if (currentWeapon()) { firing = true; tryFire(); } else use("place"); }
+  if (e.button === 0) { if (drivingTank) fireTank(); else if (currentWeapon()) { firing = true; tryFire(); } else use("place"); }
   if (e.button === 2) { if (currentWeapon()) toggleScope(); else use("remove"); }
 });
 addEventListener("mouseup", e => { if (e.button === 0) firing = false; });
@@ -2289,7 +2412,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -3317,6 +3440,7 @@ function drawAdmin() {
     row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
     row("[ телепорт по координатам ]", "tpxyz"),
     row("[ заспавнить самолёт ]", "plane"),
+    row("[ заспавнить танк ]", "tank"),
     ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -3355,6 +3479,11 @@ adminEl.addEventListener("click", e => {
   }
   if (a === "invis") asInvis = !asInvis;
   if (a === "tpxyz") askTeleport();
+  if (a === "tank") {
+    const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
+    share({ op: "tank", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +groundHeight(x, feet + 2, z).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), tu: +yaw.toFixed(2), bp: 0 });
+    addChat(TOUCH ? "* танк рядом: сядь кнопкой МАШИНА" : "* танк рядом: E — сесть, мышь — башня, ЛКМ — выстрел");
+  }
   if (a === "plane") {
     const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
     share({ op: "plane", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +(groundHeight(x, feet + 2, z) + 0.8).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
@@ -3461,12 +3590,23 @@ function updateOnline(dt) {
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
     m.rotation.x += ((t.pt || 0) - m.rotation.x) * k; m.rotation.z += ((t.rl || 0) - m.rotation.z) * k;
   }
+  for (const m of tanks.values()) {
+    const t = m.userData.target;
+    if (!t || m === drivingTank) continue;
+    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    const turretAbs = m.userData.turret.rotation.y + m.rotation.y;
+    m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
+    const nt = turretAbs + Math.atan2(Math.sin((t.tu ?? t.yaw) - turretAbs), Math.cos((t.tu ?? t.yaw) - turretAbs)) * k;
+    m.userData.turret.rotation.y = nt - m.rotation.y;
+    m.userData.barrel.rotation.x += ((t.bp || 0) - m.userData.barrel.rotation.x) * k;
+  }
   poseTimer += dt;
   if (online && poseTimer > 1 / 8) {
     poseTimer = 0;
     online.sendPose();
     if (drivingCar) online.sendEdits([drivingCar.userData.edit]);
     if (drivingPlane) online.sendEdits([drivingPlane.userData.edit]);
+    if (drivingTank) online.sendEdits([drivingTank.userData.edit]);
   }
 }
 
@@ -4412,7 +4552,7 @@ function updateFx(dt) {
 function handleFx(f) {
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
   if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
-  if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
+  if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, f.tank ? TANK_SHELL : WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
   if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null, !!f.imp);
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
@@ -4478,7 +4618,7 @@ function updateWeapons(dt) {
   updatePrimed(dt);
   updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
-  const canCar = !!(drivingCar || drivingPlane || (inGame && camMode === "first" && (nearestCar() || ((isAdmin() || !online) && nearestPlane())))) ? "" : "none";
+  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || ((isAdmin() || !online) && (nearestPlane() || nearestTank()))))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
   // Кнопка бега: за рулём она включает нитро
   const nitroBtn = document.querySelector('#touch [data-action="nitro"]'), nitroText = drivingCar ? "НИТРО" : "БЕГ";
