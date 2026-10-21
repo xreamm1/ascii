@@ -297,7 +297,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
-  "Огниво", "ТНТ", "Трамплин", null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Огниво", "ТНТ", "Трамплин", "Танк",  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -1545,7 +1545,7 @@ function toggleCar() {
   if (drivingCar) return exitCar();
   if (camMode !== "first" || !inGame) return;
   const tank = nearestTank();
-  if (tank && (isAdmin() || !online)) return enterTank(tank);
+  if (tank) return enterTank(tank);
   const plane = nearestPlane();
   if (plane && (isAdmin() || !online)) return enterPlane(plane);
   const best = nearestCar();
@@ -2151,6 +2151,10 @@ function use(action, screen) {
     const p = hit.point.clone().addScaledVector(hit.normal, BALL_TYPES[ballType].r + 0.03);
     share({ op: "ball", id: `${myId}-${idCount++}`, t: ballType, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(2), o: myId });
   }
+  if (HOTBAR[slot] === "Танк" && hit && hit.normal.y > 0.5) {
+    const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
+    share({ op: "tank", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), tu: +yaw.toFixed(2), bp: 0 });
+  }
   if (HOTBAR[slot] === "Машина" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color });
@@ -2427,7 +2431,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█", "Танк": "▟██▙" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -3463,7 +3467,6 @@ function drawAdmin() {
     row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
     row("[ телепорт по координатам ]", "tpxyz"),
     row("[ заспавнить самолёт ]", "plane"),
-    row("[ заспавнить танк ]", "tank"),
     ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
@@ -3502,11 +3505,6 @@ adminEl.addEventListener("click", e => {
   }
   if (a === "invis") asInvis = !asInvis;
   if (a === "tpxyz") askTeleport();
-  if (a === "tank") {
-    const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
-    share({ op: "tank", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +groundHeight(x, feet + 2, z).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), tu: +yaw.toFixed(2), bp: 0 });
-    addChat(TOUCH ? "* танк рядом: сядь кнопкой МАШИНА" : "* танк рядом: E — сесть, мышь — башня, ЛКМ — выстрел");
-  }
   if (a === "plane") {
     const x = px - Math.sin(yaw) * 9, z = pz - Math.cos(yaw) * 9;
     share({ op: "plane", id: `${myId}-${idCount++}`, x: +x.toFixed(2), y: +(groundHeight(x, feet + 2, z) + 0.8).toFixed(2), z: +z.toFixed(2), yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
@@ -4648,7 +4646,7 @@ function updateWeapons(dt) {
   updatePrimed(dt);
   updateBalls(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
-  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || ((isAdmin() || !online) && (nearestPlane() || nearestTank()))))) ? "" : "none";
+  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || ((isAdmin() || !online) && nearestPlane())))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
   // Кнопка бега: за рулём она включает нитро
   const nitroBtn = document.querySelector('#touch [data-action="nitro"]'), nitroText = drivingCar ? "НИТРО" : "БЕГ";
