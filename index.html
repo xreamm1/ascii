@@ -697,16 +697,76 @@ function share(e, replace = false) {
   online?.sendEdits([e]);
 }
 
+// Склейка: обычные блоки рисуются кусками 8×8×8 (по цвету), а не тысячами отдельных вызовов отрисовки — так игра намного легче.
+// Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
+const CH = 8;
+const chunks = new Map();
+const dirtyChunks = new Set();
+function chunkAdd(mesh) {
+  const e = mesh.userData.edit, k = `${Math.floor(e.x / CH)},${Math.floor(e.y / CH)},${Math.floor(e.z / CH)}`;
+  let c = chunks.get(k);
+  if (!c) chunks.set(k, c = { blocks: new Set(), meshes: new Map() });
+  c.blocks.add(mesh);
+  mesh.userData.chunk = c;
+  dirtyChunks.add(c);
+}
+function chunkRemove(mesh) {
+  const c = mesh.userData.chunk;
+  if (!c) return;
+  c.blocks.delete(mesh);
+  dirtyChunks.add(c);
+}
+function rebuildChunks(limit = 24) {
+  for (const c of dirtyChunks) {
+    if (limit-- <= 0) return;
+    dirtyChunks.delete(c);
+    const byColor = new Map();
+    for (const m of c.blocks) {
+      const col = m.userData.edit.c;
+      if (!byColor.has(col)) byColor.set(col, []);
+      byColor.get(col).push(m);
+      m.visible = false;
+    }
+    for (const [col, list] of byColor) {
+      const n = list.length, pos = new Float32Array(n * 72), nor = new Float32Array(n * 72), uv = new Float32Array(n * 48), idx = new Uint16Array(n * 36);
+      const bp = boxGeo.attributes.position.array, bn = boxGeo.attributes.normal.array, bu = boxGeo.attributes.uv.array, bi = boxGeo.index.array;
+      list.forEach((m, i) => {
+        const { x, y, z } = m.position;
+        for (let v = 0; v < 24; v++) {
+          pos[i * 72 + v * 3] = bp[v * 3] + x; pos[i * 72 + v * 3 + 1] = bp[v * 3 + 1] + y; pos[i * 72 + v * 3 + 2] = bp[v * 3 + 2] + z;
+        }
+        nor.set(bn, i * 72); uv.set(bu, i * 48);
+        for (let k = 0; k < 36; k++) idx[i * 36 + k] = bi[k] + i * 24;
+      });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+      g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      g.computeBoundingSphere();
+      let mesh = c.meshes.get(col);
+      if (!mesh) {
+        mesh = new THREE.Mesh(g, material(brickTex, col));
+        mesh.matrixAutoUpdate = false;
+        scene.add(mesh);
+        c.meshes.set(col, mesh);
+      } else { mesh.geometry.dispose(); mesh.geometry = g; }
+    }
+    for (const [col, mesh] of c.meshes) if (!byColor.has(col)) { scene.remove(mesh); mesh.geometry.dispose(); c.meshes.delete(col); }
+  }
+}
 function addSolid(mesh, e) {
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.userData.edit = e;  // чем предмет был создан: нужно, чтобы его убрать и чтобы отправить новичкам
   solids.push(mesh);
   scene.add(mesh);
+  if (mesh.userData.mergeable) chunkAdd(mesh);
 }
 
 function removeSolid(mesh) {
   if (!mesh) return;
   scene.remove(mesh);
+  chunkRemove(mesh);
   solids.splice(solids.indexOf(mesh), 1);
   const e = mesh.userData.edit;
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
@@ -1172,6 +1232,7 @@ function blockMesh(e) {
   }
   const m = new THREE.Mesh(boxGeo, material(brickTex, e.c));
   m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+  m.userData.mergeable = true;  // рисуется склейкой, см. rebuildChunks
   return m;
 }
 
@@ -2466,6 +2527,17 @@ function toggleGfx() {
 const gfxName = () => ({ ascii: "ASCII", sharp: "ЧЁТКАЯ", ultra: "УЛЬТРА", "3d": "3D" })[gfxMode];
 
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
+// Сглаживание в «3D»: сцена рисуется в цель с MSAA и копируется на экран. На грубых ступенях качества (когда тормозит) сглаживание отключается
+let target3d = null;
+const blitMat = new THREE.ShaderMaterial({
+  uniforms: { tex: { value: null } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+  fragmentShader: "uniform sampler2D tex; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tex, vUv).rgb, 1.0); }",
+});
+const blitScene = new THREE.Scene();
+const blitQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMat);
+blitQuad.frustumCulled = false;
+blitScene.add(blitQuad);
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   if (is3d()) {
@@ -2477,8 +2549,16 @@ function resize() {
     renderer.domElement.style.height = innerHeight + "px";
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
+    const w = Math.floor(innerWidth * k), h = Math.floor(innerHeight * k), samples = quality <= 1 ? (WEAK ? 2 : 4) : 0;
+    if (!samples) { target3d?.dispose(); target3d = null; }
+    else if (!target3d || target3d.width !== w || target3d.height !== h || target3d.samples !== samples) {
+      target3d?.dispose();
+      target3d = new THREE.WebGLRenderTarget(w, h, { samples });
+      blitMat.uniforms.tex.value = target3d.texture;
+    }
     return;
   }
+  target3d?.dispose(); target3d = null;
   renderer.setPixelRatio(1);
   const [CELL_W, CELL_H] = QUALITY[quality];
   // Всё считаем в настоящих пикселях экрана и рисуем 1 в 1: если холст растягивается браузером
@@ -4442,9 +4522,10 @@ renderer.setAnimationLoop(now => {
   // Тени обновляем через кадр-два: это почти не заметно, а отрисовка теней — самая дорогая часть кадра
   if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
-  if (is3d()) {  // без символов: сцена рисуется прямо на экран
-    renderer.setRenderTarget(null);
-    renderer.render(scene, camera);
+  rebuildChunks();
+  if (is3d()) {  // без символов; со сглаживанием — через цель с MSAA, потом на экран
+    if (target3d) { renderer.setRenderTarget(target3d); renderer.render(scene, camera); renderer.setRenderTarget(null); renderer.render(blitScene, asciiCamera); }
+    else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
     return;
   }
   renderer.setRenderTarget(sceneTarget);
