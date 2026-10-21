@@ -293,7 +293,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   null, null, "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
-  "Прочный блок", "Прочная решётка"];
+  "Прочный блок", "Прочная решётка", "Базука и точка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -1881,7 +1881,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -3159,6 +3159,7 @@ const WEAPONS = {
   "АК":       { kind: "gun", dmg: 22, cd: 0.1, mag: 30, reload: 2.2, spread: 0.014, kick: 0.012, auto: true, range: 90 },
   "АВП":      { kind: "gun", dmg: 110, cd: 1.4, mag: 5, reload: 3.2, spread: 0.0006, kick: 0.05, range: 200, scope: true },
   "Базука":   { kind: "rocket", dmg: 95, cd: 1, mag: 1, reload: 3, radius: 5, speed: 26 },
+  "Базука и точка": { kind: "rocket", vit: true, dev: true, dmg: 0, cd: 1, mag: 1, reload: 4, radius: 2, speed: 30 },  // ракета зовёт помощников, а не взрывает
   "Граната":  { kind: "grenade", dmg: 85, cd: 1, mag: 3, reload: 4, radius: 5, fuse: 2.2, speed: 14 },
 };
 const SCOPE_FOV = 12;
@@ -3190,6 +3191,8 @@ const VIEW = {  // положение, поворот и размер оружи
   "Базука":   { p: [0.17, -0.12, -0.3], r: [0, -0.06, 0], s: 0.38 },
   "Граната":  { p: [0.12, -0.12, -0.3], r: [0.1, 0, 0], s: 0.85 },
 };
+WEAPON_GEO["Базука и точка"] = WEAPON_GEO["Базука"];
+VIEW["Базука и точка"] = VIEW["Базука"];
 const viewRoot = new THREE.Group();
 camera.add(viewRoot);
 scene.add(camera);
@@ -3261,6 +3264,7 @@ function tryFire() {
   const n = currentWeapon();
   if (!n || dead || camMode !== "first" || menuOpen || typing || !inGame) return;
   const W = WEAPONS[n], now = performance.now() / 1000;
+  if (W.dev && online && !isDev) return addChat("* это оружие только у разработчика");
   if (now < nextShot || reloadEnd) return;
   if (W.kind !== "melee" && ammo[n] <= 0) return startReload();
   nextShot = now + W.cd;
@@ -3314,7 +3318,7 @@ function spawnRocket(o, dir, own, W) {
 function fireRocket(n, W) {
   const dir = camDir(), o = camera.position.clone().addScaledVector(dir, 0.9);
   spawnRocket(o, dir, true, W);
-  online?.fx({ t: "rocket", o: o.toArray().map(v => +v.toFixed(2)), d: dir.toArray().map(v => +v.toFixed(3)) });
+  online?.fx({ t: "rocket", o: o.toArray().map(v => +v.toFixed(2)), d: dir.toArray().map(v => +v.toFixed(3)), ...(W.vit ? { vit: 1 } : {}) });
 }
 function spawnGrenade(o, vel, own, W) {
   const mesh = new THREE.Mesh(WEAPON_GEO["Граната"], weaponMats);
@@ -3365,6 +3369,7 @@ function updateRockets(dt) {
 function rocketBoom(pos, own, W) {
   addExplosion(pos, W.radius);
   if (!own) return;
+  if (W.vit) return summonHelpers(pos);
   explode(pos, W.radius - 1);
   const hurt = (d) => W.dmg * (1 - d / W.radius);
   const me = Math.hypot(px - pos.x, feet + 1 - pos.y, pz - pos.z);
@@ -3372,6 +3377,75 @@ function rocketBoom(pos, own, W) {
   for (const [id, a] of others) {
     const d = a.group.position.clone().add(new THREE.Vector3(0, 0.9, 0)).distanceTo(pos);
     if (a.group.visible && d < W.radius) online?.hit(id, Math.round(hurt(d)), W.kind === "grenade" ? "Граната" : "Базука", false);
+  }
+}
+
+// --- Помощники «Вкусно и точка»: ракета зовёт главного, он зовёт ещё пятерых, все строят мир из файла и исчезают.
+// Блоки создаём у себя и рассылаем всем, как при импорте; сами фигурки помощников видны только у стрелявшего
+const HELPER_WORLD = "worlds/vkusno-i-tochka-3-etazha.baseAscii";
+const HELPER_NAME = "вкусно и точка helper";
+const HELPER_SPEED = 25;  // предметов в секунду на каждого помощника
+let helpers = null;
+const itemY = e => e.op === "plank" ? Math.min(e.ends[1], e.ends[4]) : e.op === "text" ? e.p[1] : e.y;
+function shiftEdit(e, dx, dz) {
+  if (e.op === "block" || e.op === "car") return { ...e, x: e.x + dx, z: e.z + dz };
+  if (e.op === "plank" && Array.isArray(e.ends)) return { ...e, ends: e.ends.map((v, i) => i % 3 === 1 ? v : v + (i % 3 === 0 ? dx : dz)) };
+  if (e.op === "text" && Array.isArray(e.p)) return { ...e, p: [e.p[0] + dx, e.p[1], e.p[2] + dz] };
+  return e;
+}
+function makeHelper(i, pos) {
+  const mat = new THREE.MeshLambertMaterial({ color: i ? 0xffc300 : 0x21a038 });
+  const group = makeFigure(mat);
+  group.position.copy(pos);
+  const label = document.createElement("pre");
+  label.className = "nick";
+  label.textContent = i ? `${HELPER_NAME} ${i}` : HELPER_NAME;
+  labels.append(label);
+  return { group, label, target: pos.clone(), cool: 0 };
+}
+async function summonHelpers(pos) {
+  if (helpers) return addChat("* помощники уже строят");
+  helpers = [];
+  helpers.queue = [];
+  let data;
+  try { data = await (await fetch(HELPER_WORLD)).json(); } catch { helpers = null; return addChat("* не удалось загрузить файл мира для помощников"); }
+  const raw = (data?.edits || []).filter(e => e && typeof e === "object");
+  const blocks = raw.filter(e => e.op === "block" && Number.isFinite(e.x));
+  if (!blocks.length) { helpers = null; return addChat("* в файле помощников нет предметов"); }
+  const dx = Math.floor(pos.x) - Math.min(...blocks.map(e => e.x)), dz = Math.floor(pos.z) - Math.min(...blocks.map(e => e.z));
+  const queue = raw.map(e => shiftEdit(e, dx, dz)).map(cleanEdit).filter(Boolean).sort((a, b) => itemY(a) - itemY(b));
+  const main = makeHelper(0, pos);
+  helpers.push(main);
+  helpers.queue = queue;
+  addChat(`* ${HELPER_NAME} появился`);
+  setTimeout(() => {
+    if (!helpers) return;
+    for (let i = 1; i <= 5; i++) helpers.push(makeHelper(i, main.group.position.clone().add(new THREE.Vector3(Math.cos(i * 1.26) * 1.5, 0, Math.sin(i * 1.26) * 1.5))));
+    addChat(`* ${HELPER_NAME} призвал ещё пятерых: ${HELPER_NAME} 1–5`);
+  }, 700);
+}
+function updateHelpers(dt) {
+  if (!helpers) return;
+  const batch = [];
+  for (const h of helpers) {
+    h.group.position.lerp(h.target, Math.min(1, dt * 14));
+    placeLabel(h.label, h.group.position, true, 2);
+    h.cool -= dt;
+    while (h.cool <= 0 && helpers.queue.length) {
+      const e = helpers.queue.shift();
+      batch.push(e);
+      const at = e.op === "plank" ? e.ends : e.op === "text" ? e.p : [e.x, e.y, e.z];
+      h.target.set(at[0] + 0.5, Math.max(0, itemY(e)), at[2] + 0.5);
+      h.cool += 1 / HELPER_SPEED;
+    }
+    h.group.rotation.y += dt * 3;
+  }
+  for (const e of batch) try { edit(e); } catch {}
+  if (batch.length) online?.sendEdits(batch);
+  if (!helpers.queue.length && helpers.length > 1 && helpers.every(h => h.cool <= 0)) {
+    for (const h of helpers) { addImpact(h.group.position.clone().add(new THREE.Vector3(0, 1, 0))); scene.remove(h.group); h.label.remove(); }
+    helpers = null;
+    addChat(`* ${HELPER_NAME} и его помощники закончили стройку и исчезли`);
   }
 }
 
@@ -3414,7 +3488,7 @@ function updateFx(dt) {
 function handleFx(f) {
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
   if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
-  if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS["Базука"]);
+  if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
 
@@ -3474,6 +3548,7 @@ function updateWeapons(dt) {
   }
   updateRockets(dt);
   updateFx(dt);
+  updateHelpers(dt);
 }
 
 // ---------- Главный цикл ----------
