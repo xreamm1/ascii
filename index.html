@@ -316,6 +316,8 @@ let QUALITY = LADDERS[gfxMode];
 let quality = gfxMode === "sharp" ? 1 : 0;
 // Слабые телефоны (мало памяти или ядер) не пробуют самую мелкую сетку
 const WEAK = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+// Самая крупная сетка, до которой игра может опуститься сама: дальше картинка слишком пиксельная (лучше чуть меньше кадров)
+const worstQuality = () => Math.min(QUALITY.length - 1, { ascii: 1, sharp: 3, ultra: 5 }[gfxMode]);
 const bestQuality = () => gfxMode !== "ascii" && WEAK ? 1 : 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
@@ -4135,7 +4137,7 @@ renderer.setAnimationLoop(now => {
   frameMs += (Math.min(now - frameAt, 100) - frameMs) * 0.05;
   frameAt = now;
   if (now > 3000 && document.visibilityState === "visible") {
-    if (frameMs > 24 && quality < QUALITY.length - 1 && now - lastQuality > 2500) {
+    if (frameMs > 30 && quality < worstQuality() && now - lastQuality > 2500) {
       quality++;
       if (now - lastUpgrade < 6000) noUpgradeUntil = now + 120000;
       lastQuality = now; goodSince = 0; frameMs = 16;
