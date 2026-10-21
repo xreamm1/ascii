@@ -1619,8 +1619,8 @@ function update(dt) {
     onGround = false;
   } else {
     // Прыжок и гравитация
-    if (keys.Space && onGround) vy = JUMP_SPEED;
-    vy -= GRAVITY * dt;
+    if ((keys.Space || trollOn("dance")) && onGround) vy = JUMP_SPEED;
+    vy -= GRAVITY * (trollOn("moon") ? 0.25 : 1) * dt;
     feet += vy * dt;
     if (vy > 0 && hitsSolid(px, feet, pz)) { feet = prevFeet; vy = 0; }  // ударился головой
 
@@ -2800,7 +2800,9 @@ function showAnnouncement(text, by) {
 // ---------- Тролль-функции: разработчик шлёт игроку шутку, а его клиент её показывает ----------
 
 const TROLLS = [["jump", "jumpscare"], ["fake", "фейк-кик"], ["bsod", "синий экран"], ["flip", "перевернуть экран"], ["spin", "раскрутить"], ["shake", "тряска"],
-  ["launch", "подбросить"], ["freeze", "заморозить"], ["invert", "инверсия цвета"], ["reverse", "обратное управление"], ["fisheye", "рыбий глаз"]];
+  ["launch", "подбросить"], ["freeze", "заморозить"], ["invert", "инверсия цвета"], ["reverse", "обратное управление"], ["fisheye", "рыбий глаз"],
+  ["mirror", "зеркало"], ["blur", "размытие"], ["rainbow", "радуга"], ["drunk", "пьяный"], ["dance", "заставить прыгать"], ["moon", "гравитация луны"],
+  ["blind", "ослепить"], ["fakeban", "фейк-бан"], ["error", "фейк-ошибка"], ["matrix", "взлом (матрица)"], ["siren", "сирена"], ["ghost", "призрак в чате"], ["binoc", "бинокль"]];
 const trollUntil = {};  // до какого момента (мс) длится шутка
 const trollOn = k => performance.now() < (trollUntil[k] || 0);
 const trollMove = () => trollOn("freeze") ? 0 : trollOn("reverse") ? -1 : 1;
@@ -2864,18 +2866,51 @@ function runTroll(type) {
   if (type === "reverse") trollUntil.reverse = now + 12000;
   if (type === "fisheye") trollUntil.fisheye = now + 8000;
   if (type === "invert") trollUntil.invert = now + 7000;
+  if (type === "mirror") trollUntil.mirror = now + 10000;
+  if (type === "blur") trollUntil.blur = now + 8000;
+  if (type === "rainbow") trollUntil.rainbow = now + 10000;
+  if (type === "drunk") trollUntil.drunk = now + 12000;
+  if (type === "dance") trollUntil.dance = now + 6000;
+  if (type === "moon") trollUntil.moon = now + 12000;
+  if (type === "binoc") trollUntil.binoc = now + 8000;
+  if (type === "blind") trollScreen("", "#000", "#000", "1vmin", 6000);
+  if (type === "fakeban") trollScreen("ты забанен навсегда\n\nпричина: читы\nбан выдал: xreamm\n\n(шутка, ты не забанен)", "#300", "#f66", "3vmin", 4500);
+  if (type === "error") trollScreen("╔══════════════════════════════╗\n║  ОШИБКА 0x80070057           ║\n║  Игра перестала отвечать.    ║\n║  Закрываю программу...       ║\n╚══════════════════════════════╝", "#222", "#fff", "3vmin", 3500);
+  if (type === "matrix") {
+    const cols = 60, rain = () => Array.from({ length: 26 }, () => Array.from({ length: cols }, () => Math.random() < 0.55 ? "01ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱ"[Math.floor(Math.random() * 18)] : " ").join("")).join("\n");
+    trollScreen(rain(), "#000", "#0f0", "2.4vmin", 5000);
+    for (let i = 1; i < 12; i++) setTimeout(() => { if (trollEl.style.display !== "none") trollEl.textContent = rain(); }, i * 400);
+    setTimeout(() => { if (trollEl.style.display !== "none") trollEl.textContent = "ТЫ ВЗЛОМАН\n\n(нет, шутка)"; }, 4400);
+  }
+  if (type === "siren") {
+    try {
+      const ac = audioCtx ??= new AudioContext(), o = ac.createOscillator(), g = ac.createGain();
+      ac.resume();
+      o.type = "square"; g.gain.value = 0.12; o.connect(g); g.connect(ac.destination);
+      for (let i = 0; i < 8; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 880, ac.currentTime + i * 0.5);
+      o.start(); o.stop(ac.currentTime + 4);
+    } catch {}
+  }
+  if (type === "ghost") {
+    const lines = ["* Herobrine зашёл", "<Herobrine> я за тобой", "<Herobrine> оглянись", "* Herobrine вышел"];
+    lines.forEach((l, i) => setTimeout(() => addChat(l), i * 1800));
+  }
   if (type === "launch" && !dead) { vy = gameMode === "survival" ? 12 : 30; onGround = false; }
 }
 function updateTroll(dt) {
   if (trollOn("spin")) yaw += 9 * dt;
-  const inv = trollOn("invert") ? "invert(1)" : "";
-  if (renderer.domElement.style.filter !== inv) renderer.domElement.style.filter = inv;
+  if (trollOn("drunk")) yaw += Math.sin(performance.now() / 400) * 0.9 * dt;
+  const css = renderer.domElement.style, inv = [trollOn("invert") && "invert(1)", trollOn("blur") && "blur(5px)", trollOn("rainbow") && `hue-rotate(${Math.floor(performance.now() / 15) % 360}deg)`].filter(Boolean).join(" ");
+  if (css.filter !== inv) css.filter = inv;
+  const mir = trollOn("mirror") ? "scaleX(-1)" : "";
+  if (css.transform !== mir) css.transform = mir;
 }
 function applyTrollCam() {
   if (trollOn("flip")) camera.rotation.z = Math.PI;
+  if (trollOn("drunk")) camera.rotation.z += Math.sin(performance.now() / 500) * 0.25;
   if (trollOn("shake")) { camera.position.x += (Math.random() - 0.5) * 0.18; camera.position.y += (Math.random() - 0.5) * 0.18; camera.rotation.z += (Math.random() - 0.5) * 0.06; }
 }
-let trollPage = false, trollTarget = "all";  // цель шуток: "all", "me" или id игрока
+let trollPage = false, trollTarget = "all", trollNo = 0;  // trollNo — страница списка шуток  // цель шуток: "all", "me" или id игрока
 function drawTroll() {
   const W = 34;
   const row = (text, act) => {
@@ -2885,8 +2920,8 @@ function drawTroll() {
   const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
   const who = trollTarget === "all" ? "все" : trollTarget === "me" ? "я (проверка)" : others.get(trollTarget)?.nick || "?";
   adminEl.innerHTML = ["╔" + title("ТРОЛЛЬ", "═") + "╗", row(`[ цель: ${who} ]`, "trtarget"), "╟" + title("", "─") + "╢",
-    ...TROLLS.map(([id, name]) => row(`[ ${name} ]`, "tr:" + id)),
-    "╟" + title("", "─") + "╢", row("[ назад ]", "trback"), "╚" + title("", "═") + "╝"].join("\n");
+    ...TROLLS.slice(trollNo * 12, trollNo * 12 + 12).map(([id, name]) => row(`[ ${name} ]`, "tr:" + id)),
+    "╟" + title("", "─") + "╢", row(`[ страница ${trollNo + 1}/${Math.ceil(TROLLS.length / 12)} — дальше ]`, "trnext"), row("[ назад ]", "trback"), "╚" + title("", "═") + "╝"].join("\n");
 }
 function sendTroll(type) {
   if (!TROLLS.some(t => t[0] === type)) return;
@@ -2958,6 +2993,7 @@ adminEl.addEventListener("click", e => {
   if (!isDev) return drawAdmin();
   if (a === "trollmenu") trollPage = true;
   if (a === "trback") trollPage = false;
+  if (a === "trnext") trollNo = (trollNo + 1) % Math.ceil(TROLLS.length / 12);
   if (a === "trtarget") {
     const order = ["all", ...[...others.keys()].filter(id => !id.startsWith("vit-")), "me"], i = order.indexOf(trollTarget);
     trollTarget = order[(i + 1) % order.length];
@@ -4020,7 +4056,7 @@ renderer.setAnimationLoop(now => {
   }
   // Зум на C: угол обзора плавно сужается, пока клавиша зажата
   if (!keys.KeyC) zoomFov = ZOOM_FOV;
-  const fovTarget = trollOn("fisheye") ? 140 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
+  const fovTarget = trollOn("fisheye") ? 140 : trollOn("binoc") ? 12 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 12);
     camera.updateProjectionMatrix();
