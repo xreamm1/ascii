@@ -257,8 +257,8 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа", "Машина", "Решётка",
-  null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа", "Машина", "Решётка", "Дерево", "Забор", "Бочка", "Ящик", "Кровать", "Диван",
+  null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -267,9 +267,10 @@ const SIZE = 64;           // где игрок появляется (центр
 const PLATE = 300;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
 
 // Размер одного символа в настоящих пикселях экрана (меньше — детальнее). Считаем в них, а не в css-пикселях:
-// у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере
-const CELL_W = 3;
-const CELL_H = 5;
+// у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере.
+// Если игра тормозит, качество само падает на ступень вниз (символы крупнее — рисовать меньше)
+const QUALITY = [[4, 7], [5, 9], [6, 11], [8, 14], [10, 18]];
+let quality = 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -312,7 +313,7 @@ const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
 const TEXT_H = 0.6;        // высота надписи в блоках
 const CHAT_TIME = 15000;   // через столько миллисекунд сообщение чата исчезает
-const NEAR = 0.1, FAR = 150;
+const NEAR = 0.1, FAR = 90;  // дальше тумана (70) всё равно чёрное — не рисуем
 
 // Символы для заливки. Порядок не важен: при запуске каждый измеряется по количеству
 // "чернил" и раскладывается по SHADES ступеням яркости
@@ -353,7 +354,7 @@ THREE.ColorManagement.enabled = false;  // цвета как есть, без г
 const renderer = new THREE.WebGLRenderer();
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -369,8 +370,8 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.0 * Math.PI);
 sun.position.set(SIZE / 2 + 30, 50, SIZE / 2 + 15);
 sun.target.position.set(SIZE / 2, 0, SIZE / 2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -50, right: 50, top: 50, bottom: -50, near: 1, far: 150 });
+sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
 
@@ -380,7 +381,7 @@ function canvasTexture(w, h, draw) {
   c.width = w; c.height = h;
   draw(c.getContext("2d"));
   const t = new THREE.CanvasTexture(c);
-  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   return t;
 }
 
@@ -461,6 +462,20 @@ const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина за
 const blocks = new Map();  // "x,y,z" → меш блока
 const planks = new Map();  // id доски → её меш
 const cars = new Map();    // id машины → её меш
+// Свет дают только 3 ближайшие лампы: каждый источник замедляет отрисовку всего мира
+const lamps = new Set();
+const lampLights = Array.from({ length: 3 }, () => new THREE.PointLight(0xfff2cc, 2 * Math.PI, 14));
+function updateLamps() {
+  const near = [...lamps].sort((a, b) => a.position.distanceToSquared(camera.position) - b.position.distanceToSquared(camera.position));
+  lampLights.forEach((light, i) => {
+    const lamp = near[i];
+    // Число источников света в сцене меняется только когда ламп нет совсем или появилась первая
+    if (lamps.size && !light.parent) scene.add(light);
+    if (!lamps.size && light.parent) scene.remove(light);
+    if (lamp) light.position.set(lamp.position.x, lamp.position.y + 0.8, lamp.position.z);
+    light.intensity = lamp ? 2 * Math.PI : 0;
+  });
+}
 const texts = new Map();   // id надписи → её меш
 const textGeo = new THREE.PlaneGeometry(1, 1);
 const solids = [plate];    // всё, во что можно целиться
@@ -539,6 +554,7 @@ function removeSolid(mesh) {
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
+  lamps.delete(mesh);
 }
 
 // Рампа — клин, поднимающийся от низа клетки к верху. Сторона подъёма: r = 0..3, как у двери
@@ -625,11 +641,19 @@ const carGeo = mergeParts([box(0.85, 0.3, 1.7, 0, 0.3, 0), box(0.7, 0.28, 0.85, 
 // Решётка: рамка и прутья посреди клетки (клетка при этом занята целиком)
 const grateGeo = mergeParts([box(1, 0.1, 0.12, 0, 0.45, 0), box(1, 0.1, 0.12, 0, -0.45, 0),
   ...[-0.375, -0.125, 0.125, 0.375].map(x => box(0.08, 1, 0.1, x, 0, 0))]);
+const MORE = {  // мебель и всякое: [геометрия, текстура]
+  tree: mergeParts([[cyl(0.15, 1.2), 0, 0.1, 0], [new THREE.SphereGeometry(0.9, 10, 8), 0, 1.3, 0], [new THREE.SphereGeometry(0.65, 10, 8), 0, 2.1, 0]]),
+  fence: mergeParts([box(0.12, 0.9, 0.12, -0.44, -0.05, 0), box(0.12, 0.9, 0.12, 0.44, -0.05, 0), box(1, 0.1, 0.06, 0, 0.15, 0), box(1, 0.1, 0.06, 0, -0.2, 0)]),
+  barrel: mergeParts([[cyl(0.4, 1), 0, 0, 0], [cyl(0.44, 0.08), 0, 0.3, 0], [cyl(0.44, 0.08), 0, -0.3, 0]]),
+  crate: mergeParts([box(0.96, 0.96, 0.96, 0, 0, 0)]),
+  bed: mergeParts([box(0.95, 0.5, 1, 0, -0.25, 0), box(0.95, 0.5, 0.1, 0, 0.25, 0.45), box(0.6, 0.1, 0.25, 0, 0.05, 0.3)]),
+  sofa: mergeParts([box(0.95, 0.45, 0.9, 0, -0.275, -0.05), box(0.95, 0.5, 0.2, 0, 0.2, 0.4), box(0.15, 0.3, 0.9, -0.4, 0, -0.05), box(0.15, 0.3, 0.9, 0.4, 0, -0.05)]),
+};
 const DECOR = { lamp: [lampGeo, ""],  burger: [burgerGeo, "бургер"], pizza: [pizzaGeo, "пиццу"], wings: [wingsGeo, "крылышки"], ball: [ballGeo, ""] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
-const LOW_TOP = { table: 0.75, chair: 0.45 };
+const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45 };
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
@@ -642,17 +666,19 @@ function lowTop(cx, cy, cz, x, z) {
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.k in MORE) {
+    const m = new THREE.Mesh(MORE[e.k], material(woodTex, e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
+    return m;
+  }
   if (e.k === "stairs" || e.k === "barrier" || e.k === "grate" || e.k in DECOR) {
     const geo = e.k === "grate" ? grateGeo : e.k === "stairs" ? stairsGeo : e.k === "barrier" ? barrierGeos[!!e.open] : DECOR[e.k][0];
     const tex = e.k === "ball" ? ballTex : e.k in DECOR ? foodTex : brickTex;
     const m = new THREE.Mesh(geo, material(tex, e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     m.rotation.y = (e.r || 0) * Math.PI / 2;
-    if (e.k === "lamp") {
-      const light = new THREE.PointLight(0xfff2cc, 2 * Math.PI, 14);  // лампа светит вокруг
-      light.position.y = 0.3;
-      m.add(light);
-    }
+    if (e.k === "lamp") lamps.add(m);
     return m;
   }
   if (e.k === "table" || e.k === "chair") {
@@ -805,7 +831,9 @@ function hitsPlank(mesh, x, f, z, h = bodyH) {
 }
 
 function hitsSolid(x, f, z, h = bodyH) {
-  return hitsBlock(x, f, z, h) || [...planks.values()].some(p => hitsPlank(p, x, f, z, h));
+  if (hitsBlock(x, f, z, h)) return true;
+  for (const p of planks.values()) if (hitsPlank(p, x, f, z, h)) return true;
+  return false;
 }
 
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
@@ -950,7 +978,7 @@ function updateCar(dt) {
   camRay.far = 12;
   const hit = camRay.intersectObjects(solids)[0];
   camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 12);
-  scene.fog.near = 40; scene.fog.far = 140;  // за рулём видно дальше
+  scene.fog.near = 30; scene.fog.far = 85;  // за рулём видно чуть дальше
   camera.rotation.set(pitch, yaw, 0);
 }
 
@@ -1140,7 +1168,7 @@ function updateGhosts() {
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
 const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table",
-  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Дерево": "tree", "Забор": "fence", "Бочка": "barrel", "Ящик": "crate", "Кровать": "bed", "Диван": "sofa", "Прочный блок": undefined, "Прочная решётка": "grate" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car") return;
@@ -1172,7 +1200,7 @@ function use(action, screen) {
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "chair", "stairs", "barrier", "grate", ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["ramp", "chair", "stairs", "barrier", "grate", "fence", "bed", "sofa", ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "barrier") {
       e.open = false;
       // Стрела не должна упираться в чужие блоки
@@ -1439,7 +1467,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
 const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
-  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
+  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Дерево": " ▲▲ ", "Забор": "┼─┼─", "Бочка": "(▒▒)", "Ящик": "[##]", "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1595,7 +1623,7 @@ function openChat() {
 // ---------- ASCII-шейдер: сцена рисуется в маленькую картинку, каждый её пиксель — один символ ----------
 
 // Картинка сцены вместе с глубиной: по глубине шейдер находит грани и рисует контуры
-const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1), samples: 4 });  // samples — сглаживание краёв
+const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
 const fontTex = new THREE.CanvasTexture(document.createElement("canvas"));
 fontTex.flipY = false;
 fontTex.generateMipmaps = false;
@@ -1672,13 +1700,14 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
   const dpr = window.devicePixelRatio || 1;
+  const [CELL_W, CELL_H] = QUALITY[quality];
   const cw = CELL_W / dpr, ch = CELL_H / dpr;  // размер символа в css-пикселях
   const cols = Math.floor(innerWidth / cw);
   const rows = Math.floor(innerHeight / ch);
   renderer.setPixelRatio(dpr);
   renderer.setSize(cols * cw, rows * ch);
-  // Сцену рисуем подробнее сетки (по 3×3 точки на символ), но не больше ~6 млн точек, чтобы не тормозило
-  const ss = Math.max(1, Math.min(3, Math.floor(Math.sqrt(6e6 / (cols * rows)))));
+  // Сцену рисуем подробнее сетки (по 2×2 точки на символ), но не больше ~3 млн точек, чтобы не тормозило
+  const ss = Math.max(1, Math.min(2, Math.floor(Math.sqrt(3e6 / (cols * rows)))));
   sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
   camera.aspect = (cols * cw) / (rows * ch);
@@ -2382,6 +2411,7 @@ gameEl.addEventListener("click", e => {
 // ---------- Главный цикл ----------
 
 let last = performance.now();
+let lampTimer = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 renderer.setAnimationLoop(now => {
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
@@ -2389,6 +2419,18 @@ renderer.setAnimationLoop(now => {
   updateGhosts();
   updateOnline(dt);
   updateWorld(dt);
+  lampTimer += dt;
+  if (lampTimer > 0.25) { lampTimer = 0; updateLamps(); }
+
+  // Следим за скоростью: если кадр дольше ~24 мс, символы становятся крупнее (сначала через 3 секунды после старта)
+  frameMs += (Math.min(now - frameAt, 100) - frameMs) * 0.05;
+  frameAt = now;
+  if (now > 3000 && now - lastQuality > 2500 && frameMs > 24 && quality < QUALITY.length - 1 && document.visibilityState === "visible") {
+    quality++;
+    lastQuality = now;
+    frameMs = 16;
+    resize();
+  }
 
   renderer.setRenderTarget(sceneTarget);
   renderer.render(scene, camera);
