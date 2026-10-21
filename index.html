@@ -2731,7 +2731,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "sizes", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "sizes", "hits", "fx", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
