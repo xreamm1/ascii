@@ -1738,6 +1738,7 @@ function use(action, screen) {
     return;
   }
   if (HOTBAR[slot] in KINDS && hit) {
+    if (HOTBAR[slot].startsWith("Прочн") && online && !isDev) return addChat("* предметы разработчика может ставить только разработчик");
     const cell = placeCell(hit, HOTBAR[slot]);
     const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
@@ -2761,6 +2762,7 @@ function drawAdmin() {
     row(`сейчас: ${views[camMode]}`)];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
+    if (isDev) rows.push(row("[ удалить половину верити ]", "halfball"));
     if (isDev) rows.push(row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !id.startsWith("vit-"));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
@@ -2797,6 +2799,12 @@ adminEl.addEventListener("click", e => {
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
   if (a === "dellobby" && lobbyCode) confirmDeleteLobby(lobbyCode);
+  if (a === "halfball") {
+    const list = [...balls.values()].sort(() => Math.random() - 0.5);
+    const n = list.length ? Math.max(1, Math.floor(list.length / 2)) : 0;
+    for (const m of list.slice(0, n)) share(undo(m.userData.edit));
+    addChat(`* удалено верити: ${n} из ${list.length}`);
+  }
   if (a.startsWith("adm:")) {
     const id = a.slice(4), on = !adminIds[id];
     online?.grant(id, on);
