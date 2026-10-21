@@ -305,8 +305,8 @@ const PLATE = 300;         // размер плиты в блоках: она е
 // Два вида графики: "ascii" — крупные буквы и знаки, сразу видно, что это ASCII; "sharp" — мелкая чёткая сетка из блоков
 const LADDERS = { ascii: [[6, 11], [7, 13], [8, 14], [10, 18]], sharp: [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]] };
 function loadGfx() {
-  try { const g = localStorage.getItem("gfx"); if (g in LADDERS) return g; } catch {}
-  return TOUCH ? "sharp" : "ascii";
+  try { const g = localStorage.getItem("gfx2"); if (g in LADDERS) return g; } catch {}
+  return "sharp";  // по умолчанию на ПК и на телефоне одна и та же картинка
 }
 let gfxMode = loadGfx();
 let QUALITY = LADDERS[gfxMode];
@@ -426,7 +426,7 @@ sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 120 });
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
-if (TOUCH) sun.castShadow = false;  // на телефоне тени слишком дорогие
+sun.castShadow = false;
 
 // Текстуры рисуем сами на canvas — так ничего не надо загружать
 function canvasTexture(w, h, draw) {
@@ -1963,7 +1963,7 @@ const asciiMat = new THREE.ShaderMaterial({
     grid: { value: new THREE.Vector2() },
     rampLen: { value: SHADES },
     glyphs: { value: SHADES + 4 },
-    gain: { value: TOUCH ? 0.6 : 0.5 },
+    gain: { value: 0.6 },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -2012,7 +2012,9 @@ const asciiMat = new THREE.ShaderMaterial({
         g = rampLen + mod(floor(a / 3.14159 * 4.0 + 0.5), 4.0);
         b = max(b, 0.6);
       } else {
-        g = floor(pow(b, 0.6) * (rampLen - 1.0) + 0.5);  // pow — средние тона берут более плотные знаки, буквы заметнее
+        // Дизеринг (шум, не дающий полос): соседние клетки с одинаковой яркостью чуть расходятся по знакам, градиенты выходят плавными
+        float ign = fract(52.9829189 * fract(dot(cell, vec2(0.06711056, 0.00583715))));
+        g = clamp(floor(pow(b, 0.6) * (rampLen - 1.0) + ign), 0.0, rampLen - 1.0);  // pow — средние тона берут более плотные знаки
       }
       float ink = texture2D(fontTex, vec2((g + inCell.x) / glyphs, 1.0 - inCell.y)).r;
       gl_FragColor = vec4(tint * ink * (0.3 + 0.7 * b) * gain, 1.0);  // gain — общая яркость: на компьютере темнее, чем на телефоне
@@ -2028,11 +2030,11 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Смена качества: пересчитываем сетку, а на грубых ступенях выключаем тени
 function setQuality() {
   resize();
-  sun.castShadow = !TOUCH && QUALITY[quality][0] < 6;
+  sun.castShadow = false;  // тени выключены везде: картинка на ПК и телефоне одинаковая, а игра быстрее
 }
 function toggleGfx() {
   gfxMode = gfxMode === "ascii" ? "sharp" : "ascii";
-  try { localStorage.setItem("gfx", gfxMode); } catch {}
+  try { localStorage.setItem("gfx2", gfxMode); } catch {}
   QUALITY = LADDERS[gfxMode];
   quality = gfxMode === "ascii" ? 0 : 1;
   lastQuality = performance.now(); goodSince = 0; frameMs = 16;
@@ -2053,7 +2055,7 @@ function resize() {
   renderer.domElement.style.width = cols * CELL_W / dpr + "px";
   renderer.domElement.style.height = rows * CELL_H / dpr + "px";
   // Сцену рисуем в 2 раза подробнее сетки: среднее четырёх точек даёт чистые края без мыла (а при очень мелкой сетке экономим)
-  const ss = cols * rows > 150000 ? 1 : 2;  // очень мелкая сетка и так подробная — вторую точку на символ не рисуем
+  const ss = cols * rows <= 260000 ? 2 : 1;  // на очень больших экранах экономим: вторую точку на символ не рисуем
   sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
