@@ -1476,10 +1476,13 @@ function makeDrone() {
 
 // Взрыв дрона ломает всё вокруг: блоки, доски и надписи
 function explode(pos, radius = BOOM_RADIUS) {
-  for (const m of [...solids]) {
+  const r2 = radius * radius, batch = [];
+  for (const m of solids) {
     const e = m.userData.edit;
-    if (e && !e.t && !(e.p && online && !isDev) && m.position.distanceTo(pos) < radius) share(undo(e));
+    if (e && !e.t && !(e.p && online && !isDev) && m.position.distanceToSquared(pos) < r2) batch.push(undo(e));
   }
+  for (const e of batch) edit(e);
+  if (batch.length) online?.sendEdits(batch);  // всё, что сломал взрыв, — одним запросом
 }
 
 // FPV дрон: камера отделяется от игрока и летит туда, куда смотришь. Коснулся блока, доски или пола — взрыв
@@ -1731,6 +1734,12 @@ function updateTank(dt) {
 
 // Самолёт: A/D — поворот, W — нос вверх, S — вниз, пробел — сбросить ТНТ, E — выйти
 let planeYaw = 0, planePitch = 0, planeRoll = 0, planeBombAt = 0;
+const bombQueue = []; let bombSendAt = 0;
+// Бомбы уходят остальным пачкой (до 6 штук в одном сообщении), а не по одной
+function flushBombs() {
+  if (bombQueue.length) online?.fx({ t: "tnts", l: bombQueue.splice(0, 8) });
+  bombSendAt = performance.now() + 200;
+}
 function enterPlane(m) {
   drivingPlane = m;
   planeYaw = m.rotation.y; planePitch = m.userData.edit.pt || 0; planeRoll = 0;
@@ -1741,6 +1750,7 @@ function enterPlane(m) {
 function exitPlane() {
   const m = drivingPlane;
   if (!m) return;
+  flushBombs();
   drivingPlane = null;
   // Самолёт садится на землю там, где его бросили; игрок выходит рядом
   const ground = groundHeight(m.position.x, m.position.y, m.position.z);
@@ -1774,12 +1784,14 @@ function updatePlane(dt) {
   m.rotation.set(planePitch, planeYaw, planeRoll);
   Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +y.toFixed(2), z: +z.toFixed(2), yaw: +planeYaw.toFixed(2), pt: +planePitch.toFixed(2), rl: +planeRoll.toFixed(2) });
   px = x; pz = z; feet = y;
+  if (bombQueue.length && performance.now() > bombSendAt) flushBombs();
   // Бомба: падает вместе с самолётом и взрывается при ударе
   if (keys.Space && performance.now() > planeBombAt) {
     planeBombAt = performance.now() + 80;  // почти без паузы: зажал пробел — сыплются одна за другой
     const v = [dir.x * speed, dir.y * speed - 2, dir.z * speed], bx = x, by = y - 1.1, bz = z;
     startPrimed(bx, by, bz, 8, true, v, true);
-    online?.fx({ t: "tnt", x: +bx.toFixed(2), y: +by.toFixed(2), z: +bz.toFixed(2), f: 8, v: v.map(n => +n.toFixed(2)), imp: 1 });
+    bombQueue.push([bx, by, bz, ...v].map(n => +n.toFixed(2)));
+    if (bombQueue.length >= 6 || performance.now() > bombSendAt) flushBombs();
   }
   // Камера сзади и выше
   const head = new THREE.Vector3(x, y + 3, z), back = dir.clone().multiplyScalar(-1).add(new THREE.Vector3(0, 0.25, 0)).normalize();
@@ -2996,12 +3008,12 @@ function removeAvatar(id) {
 }
 
 // Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
-const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op === "dig" ? `d${e.x}_${e.y}_${e.z}` : e.id;
+const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op.endsWith("dig") ? `d${e.x}_${e.y}_${e.z}` : e.id;
 // Обратное изменение: что сделать, когда предмет удалили из базы
 const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
-  const { db, ref, get, set, push, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp } = await loadFirebase();
+  const { db, ref, get, set, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp } = await loadFirebase();
   // Часы на устройствах расходятся, поэтому время сообщений берём у сервера:
   // serverOffset — насколько часы этого устройства отстают от часов сервера
   let serverOffset = 0;
@@ -3130,10 +3142,18 @@ async function joinLobby(code, me) {
 
   const helperSeen = new Set();
   online = {
-    sendEdits: list => list.forEach(e => {
-      const r = ref(db, `world/${code}/${worldKey(e)}`);
-      if (e.op.startsWith("un")) remove(r); else set(r, e);
-    }),
+    // Несколько изменений уходят одним запросом (взрывы, воронки, импорт), а не сотней отдельных
+    sendEdits: list => {
+      if (list.length <= 2) {
+        for (const e of list) { const r = ref(db, `world/${code}/${worldKey(e)}`); if (e.op.startsWith("un")) remove(r); else set(r, e); }
+        return;
+      }
+      for (let i = 0; i < list.length; i += 400) {
+        const up = {};
+        for (const e of list.slice(i, i + 400)) up[worldKey(e)] = e.op.startsWith("un") ? null : e;
+        update(ref(db, `world/${code}`), up).catch(() => {});
+      }
+    },
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
       const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(asInvis ? { i: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
@@ -4353,9 +4373,12 @@ function updateRockets(dt) {
 // Мир ломает тот, кто поджёг (остальные получают изменения через общий мир), а картинку взрыва и урон каждый считает у себя
 const TNT_R = 4.5, TNT_DMG = 70;
 const primed = [];
+const flashGeo = new THREE.BoxGeometry(1.01, 1.01, 1.01), flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });  // общие на все заряды
+let lastCrater = 0;
 function startPrimed(x, y, z, fuse, own, v, impact) {
+  if (primed.length > 60) return;  // слишком много зарядов сразу — лишние не создаём
   const mesh = new THREE.Mesh(tntGeo, vmaterial(plainTex, 0));
-  const flash = new THREE.Mesh(new THREE.BoxGeometry(1.01, 1.01, 1.01), new THREE.MeshBasicMaterial({ color: 0xffffff }));  // мигает белым
+  const flash = new THREE.Mesh(flashGeo, flashMat);  // мигает белым
   mesh.add(flash);
   mesh.position.set(x, y, z);
   scene.add(mesh);
@@ -4367,7 +4390,7 @@ function igniteTnt(e, fuse, v) {
   startPrimed(e.x + 0.5, e.y + 0.5, e.z + 0.5, fuse, true, v);
   online?.fx({ t: "tnt", x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5, f: fuse, ...(v ? { v: v.map(n => +n.toFixed(2)) } : {}) });
 }
-function tntBoom(p, own) {
+function tntBoom(p, own, bomb) {
   addExplosion(p, TNT_R);
   const d = Math.hypot(px - p.x, feet + 1 - p.y, pz - p.z);
   if (d < TNT_R) damage(TNT_DMG * (1 - d / TNT_R), "ТНТ");
@@ -4383,12 +4406,15 @@ function tntBoom(p, own) {
     }
   }
   explode(p, TNT_R);
-  // Воронка в земле
+  // Воронка в земле. Бомбы с самолёта роют поменьше и не чаще четырёх раз в секунду — иначе слишком много работы
+  const nowMs = performance.now(), cr = bomb ? 3 : TNT_R;
+  if (bomb && nowMs - lastCrater < 250) return;
+  lastCrater = nowMs;
   const crater = [];
   const [cx, cy, cz] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
   for (let x = cx - 5; x <= cx + 5; x++) for (let y = cy - 5; y <= cy + 5; y++) for (let z = cz - 5; z <= cz + 5; z++) {
     if (y > -1 || y < -DEPTH || !inDigArea(x, z) || dug.has(`${x},${y},${z}`)) continue;
-    if (Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y, z + 0.5 - p.z) <= TNT_R - 0.5) crater.push({ op: "dig", x, y, z });
+    if (Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y, z + 0.5 - p.z) <= cr - 0.5) crater.push({ op: "dig", x, y, z });
   }
   for (const e of crater) edit(e);
   if (crater.length) online?.sendEdits(crater);
@@ -4417,7 +4443,7 @@ function updatePrimed(dt) {
       }
     }
     if (t.impact && t.age > 0.3 && (grounded || t.hit)) t.t = 0;  // бомба взрывается при ударе
-    if (t.t <= 0) { scene.remove(t.mesh); primed.splice(i, 1); tntBoom(t.mesh.position.clone(), t.own); }
+    if (t.t <= 0) { scene.remove(t.mesh); primed.splice(i, 1); tntBoom(t.mesh.position.clone(), t.own, t.impact); }
   }
 }
 
@@ -4553,6 +4579,7 @@ function handleFx(f) {
   const v3 = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null;
   if (f.t === "shot" && v3(f.o)) for (const p of (f.ps || [f.p]).slice(0, 4)) if (v3(p)) spawnTracer(v3(f.o), v3(p));
   if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, f.tank ? TANK_SHELL : WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
+  if (f.t === "tnts" && Array.isArray(f.l)) for (const b of f.l.slice(0, 8)) if (Array.isArray(b) && b.length === 6 && b.every(Number.isFinite)) startPrimed(b[0], b[1], b[2], 8, false, [b[3], b[4], b[5]], true);
   if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null, !!f.imp);
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
