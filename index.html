@@ -490,6 +490,7 @@ function edit(e, replace = false) {
     if (e.k === "glass") mesh.castShadow = false;
     blocks.set(key(e.x, e.y, e.z), mesh);
     if (e.k === "door") blocks.set(key(e.x, e.y + 1, e.z), mesh);  // дверь занимает две клетки
+    if (e.k === "barrier") for (const c of barrierCells(e)) blocks.set(key(...c), mesh);  // шлагбаум — стойку и три клетки стрелы
   }
   if (e.op === "plank" && !planks.has(e.id)) {
     const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
@@ -532,6 +533,7 @@ function removeSolid(mesh) {
   const e = mesh.userData.edit;
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
   if (e.k === "door") blocks.delete(key(e.x, e.y + 1, e.z));
+  if (e.k === "barrier") for (const c of barrierCells(e)) blocks.delete(key(...c));
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
@@ -589,10 +591,10 @@ const burgerGeo = mergeParts([[cyl(0.28, 0.1), 0, -0.45, 0], [cyl(0.3, 0.08), 0,
   [new THREE.SphereGeometry(0.28, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0, -0.3, 0]]);
 const pizzaGeo = mergeParts([[cyl(0.42, 0.06), 0, -0.47, 0],
   ...[[0.15, 0.1], [-0.2, 0.05], [0.05, -0.22], [-0.1, -0.12], [0.25, -0.15]].map(([x, z]) => [cyl(0.07, 0.03), x, -0.43, z])]);
-const wingsGeo = mergeParts([[-0.2, 0.15], [0.2, 0.1], [0, -0.2]].flatMap(([x, z]) => [
-  [new THREE.SphereGeometry(0.15, 10, 8).scale(1, 0.8, 1.4), x, -0.38, z],
-  [cyl(0.035, 0.22).rotateX(Math.PI / 2), x, -0.4, z - 0.25]]));
-const ballGeo = mergeParts([[new THREE.SphereGeometry(0.3, 16, 12), 0, -0.2, 0]]);
+const wingsGeo = mergeParts([[-0.28, 0.2], [0.28, 0.12], [0, -0.28]].flatMap(([x, z]) => [
+  [new THREE.SphereGeometry(0.21, 10, 8).scale(1, 0.8, 1.4), x, -0.33, z],
+  [cyl(0.05, 0.3).rotateX(Math.PI / 2), x, -0.35, z - 0.35]]));
+const ballGeo = mergeParts([[new THREE.SphereGeometry(0.45, 16, 12), 0, -0.05, 0]]);
 const ballTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "#e8e8e8"; ctx.fillRect(0, 0, 64, 64);
   ctx.strokeStyle = "#222"; ctx.lineWidth = 4;
@@ -604,14 +606,20 @@ const foodTex = canvasTexture(16, 16, ctx => {
   ctx.fillStyle = "#999"; for (const [x, y] of [[3, 4], [10, 2], [7, 9], [13, 12], [2, 13]]) ctx.fillRect(x, y, 2, 2);
 });
 // Шлагбаум: стойка на краю клетки и стрела поперёк; открытый поднимает стрелу вверх
-const barrierGeo = open => mergeParts([box(0.2, 1, 0.2, -0.4, 0, 0),
-  [new THREE.BoxGeometry(0.85, 0.1, 0.1).translate(0.425, 0, 0).rotateZ(open ? 1.4 : 0), -0.4, 0.3, 0]]);
+const BARRIER_ARM = 3;  // на сколько клеток стрела тянется от стойки
+const barrierGeo = open => mergeParts([box(0.3, 1.2, 0.3, -0.35, 0.1, 0),
+  [new THREE.BoxGeometry(BARRIER_ARM + 0.4, 0.14, 0.14).translate((BARRIER_ARM + 0.4) / 2, 0, 0).rotateZ(open ? 1.4 : 0), -0.4, 0.5, 0]]);
+// Клетки под стрелой: направо от стойки, как её повернули
+const barrierCells = e => {
+  const a = (e.r || 0) * Math.PI / 2;
+  return Array.from({ length: BARRIER_ARM }, (_, i) => [e.x + Math.round(Math.cos(a)) * (i + 1), e.y, e.z - Math.round(Math.sin(a)) * (i + 1)]);
+};
 const barrierGeos = { false: barrierGeo(false), true: barrierGeo(true) };
 const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, -0.075, 0],
   [new THREE.CylinderGeometry(0.1, 0.22, 0.3, 14), 0, 0.35, 0]]);
 // Машина: кузов, кабина и колёса; смотрит в сторону -z, начало координат — на земле под центром
 const carGeo = mergeParts([box(0.85, 0.3, 1.7, 0, 0.3, 0), box(0.7, 0.28, 0.85, 0, 0.58, 0.15),
-  ...corners.map(([x, z]) => [cyl(0.17, 0.14).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55])]);
+  ...corners.map(([x, z]) => [cyl(0.17, 0.14).rotateZ(Math.PI / 2), x * 0.45, 0.17, z * 0.55])]).scale(2, 2, 2);
 const DECOR = { lamp: [lampGeo, ""],  burger: [burgerGeo, "бургер"], pizza: [pizzaGeo, "пиццу"], wings: [wingsGeo, "крылышки"], ball: [ballGeo, ""] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
@@ -868,10 +876,10 @@ let carV = { x: 0, z: 0 }, carYaw = 0;
 function toggleCar() {
   if (drivingCar) return exitCar();
   if (camMode !== "first" || !inGame) return;
-  let best = null, bestD = 3.5;
+  let best = null, bestD = 6;
   for (const m of cars.values()) {
     const d = Math.hypot(m.position.x - px, m.position.z - pz);
-    if (d < bestD && Math.abs(m.position.y - feet) < 2) { best = m; bestD = d; }
+    if (d < bestD && Math.abs(m.position.y - feet) < 3) { best = m; bestD = d; }
   }
   if (!best) return;
   drivingCar = best;
@@ -886,8 +894,8 @@ function exitCar() {
   const m = drivingCar;
   drivingCar = null;
   // Выходим вбок от машины
-  px = m.position.x + Math.cos(carYaw) * 1.3;
-  pz = m.position.z - Math.sin(carYaw) * 1.3;
+  px = m.position.x + Math.cos(carYaw) * 2.2;
+  pz = m.position.z - Math.sin(carYaw) * 2.2;
   feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
   vy = 0;
   crouching = false;
@@ -914,11 +922,14 @@ function updateCar(dt) {
   vl *= Math.exp(-(hand ? 1 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
   carV = { x: f[0] * vf + r[0] * vl, z: f[1] * vf + r[1] * vl };
 
-  // Едем по каждой оси отдельно; в стену — отскок
+  // Едем по каждой оси отдельно; в стену — отскок. Машина большая, поэтому проверяем пять точек:
+  // центр, нос, зад и оба борта
   const y = m.position.y;
+  const blocked = (cx, cz) => [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]
+    .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1));
   let x = m.position.x, z = m.position.z;
-  if (!hitsSolid(x + carV.x * dt, y, z, 0.6)) x += carV.x * dt; else carV.x *= -0.3;
-  if (!hitsSolid(x, y, z + carV.z * dt, 0.6)) z += carV.z * dt; else carV.z *= -0.3;
+  if (!blocked(x + carV.x * dt, z)) x += carV.x * dt; else carV.x *= -0.3;
+  if (!blocked(x, z + carV.z * dt)) z += carV.z * dt; else carV.z *= -0.3;
   m.position.set(x, Math.max(0, groundHeight(x, y, z)), z);
   m.rotation.y = carYaw;
   Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +carYaw.toFixed(2) });
@@ -927,12 +938,12 @@ function updateCar(dt) {
   // Камера сзади и чуть сверху, плавно догоняет поворот машины
   yaw += Math.atan2(Math.sin(carYaw - yaw), Math.cos(carYaw - yaw)) * Math.min(1, dt * 4);
   pitch = -0.2;
-  const head = new THREE.Vector3(x, m.position.y + 1.2, z);
+  const head = new THREE.Vector3(x, m.position.y + 2.4, z);
   const back = new THREE.Vector3(Math.sin(yaw), 0.35, Math.cos(yaw)).normalize();
   camRay.set(head, back);
-  camRay.far = 6;
+  camRay.far = 12;
   const hit = camRay.intersectObjects(solids)[0];
-  camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 6);
+  camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 12);
   camera.rotation.set(pitch, yaw, 0);
 }
 
@@ -1152,7 +1163,11 @@ function use(action, screen) {
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (["ramp", "chair", "stairs", "barrier", ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
-    if (e.k === "barrier") e.open = false;
+    if (e.k === "barrier") {
+      e.open = false;
+      // Стрела не должна упираться в чужие блоки
+      if (barrierCells(e).some(c => blocks.has(key(...c)))) return;
+    }
     if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
     if (cell) share(e);
   }
