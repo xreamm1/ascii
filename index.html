@@ -306,7 +306,8 @@ const PLATE = 300;         // размер плиты в блоках: она е
 // Качество подстраивается под устройство: тормозит — символы крупнее, идёт ровно — пробуем мельче (см. главный цикл)
 // Два вида графики: "ascii" — крупные буквы и знаки, сразу видно, что это ASCII; "sharp" — мелкая чёткая сетка из блоков
 const LADDERS = { ascii: [[6, 11], [7, 13], [8, 14], [10, 18]], sharp: [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]],
-  ultra: [[1, 2], [2, 3], [2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]] };  // «ультра» — почти пиксель в пиксель, самая тяжёлая
+  ultra: [[1, 2], [2, 3], [2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]],
+  "3d": [[100, 0], [85, 0], [70, 0], [58, 0], [48, 0]] };  // «3D»: обычная картинка без символов; число — доля разрешения экрана, %  // «ультра» — почти пиксель в пиксель, самая тяжёлая
 function loadGfx() {
   try { const g = localStorage.getItem("gfx2"); if (g in LADDERS) return g; } catch {}
   return "sharp";  // по умолчанию на ПК и на телефоне одна и та же картинка
@@ -314,10 +315,11 @@ function loadGfx() {
 let gfxMode = loadGfx();
 let QUALITY = LADDERS[gfxMode];
 let quality = gfxMode === "sharp" ? 1 : 0;
+const is3d = () => gfxMode === "3d";
 // Слабые телефоны (мало памяти или ядер) не пробуют самую мелкую сетку
 const WEAK = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
 // Самая крупная сетка, до которой игра может опуститься сама: дальше картинка слишком пиксельная (лучше чуть меньше кадров)
-const worstQuality = () => Math.min(QUALITY.length - 1, { ascii: 1, sharp: 3, ultra: 5 }[gfxMode]);
+const worstQuality = () => Math.min(QUALITY.length - 1, { ascii: 1, sharp: 3, ultra: 5, "3d": 4 }[gfxMode]);
 const bestQuality = () => gfxMode !== "ascii" && WEAK ? 1 : 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
@@ -2454,18 +2456,30 @@ function setQuality() {
   sun.castShadow = false;  // тени выключены везде: картинка на ПК и телефоне одинаковая, а игра быстрее
 }
 function toggleGfx() {
-  gfxMode = { ascii: "sharp", sharp: "ultra", ultra: "ascii" }[gfxMode];
+  gfxMode = { ascii: "sharp", sharp: "ultra", ultra: "3d", "3d": "ascii" }[gfxMode];
   try { localStorage.setItem("gfx2", gfxMode); } catch {}
   QUALITY = LADDERS[gfxMode];
   quality = gfxMode === "sharp" ? 1 : 0;
   lastQuality = performance.now(); goodSince = 0; frameMs = 16;
   setQuality();
 }
-const gfxName = () => ({ ascii: "ASCII", sharp: "ЧЁТКАЯ", ultra: "УЛЬТРА" })[gfxMode];
+const gfxName = () => ({ ascii: "ASCII", sharp: "ЧЁТКАЯ", ultra: "УЛЬТРА", "3d": "3D" })[gfxMode];
 
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
   const dpr = window.devicePixelRatio || 1;
+  if (is3d()) {
+    // Обычная 3D-картинка без символов и без второго прохода: рисуем сцену прямо на экран, разрешение подстраивается под тяжесть
+    const k = Math.min(dpr, 1.25) * QUALITY[quality][0] / 100;
+    renderer.setPixelRatio(k);
+    renderer.setSize(innerWidth, innerHeight, false);
+    renderer.domElement.style.width = innerWidth + "px";
+    renderer.domElement.style.height = innerHeight + "px";
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    return;
+  }
+  renderer.setPixelRatio(1);
   const [CELL_W, CELL_H] = QUALITY[quality];
   // Всё считаем в настоящих пикселях экрана и рисуем 1 в 1: если холст растягивается браузером
   // (дробный масштаб экрана, как на многих компьютерах), символы расплываются
@@ -4428,6 +4442,11 @@ renderer.setAnimationLoop(now => {
   // Тени обновляем через кадр-два: это почти не заметно, а отрисовка теней — самая дорогая часть кадра
   if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
+  if (is3d()) {  // без символов: сцена рисуется прямо на экран
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+    return;
+  }
   renderer.setRenderTarget(sceneTarget);
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
