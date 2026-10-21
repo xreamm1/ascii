@@ -255,7 +255,7 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка"];
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -313,6 +313,8 @@ let inGame = false;     // false — открыто главное меню
 let isDev = false;      // вошёл разработчик (проверено паролем на сервере Firebase)
 let adminGranted = false;  // разработчик выдал админ-панель в этом лобби
 let adminIds = {};         // у кого в лобби есть админ-панель: { id: true }
+let prefixes = {};         // выданные разработчиком префиксы: { id: "текст" }
+let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
 let camMode = "first";  // "first" — глазами, "third" — со спины, "free" — свободная камера, "drone" — FPV дрон
@@ -505,8 +507,43 @@ function removeSolid(mesh) {
   if (e.op === "text") texts.delete(e.id);
 }
 
-// Меш блока по его виду: обычный кирпичный, стекло, палка или дверь
+// Рампа — клин, поднимающийся от низа клетки к верху. Сторона подъёма: r = 0..3, как у двери
+// (0 — вперёд при взгляде по умолчанию, дальше против часовой стрелки)
+const RAMP_DIR = [[0, -1], [-1, 0], [0, 1], [1, 0]];
+const rampGeo = (() => {
+  const P = (x, y, z) => [x - 0.5, y - 0.5, z - 0.5];
+  const La = P(0, 0, 1), Lb = P(0, 0, 0), Lc = P(0, 1, 0), Ra = P(1, 0, 1), Rb = P(1, 0, 0), Rc = P(1, 1, 0);
+  const tris = [[Ra, Rb, Rc], [La, Lc, Lb], [La, Lb, Rb], [La, Rb, Ra], [Lb, Lc, Rc], [Lb, Rc, Rb], [La, Ra, Rc], [La, Rc, Lc]];
+  const flat = ["zy", "zy", "xz", "xz", "xy", "xy", "xz", "xz"];  // как натянуть текстуру на каждый треугольник
+  const pos = [], uv = [];
+  tris.forEach((t, i) => t.forEach(([x, y, z]) => {
+    pos.push(x, y, z);
+    const [u, v] = { zy: [z, y], xz: [x, z], xy: [x, y] }[flat[i]];
+    uv.push(u + 0.5, v + 0.5);
+  }));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+})();
+
+// Высота поверхности рампы в клетке над точкой (x, z); null — в клетке нет рампы
+function rampTop(cx, cy, cz, x, z) {
+  const e = blocks.get(key(cx, cy, cz))?.userData.edit;
+  const dir = e?.k === "ramp" && RAMP_DIR[e.r];
+  if (!dir) return null;
+  return cy + Math.min(1, Math.max(0, 0.5 + (x - cx - 0.5) * dir[0] + (z - cz - 0.5) * dir[1]));
+}
+
+// Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.k === "ramp") {
+    const m = new THREE.Mesh(rampGeo, material(brickTex, e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
+    return m;
+  }
   if (e.k === "glass") {
     const m = new THREE.Mesh(boxGeo, glassMaterial(e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
@@ -601,6 +638,7 @@ function cellBlocks(cx, cy, cz, x, z) {
   if (!m) return false;
   const e = m.userData.edit;
   if (e.k === "door") return !e.open;
+  if (e.k === "ramp") return false;  // её высоту считает rampTop
   if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
   return true;
 }
@@ -610,7 +648,7 @@ function hitsBlock(x, f, z, h) {
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
       for (let cy = Math.floor(f + 0.01); cy <= Math.floor(f + h - 0.01); cy++)
-        if (cellBlocks(cx, cy, cz, x, z)) return true;
+        if (cellBlocks(cx, cy, cz, x, z) || (rampTop(cx, cy, cz, x, z) ?? -Infinity) > f + STEP + 0.01) return true;
   return false;
 }
 
@@ -653,8 +691,12 @@ function groundHeight(x, f, z) {
   let g = 0;
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
-      for (let cy = Math.floor(f + STEP) - 1; cy >= 0; cy--)
-        if (cellBlocks(cx, cy, cz, x, z)) { g = Math.max(g, cy + 1); break; }
+      for (let cy = Math.floor(f + STEP); cy >= 0; cy--) {
+        // Рампа: встаём на её поверхность, если она не выше, чем можно шагнуть
+        const top = rampTop(cx, cy, cz, x, z);
+        if (top !== null) { if (top <= f + STEP) { g = Math.max(g, top); break; } continue; }
+        if (cy < Math.floor(f + STEP) && cellBlocks(cx, cy, cz, x, z)) { g = Math.max(g, cy + 1); break; }
+      }
 
   downRay.set(new THREE.Vector3(x, f + STEP, z), new THREE.Vector3(0, -1, 0));
   const hit = downRay.intersectObjects([...planks.values()])[0];
@@ -683,6 +725,7 @@ function endDrone() {
 
 function droneHits(p) {
   return p.y <= 0.1 || cellBlocks(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), p.x, p.z) ||
+    p.y <= (rampTop(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z), p.x, p.z) ?? -1) ||
     [...planks.values()].some(m => hitsPlank(m, p.x, p.y - STEP, p.z, STEP));
 }
 
@@ -850,7 +893,7 @@ function updateGhosts() {
 
   const item = HOTBAR[slot];
   const onDoor = hit?.object.userData.edit?.k === "door";  // по двери кликают, чтобы открыть
-  const cell = hit && !onDoor && ["Блок", "Стекло", "Дверь", "Палка"].includes(item) ? placeCell(hit, item) : null;
+  const cell = hit && !onDoor && ["Блок", "Стекло", "Дверь", "Палка", "Рампа"].includes(item) ? placeCell(hit, item) : null;
   ghostBlock.visible = !!cell;
   if (cell) {
     const tall = item === "Дверь" ? 2 : 1, thin = item === "Палка" ? STICK_HALF * 2 : 1;
@@ -888,12 +931,13 @@ function use(action, screen) {
     share({ ...target, open: !target.open }, true);
     return;
   }
-  const kinds = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door" };
+  const kinds = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp" };
   if (HOTBAR[slot] in kinds && hit) {
     const cell = placeCell(hit, HOTBAR[slot]);
     const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
     if (kinds[HOTBAR[slot]]) e.k = kinds[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
+    if (e.k === "ramp") e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
     if (cell) share(e);
   }
@@ -1115,7 +1159,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || " };
+const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1240,7 +1284,7 @@ function changeNick() {
 const chatEl = document.getElementById("chat");
 const chatLines = [];  // { line, time }
 
-const devPrefix = dev => dev ? "[Разработчик] " : "";
+const devPrefix = (dev, pre) => dev ? "[Разработчик] " : pre ? `[${String(pre).slice(0, 12)}] ` : "";
 
 function addChat(line) {
   chatLines.push({ line, time: performance.now() });
@@ -1259,7 +1303,7 @@ function openChat() {
   if (typing) return;
   ask("ЧАТ", "", 100).then(text => {
     if (!text) return;
-    addChat(`${devPrefix(isDev)}${nick}: ${text}`);
+    addChat(`${devPrefix(isDev, prefixes[meId])}${nick}: ${text}`);
     online?.sendChat(text);
   });
 }
@@ -1497,7 +1541,7 @@ function updateAvatar(id, p) {
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 16);
   a.dev = dev;
-  a.label.textContent = devPrefix(dev) + a.nick;  // textContent: чужой ник выводится только как текст
+  a.label.textContent = devPrefix(dev, prefixes[id]) + a.nick;  // textContent: чужой ник выводится только как текст
   a.label.classList.toggle("dev", dev);
   a.label.style.color = `rgb(${r},${g},${b})`;
   if (a.fresh) {
@@ -1553,7 +1597,7 @@ async function joinLobby(code, me) {
   // Показываем только свежие сообщения, старые уже исчезли бы сами
   onChildAdded(query(ref(db, `chat/${code}`), limitToLast(10)), s => {
     const m = s.val();
-    if (serverNow() - m.t < CHAT_TIME) addChat(`${devPrefix(m.dev === true)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
+    if (serverNow() - m.t < CHAT_TIME) addChat(`${devPrefix(m.dev === true, m.pre)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
   });
 
   // Разработчик кикнул или забанил — выходим в главное меню
@@ -1565,6 +1609,12 @@ async function joinLobby(code, me) {
   onValue(ref(db, `announce/${code}`), s => {
     const a = s.val();
     if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80), String(a.by || "").slice(0, 16));
+  });
+  meId = me;
+  onValue(ref(db, `prefixes/${code}`), s => {
+    prefixes = s.val() || {};
+    for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick;
+    if (panel === adminEl) drawAdmin();
   });
   // Разработчик выдал или забрал админ-панель
   onValue(ref(db, `admins/${code}`), s => {
@@ -1593,11 +1643,13 @@ async function joinLobby(code, me) {
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
     },
-    sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: serverTimestamp(), dev: isDev }),
+    sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: serverTimestamp(), dev: isDev, pre: prefixes[me] || null }),
     // Только для разработчика: правила базы не дадут сделать это никому другому
     kick: id => set(ref(db, `kicks/${code}/${id}`), true),
     ban: id => set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }),
     // Если правила базы не дают записать — говорим об этом, а не молчим
+    setPrefix: (id, text) => (text ? set(ref(db, `prefixes/${code}/${id}`), text) : remove(ref(db, `prefixes/${code}/${id}`)))
+      .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     announce: text => set(ref(db, `announce/${code}`), { text, by: nick, t: serverTimestamp() })
@@ -1654,9 +1706,9 @@ function drawAdmin() {
     if (isDev) rows.push(row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     if (isDev && !others.size) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? others : []) {
-      const name = a.nick.slice(0, 12).padEnd(12);
       const adm = adminIds[id] ? "[-адм]" : "[+адм]";
-      rows.push("║ " + esc(name) + ` <span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span>` + " ".repeat(W - 1 - 31) + "║");
+      rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""}`),
+        "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║");
     }
   }
   rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
@@ -1687,6 +1739,10 @@ adminEl.addEventListener("click", e => {
     const id = a.slice(4), on = !adminIds[id];
     online?.grant(id, on);
     addChat(`* ${others.get(id)?.nick} ${on ? "получает" : "теряет"} админ-панель`);
+  }
+  if (a.startsWith("pre:")) {
+    const id = a.slice(4);
+    ask("ПРЕФИКС (- УБРАТЬ)", prefixes[id] || "", 12).then(t => t && online?.setPrefix(id, t === "-" ? "" : t));
   }
   if (a.startsWith("kick:")) { online?.kick(a.slice(5)); addChat(`* ${others.get(a.slice(5))?.nick} кикнут`); }
   if (a.startsWith("ban:")) { online?.ban(a.slice(4)); addChat(`* ${others.get(a.slice(4))?.nick} забанен в лобби`); }
@@ -1844,7 +1900,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
@@ -1930,7 +1986,7 @@ function updateSelfFigure(dt) {
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
 
-  selfLabel.textContent = devPrefix(isDev) + nick;
+  selfLabel.textContent = devPrefix(isDev, prefixes[meId]) + nick;
   selfLabel.classList.toggle("dev", isDev);
   selfLabel.style.color = `rgb(${r},${g},${b})`;
   placeLabel(selfLabel, selfFigure.position, selfFigure.visible);
