@@ -304,17 +304,18 @@ const PLATE = 300;         // размер плиты в блоках: она е
 // у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере.
 // Качество подстраивается под устройство: тормозит — символы крупнее, идёт ровно — пробуем мельче (см. главный цикл)
 // Два вида графики: "ascii" — крупные буквы и знаки, сразу видно, что это ASCII; "sharp" — мелкая чёткая сетка из блоков
-const LADDERS = { ascii: [[6, 11], [7, 13], [8, 14], [10, 18]], sharp: [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]] };
+const LADDERS = { ascii: [[6, 11], [7, 13], [8, 14], [10, 18]], sharp: [[2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]],
+  ultra: [[1, 2], [2, 3], [2, 4], [3, 5], [4, 7], [5, 9], [6, 11], [8, 14], [10, 18]] };  // «ультра» — почти пиксель в пиксель, самая тяжёлая
 function loadGfx() {
   try { const g = localStorage.getItem("gfx2"); if (g in LADDERS) return g; } catch {}
   return "sharp";  // по умолчанию на ПК и на телефоне одна и та же картинка
 }
 let gfxMode = loadGfx();
 let QUALITY = LADDERS[gfxMode];
-let quality = gfxMode === "ascii" ? 0 : 1;
+let quality = gfxMode === "sharp" ? 1 : 0;
 // Слабые телефоны (мало памяти или ядер) не пробуют самую мелкую сетку
 const WEAK = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
-const bestQuality = () => gfxMode === "sharp" && WEAK ? 1 : 0;
+const bestQuality = () => gfxMode !== "ascii" && WEAK ? 1 : 0;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -368,7 +369,7 @@ const CHARS = " ▮▁▂▃▄▣▆▇█▉▊▋▌▍▬▖❚❙❘𖣯▟
 const ASCII_CHARS = " .'`^\",:;Il!i><~+?][}{1)(tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$█";
 const SHADES = 96;
 // Символы для контуров — по направлению грани
-const EDGES_BY_MODE = { ascii: "|\\-/", sharp: "▌▚▬▞" };
+const EDGES_BY_MODE = { ascii: "|\\-/", sharp: "▌▚▬▞", ultra: "▌▚▬▞" };
 
 // ---------- Состояние игрока и интерфейса ----------
 
@@ -2121,14 +2122,14 @@ function setQuality() {
   sun.castShadow = false;  // тени выключены везде: картинка на ПК и телефоне одинаковая, а игра быстрее
 }
 function toggleGfx() {
-  gfxMode = gfxMode === "ascii" ? "sharp" : "ascii";
+  gfxMode = { ascii: "sharp", sharp: "ultra", ultra: "ascii" }[gfxMode];
   try { localStorage.setItem("gfx2", gfxMode); } catch {}
   QUALITY = LADDERS[gfxMode];
-  quality = gfxMode === "ascii" ? 0 : 1;
+  quality = gfxMode === "sharp" ? 1 : 0;
   lastQuality = performance.now(); goodSince = 0; frameMs = 16;
   setQuality();
 }
-const gfxName = () => gfxMode === "ascii" ? "ASCII" : "ЧЁТКАЯ";
+const gfxName = () => ({ ascii: "ASCII", sharp: "ЧЁТКАЯ", ultra: "УЛЬТРА" })[gfxMode];
 
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
@@ -2143,7 +2144,7 @@ function resize() {
   renderer.domElement.style.width = cols * CELL_W / dpr + "px";
   renderer.domElement.style.height = rows * CELL_H / dpr + "px";
   // Сцену рисуем в 2 раза подробнее сетки: среднее четырёх точек даёт чистые края без мыла (а при очень мелкой сетке экономим)
-  const ss = cols * rows <= 260000 ? 2 : 1;  // на очень больших экранах экономим: вторую точку на символ не рисуем
+  const ss = cols * rows <= (gfxMode === "ultra" ? 1500000 : 260000) ? 2 : 1;  // на очень больших экранах экономим: вторую точку на символ не рисуем
   sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
   camera.aspect = (cols * CELL_W) / (rows * CELL_H);
@@ -2273,7 +2274,7 @@ function buildFont(cw, ch) {
     let best = measured[0];
     for (const m of measured) if (Math.abs(m.ink - want) < Math.abs(best.ink - want)) best = m;
     // Ровные символы (пусто, ░▒▓, █) берём, если они почти так же подходят: иначе поверхности выходят полосатыми
-    if (gfxMode === "sharp") for (const m of measured) if (" ░▒▓█".includes(m.c) && Math.abs(m.ink - want) <= 0.07) best = m;
+    if (gfxMode !== "ascii") for (const m of measured) if (" ░▒▓█".includes(m.c) && Math.abs(m.ink - want) <= 0.07) best = m;
     draw(best.c, i);
   }
   [...EDGES_BY_MODE[gfxMode]].forEach((c, i) => draw(c, SHADES + i));
@@ -2937,6 +2938,13 @@ try {
 } catch {}
 drawMenu();
 
+// Ссылка-приглашение (?lobby=КОД): сразу входим. Параметр убираем, чтобы после выхода из лобби не зашло снова
+const inviteCode = new URLSearchParams(location.search).get("lobby");
+if (inviteCode) {
+  history.replaceState(null, "", location.pathname);
+  if (FIREBASE_CONFIG) enterLobby(inviteCode);
+}
+
 // Перезагрузка сбрасывает полный экран, а браузер даёт войти в него только по клику — возвращаем на первом клике
 try {
   if (sessionStorage.getItem("fs")) {
@@ -2991,6 +2999,7 @@ function drawGameMenu() {
     row(`[ графика: ${gfxName()} ]`, "gfx"),
     row("[ экспорт мира ]", "export"),
     ...(!online || isDev ? [row("[ импорт мира ]", "import")] : []),
+    ...(online ? [row("[ ссылка-приглашение ]", "invite")] : []),
     ...(online && isDev ? [row("[ переименовать лобби ]", "renlobby"), row(`[ доступ: ${ACCESS_NAME[lobbyAccess]} ]`, "acclobby")] : []),
     row("[ выйти в главное меню ]", "exit"),
     "╟" + title("", "─") + "╢",
@@ -3087,6 +3096,11 @@ gameEl.addEventListener("click", e => {
   if (a === "export") exportWorld();
   if (a === "import") worldFileEl.click();
   if (a === "exit") leave("");
+  if (a === "invite" && lobbyCode) {
+    const url = `${location.origin}${location.pathname}?lobby=${lobbyCode}`;
+    navigator.clipboard?.writeText(url).then(() => addChat("* ссылка скопирована"), () => addChat("* не удалось скопировать — возьми ссылку из чата"));
+    addChat(url);
+  }
   if (a === "renlobby" && lobbyCode) renameLobby(lobbyCode, lobbyName)?.catch(() => addChat("* не вышло: обнови правила базы в Firebase"));
   if (a === "acclobby" && lobbyCode) patchLobby(lobbyCode, { access: nextAccess(lobbyAccess) }).catch(() => addChat("* не вышло: обнови правила базы в Firebase"));
 });
