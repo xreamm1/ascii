@@ -1600,7 +1600,7 @@ function updatePlane(dt) {
   px = x; pz = z; feet = y;
   // Бомба: падает вместе с самолётом и взрывается при ударе
   if (keys.Space && performance.now() > planeBombAt) {
-    planeBombAt = performance.now() + 700;
+    planeBombAt = performance.now() + 80;  // почти без паузы: зажал пробел — сыплются одна за другой
     const v = [dir.x * speed, dir.y * speed - 2, dir.z * speed], bx = x, by = y - 1.1, bz = z;
     startPrimed(bx, by, bz, 8, true, v, true);
     online?.fx({ t: "tnt", x: +bx.toFixed(2), y: +by.toFixed(2), z: +bz.toFixed(2), f: 8, v: v.map(n => +n.toFixed(2)), imp: 1 });
