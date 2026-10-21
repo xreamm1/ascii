@@ -464,9 +464,32 @@ const plate = new THREE.Mesh(
   new THREE.MeshLambertMaterial({ map: plateTex })
 );
 plate.rotation.x = -Math.PI / 2;
-plate.position.set(SIZE / 2, 0, SIZE / 2);
+plate.position.set(SIZE / 2, -0.003, SIZE / 2);  // чуть ниже верха земли, чтобы не мерцало
 plate.receiveShadow = true;
 scene.add(plate);
+
+// Пол можно копать: ниже плиты — слои земли глубиной DEPTH блоков, а под ними неломаемая бедрок.
+// Земля — это «воображаемые» клетки: вручную храним только выкопанные (dug). Блоки земли создаются лишь рядом с ямой (их стенки и дно),
+// остальное не нужно: внутрь не попасть. Выкопанное рассылается всем как { op: "dig", x, y, z }
+const DEPTH = 100;
+const dug = new Set();
+const HOLE_N = 2048, HOLE_ORIGIN = -1000;  // карта дыр в плите: копать можно в квадрате x, z от -1000 до 1048
+const holeData = new Uint8Array(HOLE_N * HOLE_N);
+const holeTex = new THREE.DataTexture(holeData, HOLE_N, HOLE_N, THREE.RedFormat);
+holeTex.minFilter = holeTex.magFilter = THREE.NearestFilter;
+holeTex.needsUpdate = true;
+let holesDirty = false;
+const inDigArea = (x, z) => x >= HOLE_ORIGIN && x < HOLE_ORIGIN + HOLE_N && z >= HOLE_ORIGIN && z < HOLE_ORIGIN + HOLE_N;
+const topDug = (x, z) => dug.size > 0 && dug.has(`${x},-1,${z}`);
+// Плита рисуется с дырами: там, где выкопан верхний слой, пиксели отбрасываются
+plate.material.onBeforeCompile = sh => {
+  sh.uniforms.holeTex = { value: holeTex };
+  sh.vertexShader = "varying vec3 vWorldPos;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;");
+  sh.fragmentShader = "varying vec3 vWorldPos;\nuniform sampler2D holeTex;\n" + sh.fragmentShader.replace("#include <map_fragment>",
+    `vec2 hUv = (vWorldPos.xz - float(${HOLE_ORIGIN})) / float(${HOLE_N});
+    if (hUv.x >= 0.0 && hUv.x < 1.0 && hUv.y >= 0.0 && hUv.y < 1.0 && texture2D(holeTex, hUv).r > 0.5) discard;
+    #include <map_fragment>`);
+};
 
 // Блок: кирпичи с тёмной рамкой по краю, чтобы были видны грани
 const brickTex = canvasTexture(64, 64, ctx => {
@@ -608,6 +631,18 @@ function edit(e, replace = false) {
       addSolid(mesh, e);
       cars.set(e.id, mesh);
     } else if (m !== drivingCar) m.userData.edit = m.userData.target = e;  // чужая машина плавно доезжает до новой точки
+  }
+  if (e.op === "dig" && !dug.has(`${e.x},${e.y},${e.z}`)) {
+    dug.add(`${e.x},${e.y},${e.z}`);
+    const t = blocks.get(key(e.x, e.y, e.z));
+    if (t?.userData.edit.t) removeSolid(t);
+    if (e.y === -1 && inDigArea(e.x, e.z)) { holeData[(e.z - HOLE_ORIGIN) * HOLE_N + (e.x - HOLE_ORIGIN)] = 255; holesDirty = true; }
+    // Открывшиеся стенки и дно — настоящие блоки (в сеть не уходят)
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const [nx, ny, nz] = [e.x + dx, e.y + dy, e.z + dz];
+      if (ny > -1 || ny < -DEPTH - 1 || dug.has(`${nx},${ny},${nz}`) || blocks.has(key(nx, ny, nz))) continue;
+      edit({ op: "block", x: nx, y: ny, z: nz, c: ny === -DEPTH - 1 ? 13 : ny > -4 ? 10 : 11, t: ny === -DEPTH - 1 ? 2 : 1 });
+    }
   }
   if (e.op === "uncar") removeSolid(cars.get(e.id));
   if (e.op === "ball") {
@@ -1224,15 +1259,18 @@ function hitsSolid(x, f, z, h = bodyH) {
 // Высота самой верхней опоры под игроком, на которую можно встать с высоты f
 const downRay = new THREE.Raycaster();
 function groundHeight(x, f, z) {
-  let g = 0;
+  let g = -DEPTH - 5;
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
-    for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++)
-      for (let cy = Math.floor(f + STEP); cy >= 0; cy--) {
+    for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++) {
+      const hole = topDug(cx, cz), deep = hole || f + STEP < 0;
+      if (!hole && f + STEP >= 0) g = Math.max(g, 0);  // плита
+      for (let cy = Math.floor(f + STEP); cy >= (deep ? -DEPTH - 2 : 0); cy--) {
         // Рампа: встаём на её поверхность, если она не выше, чем можно шагнуть
         const top = lowTop(cx, cy, cz, x, z);
         if (top !== null) { if (top <= f + STEP) { g = Math.max(g, top); break; } continue; }
         if (cy < Math.floor(f + STEP) && cellBlocks(cx, cy, cz, x, z)) { g = Math.max(g, cy + 1); break; }
       }
+    }
 
   g = Math.max(g, carTop(x, z, f));
   downRay.set(new THREE.Vector3(x, f + STEP, z), new THREE.Vector3(0, -1, 0));
@@ -1307,7 +1345,7 @@ function makeDrone() {
 function explode(pos, radius = BOOM_RADIUS) {
   for (const m of [...solids]) {
     const e = m.userData.edit;
-    if (e && !(e.p && online && !isDev) && m.position.distanceTo(pos) < radius) share(undo(e));
+    if (e && !e.t && !(e.p && online && !isDev) && m.position.distanceTo(pos) < radius) share(undo(e));
   }
 }
 
@@ -1389,7 +1427,7 @@ function updateFlying(dt) {
     const air = Math.exp(-0.8 * dt);
     f.vx *= air; f.vz *= air;
     y += f.vy * dt;
-    const ground = Math.max(0, groundHeight(x, y + 0.3, z));
+    const ground = groundHeight(x, y + 0.3, z);
     if (y <= ground) { y = ground; f.vy = f.vy < -3 ? -f.vy * 0.3 : 0; const g = Math.exp(-3 * dt); f.vx *= g; f.vz *= g; f.spin *= g; }
     f.air = y > ground + 0.05 ? f.air + dt : 0;
     m.position.set(x, y, z);
@@ -1450,7 +1488,7 @@ function updateBalls(dt) {
     if (!hitsBlock(p.x, p.y - 0.3, p.z + s.vz * dt, 0.6)) p.z += s.vz * dt; else s.vz *= -0.6;
     p.y += s.vy * dt;
     if (s.vy > 0 && hitsBlock(p.x, p.y + 0.3, p.z, 0.2)) s.vy *= -0.4;
-    const ground = Math.max(0, groundHeight(p.x, p.y - R + 0.3, p.z));
+    const ground = groundHeight(p.x, p.y - R + 0.3, p.z);
     let onGround = false;
     if (p.y - R <= ground) {
       p.y = ground + R; onGround = true;
@@ -1503,7 +1541,7 @@ function updateCar(dt) {
   const hitCar = (cx, cz) => { const o = speed > 7 && rammed(cx, cz); if (o && !flung.has(o)) launchCar(o, carV.x, carV.z, speed); };
   if (!blocked(x + carV.x * dt, z)) x += carV.x * dt; else { hitCar(x + carV.x * dt, z); carV.x *= -0.3; }
   if (!blocked(x, z + carV.z * dt)) z += carV.z * dt; else { hitCar(x, z + carV.z * dt); carV.z *= -0.3; }
-  m.position.set(x, Math.max(0, groundHeight(x, y, z)), z);
+  m.position.set(x, groundHeight(x, y, z), z);
   m.rotation.y = carYaw;
   Object.assign(m.userData.edit, { x: +x.toFixed(2), y: +m.position.y.toFixed(2), z: +z.toFixed(2), yaw: +carYaw.toFixed(2) });
   px = x; pz = z; feet = m.position.y;
@@ -1633,7 +1671,7 @@ function update(dt) {
   }
 
   // Упал с плиты — возвращаемся в центр
-  if (feet < -30) { px = pz = SIZE / 2; feet = 0; vy = 0; }
+  if (feet < -DEPTH - 20) { px = pz = SIZE / 2; feet = 0; vy = 0; }
 
   camera.rotation.set(pitch, yaw, 0);
   camera.position.set(px, feet + eye, pz);
@@ -1659,7 +1697,8 @@ const playing = () => inGame && !menuOpen && !typing && (TOUCH || !!document.poi
 // screen — координаты от -1 до 1, как у WebGL
 function aim(screen = new THREE.Vector2(0, 0)) {
   aimRay.setFromCamera(screen, camera);
-  const hit = aimRay.intersectObjects(solids)[0];
+  // Плита над ямой — «призрак»: луч идёт сквозь неё
+  const hit = aimRay.intersectObjects(solids).find(h => h.object !== plate || !topDug(Math.floor(h.point.x), Math.floor(h.point.z)));
   if (!hit) return null;
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
   return { point: hit.point, normal, object: hit.object };
@@ -1685,7 +1724,7 @@ function placeCell(hit, item) {
 function blockCell(hit) {
   const p = hit.point.clone().addScaledVector(hit.normal, 0.5);
   const [x, y, z] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
-  if (y < 0) return null;
+  if (y < -DEPTH || (y < 0 && !dug.has(`${x},${y},${z}`))) return null;
   // Нельзя ставить блок внутрь себя
   const overlapsPlayer = x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
                          y < feet + bodyH && y + 1 > feet;
@@ -1733,8 +1772,19 @@ function use(action, screen) {
   // Убрать блок или доску под прицелом (или отменить начатую доску)
   if (action === "remove") {
     if (plankStart) plankStart = null;
-    else if (hit && hit.object !== plate) {
+    else if (hit && hit.object === plate) {
+      // Копаем пол: клетка под плитой
+      const dx = Math.floor(hit.point.x), dz = Math.floor(hit.point.z);
+      if (!inDigArea(dx, dz)) addChat("* здесь копать нельзя: слишком далеко от старта");
+      else share({ op: "dig", x: dx, y: -1, z: dz });
+    } else if (hit) {
       const t = hit.object.userData.edit;
+      if (t.t) {  // земля: ломаем — значит копаем
+        if (t.t === 2) addChat("* дальше бедрок, его не сломать");
+        else share({ op: "dig", x: t.x, y: t.y, z: t.z });
+        drawHotbar();
+        return;
+      }
       if (t.p && online && !isDev) { addChat("* этот блок может сломать только разработчик"); return; }
       const eaten = DECOR[hit.object.userData.edit.k]?.[1];  // еду можно съесть
       if (eaten) {
@@ -2592,7 +2642,7 @@ function removeAvatar(id) {
 }
 
 // Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
-const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.id;
+const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op === "dig" ? `d${e.x}_${e.y}_${e.z}` : e.id;
 // Обратное изменение: что сделать, когда предмет удалили из базы
 const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
@@ -3394,7 +3444,8 @@ function updateWorld(dt) {
   updateSelfFigure(dt);
   // Пол и солнце едут за камерой целыми блоками, чтобы плитки не сдвигались
   const cx = Math.round(camera.position.x), cz = Math.round(camera.position.z);
-  plate.position.set(cx, 0, cz);
+  plate.position.set(cx, -0.003, cz);
+  if (holesDirty) { holesDirty = false; holeTex.needsUpdate = true; }
   sun.target.position.set(cx, 0, cz);
   sun.position.set(cx + 30, 50, cz + 15);
 }
@@ -3431,7 +3482,7 @@ document.body.append(worldFileEl);
 
 function exportWorld() {
   // Каждый предмет мира хранит запись, из которой он создан (userData.edit)
-  const edits = [...new Set(solids.map(m => m.userData.edit).filter(Boolean))];
+  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !e.t)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
   const blob = new Blob([JSON.stringify({ format: "baseAscii", version: 1, edits })], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "world" + WORLD_EXT });
   a.click();
@@ -3455,6 +3506,7 @@ function cleanEdit(e) {
     if (e.p === true) out.p = true;
     return out;
   }
+  if (e.op === "dig" && [e.x, e.y, e.z].every(Number.isInteger) && e.y >= -DEPTH && e.y <= -1 && inDigArea(e.x, e.z)) return { op: "dig", x: e.x, y: e.y, z: e.z };
   if (e.op === "plank" && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends)) return { op: "plank", id: newId(), ends: e.ends, c };
   if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
@@ -3821,7 +3873,7 @@ function throwGrenade(n, W) {
 }
 // Точка внутри чего-то твёрдого: пол, блок, машина
 function solidPoint(p) {
-  if (p.y < 0.05) return true;
+  if (p.y < 0.05 && p.y >= 0 && !topDug(Math.floor(p.x), Math.floor(p.z))) return true;
   const cx = Math.floor(p.x), cy = Math.floor(p.y), cz = Math.floor(p.z);
   if (cellBlocks(cx, cy, cz, p.x, p.z)) return true;
   const top = lowTop(cx, cy, cz, p.x, p.z);
