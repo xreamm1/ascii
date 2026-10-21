@@ -266,10 +266,10 @@ const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или
 const SIZE = 64;           // где игрок появляется (центр стартовой плиты)
 const PLATE = 300;         // размер плиты в блоках: она едет за камерой, поэтому пол бесконечный
 
-// Размер одного символа в пикселях (меньше — детальнее). У телефона экран узкий,
-// поэтому символы там мельче — иначе их помещается в разы меньше, чем на компьютере
-const CELL_W = TOUCH ? 2 : 3;
-const CELL_H = TOUCH ? 4 : 5;
+// Размер одного символа в настоящих пикселях экрана (меньше — детальнее). Считаем в них, а не в css-пикселях:
+// у телефона пикселей на экран в 2–3 раза больше, и так картинка там такая же чёткая, как на компьютере
+const CELL_W = 3;
+const CELL_H = 5;
 let MOVE_SPEED = 5;      // блоков в секунду
 const MOUSE_SPEED = 0.0025;
 const TOUCH_SPEED = 0.006; // поворот камеры пальцем
@@ -1595,7 +1595,7 @@ function openChat() {
 // ---------- ASCII-шейдер: сцена рисуется в маленькую картинку, каждый её пиксель — один символ ----------
 
 // Картинка сцены вместе с глубиной: по глубине шейдер находит грани и рисует контуры
-const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
+const sceneTarget = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1), samples: 4 });  // samples — сглаживание краёв
 const fontTex = new THREE.CanvasTexture(document.createElement("canvas"));
 fontTex.flipY = false;
 fontTex.generateMipmaps = false;
@@ -1672,16 +1672,19 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Подгоняем сетку под окно и заново рисуем шрифт под плотность пикселей экрана
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  const cols = Math.floor(innerWidth / CELL_W);
-  const rows = Math.floor(innerHeight / CELL_H);
+  const cw = CELL_W / dpr, ch = CELL_H / dpr;  // размер символа в css-пикселях
+  const cols = Math.floor(innerWidth / cw);
+  const rows = Math.floor(innerHeight / ch);
   renderer.setPixelRatio(dpr);
-  renderer.setSize(cols * CELL_W, rows * CELL_H);
-  sceneTarget.setSize(cols * 3, rows * 3);
+  renderer.setSize(cols * cw, rows * ch);
+  // Сцену рисуем подробнее сетки (по 3×3 точки на символ), но не больше ~6 млн точек, чтобы не тормозило
+  const ss = Math.max(1, Math.min(3, Math.floor(Math.sqrt(6e6 / (cols * rows)))));
+  sceneTarget.setSize(cols * ss, rows * ss);
   asciiMat.uniforms.grid.value.set(cols, rows);
-  camera.aspect = (cols * CELL_W) / (rows * CELL_H);
+  camera.aspect = (cols * cw) / (rows * ch);
   camera.updateProjectionMatrix();
 
-  fontTex.image = buildFont(Math.round(CELL_W * dpr), Math.round(CELL_H * dpr));
+  fontTex.image = buildFont(CELL_W, CELL_H);
   fontTex.needsUpdate = true;
 }
 
@@ -1905,6 +1908,11 @@ async function joinLobby(code, me) {
     if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80), String(a.by || "").slice(0, 16));
   });
   meId = me;
+  // Разработчик поменял мой размер
+  onValue(ref(db, `sizes/${code}/${me}`), s => {
+    const k = s.val();
+    if (SIZES.includes(k)) setSize(k);
+  });
   const tp = ref(db, `tp/${code}/${me}`);
   onValue(tp, s => {
     const v = s.val();
@@ -1955,6 +1963,8 @@ async function joinLobby(code, me) {
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Вызвать игрока к себе: его клиент сам прочитает точку и сотрёт её
     summon: id => set(ref(db, `tp/${code}/${id}`), { x: px, y: feet, z: pz })
+      .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
+    setSize: (id, k) => set(ref(db, `sizes/${code}/${id}`), k)
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
@@ -2014,9 +2024,9 @@ function drawAdmin() {
     if (isDev && !others.size) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? others : []) {
       const adm = adminIds[id] ? "[-адм]" : "[+адм]";
-      rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""}`),
+      rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""} x${a.size || 1}`),
         "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║",
-        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span>` + " ".repeat(W - 1 - 17) + "║");
+        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span> <span class="act" data-a="sz-:${esc(id)}">[-]</span><span class="act" data-a="sz+:${esc(id)}">[+]</span>` + " ".repeat(W - 1 - 24) + "║");
     }
   }
   rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
@@ -2053,6 +2063,11 @@ adminEl.addEventListener("click", e => {
   if (a.startsWith("tpto:")) {
     const t = others.get(a.slice(5))?.target;
     if (t) { px = t.x; feet = t.y; pz = t.z; vy = 0; }
+  }
+  if (a.startsWith("sz-:") || a.startsWith("sz+:")) {
+    const id = a.slice(4), cur = SIZES.indexOf(others.get(id)?.size || 1);
+    const next = SIZES[Math.min(SIZES.length - 1, Math.max(0, cur + (a[2] === "+" ? 1 : -1)))];
+    online?.setSize(id, next);
   }
   if (a.startsWith("tpme:")) { online?.summon(a.slice(5)); addChat(`* ${others.get(a.slice(5))?.nick} вызван к тебе`); }
   if (a.startsWith("pre:")) {
@@ -2223,7 +2238,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "sizes", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
