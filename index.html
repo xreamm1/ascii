@@ -124,6 +124,9 @@
     transform: translate(-50%, -50%);
     background: #000;
     display: none;
+    max-height: 92vh;      /* панель длинная: на низком экране её можно листать */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   #admin .act { cursor: pointer; }
   #admin .act:hover { background: #fff; color: #000; }
