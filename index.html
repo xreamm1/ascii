@@ -2544,15 +2544,10 @@ const blitScene = new THREE.Scene();
 const blitQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMat);
 blitQuad.frustumCulled = false;
 blitScene.add(blitQuad);
-// Вид «3D»: небо и дымка цвета неба вместо чёрного фона; в ASCII фон остаётся чёрным
-const skyTex = canvasTexture(2, 256, ctx => {
-  const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, "#4f9be8"); g.addColorStop(0.6, "#9ccbf3"); g.addColorStop(1, "#d6eafb");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 2, 256);
-});
+// Небо чёрное во всех режимах
 function applyLook() {
-  if (is3d()) { scene.background = skyTex; scene.fog.color.set(0xcfe4f8); }
-  else { scene.background = new THREE.Color(0x000000); scene.fog.color.set(0x000000); }
+  scene.background = new THREE.Color(0x000000);
+  scene.fog.color.set(0x000000);  // небо чёрное во всех режимах
 }
 function resize() {
   const dpr = window.devicePixelRatio || 1;
