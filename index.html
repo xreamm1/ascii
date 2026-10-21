@@ -457,12 +457,11 @@ function canvasTexture(w, h, draw) {
   return t;
 }
 
-// Плита: серые плитки с кружком-шипом, как baseplate в Роблоксе
+// Плита: серые плитки в шахматном порядке
 const plateTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "#5a5a5a"; ctx.fillRect(0, 0, 64, 64);
   ctx.strokeStyle = "#3a3a3a"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, 64, 64);
-  ctx.strokeStyle = "#7a7a7a"; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(32, 32, 14, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = "#606060"; ctx.fillRect(3, 3, 29, 29); ctx.fillRect(32, 32, 29, 29);  // плитки чуть светлее и темнее — без кружков
 });
 plateTex.wrapS = plateTex.wrapT = THREE.RepeatWrapping;
 plateTex.repeat.set(PLATE, PLATE);
@@ -699,6 +698,8 @@ function share(e, replace = false) {
 
 // Склейка: обычные блоки рисуются кусками 8×8×8 (по цвету), а не тысячами отдельных вызовов отрисовки — так игра намного легче.
 // Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
+const shadedMats = {};
+const shadedMaterial = c => shadedMats[c] ??= (() => { const m = material(brickTex, c).clone(); m.vertexColors = true; return m; })();
 const CH = 8;
 const chunks = new Map();
 const dirtyChunks = new Set();
@@ -728,12 +729,15 @@ function rebuildChunks(limit = 24) {
       m.visible = false;
     }
     for (const [col, list] of byColor) {
-      const n = list.length, pos = new Float32Array(n * 72), nor = new Float32Array(n * 72), uv = new Float32Array(n * 48), idx = new Uint16Array(n * 36);
+      const n = list.length, pos = new Float32Array(n * 72), nor = new Float32Array(n * 72), uv = new Float32Array(n * 48), idx = new Uint16Array(n * 36), colr = new Float32Array(n * 72);
       const bp = boxGeo.attributes.position.array, bn = boxGeo.attributes.normal.array, bu = boxGeo.attributes.uv.array, bi = boxGeo.index.array;
       list.forEach((m, i) => {
         const { x, y, z } = m.position;
         for (let v = 0; v < 24; v++) {
           pos[i * 72 + v * 3] = bp[v * 3] + x; pos[i * 72 + v * 3 + 1] = bp[v * 3 + 1] + y; pos[i * 72 + v * 3 + 2] = bp[v * 3 + 2] + z;
+          // Дешёвая «глубина»: низ стенок и дно чуть темнее — блоки не сливаются в одну массу
+          const shade = bn[v * 3 + 1] > 0.5 ? 1 : bn[v * 3 + 1] < -0.5 ? 0.7 : bp[v * 3 + 1] < 0 ? 0.84 : 1;
+          colr[i * 72 + v * 3] = colr[i * 72 + v * 3 + 1] = colr[i * 72 + v * 3 + 2] = shade;
         }
         nor.set(bn, i * 72); uv.set(bu, i * 48);
         for (let k = 0; k < 36; k++) idx[i * 36 + k] = bi[k] + i * 24;
@@ -742,11 +746,12 @@ function rebuildChunks(limit = 24) {
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
       g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      g.setAttribute("color", new THREE.BufferAttribute(colr, 3));
       g.setIndex(new THREE.BufferAttribute(idx, 1));
       g.computeBoundingSphere();
       let mesh = c.meshes.get(col);
       if (!mesh) {
-        mesh = new THREE.Mesh(g, material(brickTex, col));
+        mesh = new THREE.Mesh(g, shadedMaterial(col));
         mesh.matrixAutoUpdate = false;
         scene.add(mesh);
         c.meshes.set(col, mesh);
@@ -1812,7 +1817,8 @@ function update(dt) {
   let mz = -Math.cos(yaw) * forward - Math.sin(yaw) * strafe;
   const len = Math.hypot(mx, mz);
   if (len > 1) { mx /= len; mz /= len; }
-  const step = MOVE_SPEED * (crouching ? CROUCH_SPEED : flying ? 2 : 1) * dt;
+  const sprint = (keys.ShiftLeft || keys.ShiftRight) && !crouching && forward > 0 && !typing;  // бег на Shift
+  const step = MOVE_SPEED * (crouching ? CROUCH_SPEED : flying ? 2 : sprint ? 1.7 : 1) * dt;
   // По каждой оси отдельно — так можно скользить вдоль стены.
   // Если уже застрял (например, упал вплотную к краю доски), даём выйти
   const stuck = hitsSolid(px, feet, pz);
@@ -2538,8 +2544,19 @@ const blitScene = new THREE.Scene();
 const blitQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMat);
 blitQuad.frustumCulled = false;
 blitScene.add(blitQuad);
+// Вид «3D»: небо и дымка цвета неба вместо чёрного фона; в ASCII фон остаётся чёрным
+const skyTex = canvasTexture(2, 256, ctx => {
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, "#4f9be8"); g.addColorStop(0.6, "#9ccbf3"); g.addColorStop(1, "#d6eafb");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 2, 256);
+});
+function applyLook() {
+  if (is3d()) { scene.background = skyTex; scene.fog.color.set(0xcfe4f8); }
+  else { scene.background = new THREE.Color(0x000000); scene.fog.color.set(0x000000); }
+}
 function resize() {
   const dpr = window.devicePixelRatio || 1;
+  applyLook();
   if (is3d()) {
     // Обычная 3D-картинка без символов и без второго прохода: рисуем сцену прямо на экран, разрешение подстраивается под тяжесть
     const k = Math.min(dpr, 1.25) * QUALITY[quality][0] / 100;
