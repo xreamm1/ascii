@@ -256,7 +256,7 @@ const COLORS = [
 ];
 
 // Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол"];
+const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Мяч", "Шлагбаум"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
@@ -543,11 +543,13 @@ const rampGeo = (() => {
   return g;
 })();
 
-// Склеивает коробки [ширина, высота, глубина, x, y, z] в один меш: по нему целятся лучом
-function mergeBoxes(parts) {
+// Склеивает части [геометрия, x, y, z] в один меш: по нему целятся лучом
+const box = (w, h, d, x, y, z) => [new THREE.BoxGeometry(w, h, d), x, y, z];
+function mergeParts(parts) {
   const pos = [], nor = [], uv = [];
-  for (const [w, h, d, x, y, z] of parts) {
-    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed().translate(x, y, z);
+  for (const [geo, x, y, z] of parts) {
+    const g = geo.index ? geo.toNonIndexed() : geo;
+    g.translate(x, y, z);
     pos.push(...g.attributes.position.array);
     nor.push(...g.attributes.normal.array);
     uv.push(...g.attributes.uv.array);
@@ -558,11 +560,39 @@ function mergeBoxes(parts) {
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   return g;
 }
-// Координаты от центра клетки: стол высотой 0.75, стул — сиденье на 0.45 и спинка до 1
-const tableGeo = mergeBoxes([[0.9, 0.08, 0.9, 0, 0.21, 0],
-  ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([x, z]) => [0.08, 0.67, 0.08, x * 0.4, -0.165, z * 0.4])]);
-const chairGeo = mergeBoxes([[0.7, 0.08, 0.7, 0, -0.09, 0], [0.7, 0.55, 0.08, 0, 0.225, 0.31],
-  ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([x, z]) => [0.07, 0.37, 0.07, x * 0.3, -0.315, z * 0.3])]);
+const corners = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+// Координаты от центра клетки (пол клетки — y = -0.5). Стол высотой 0.75, стул — сиденье на 0.45 и спинка до 1
+const tableGeo = mergeParts([box(0.9, 0.08, 0.9, 0, 0.21, 0),
+  ...corners.map(([x, z]) => box(0.08, 0.67, 0.08, x * 0.4, -0.165, z * 0.4))]);
+const chairGeo = mergeParts([box(0.7, 0.08, 0.7, 0, -0.09, 0), box(0.7, 0.55, 0.08, 0, 0.225, 0.31),
+  ...corners.map(([x, z]) => box(0.07, 0.37, 0.07, x * 0.3, -0.315, z * 0.3))]);
+// Ступеньки: 4 ступени по 0.25, подъём — в сторону -z (потом клетку поворачивают, как рампу)
+const stairsGeo = mergeParts([0, 1, 2, 3].map(i => box(1, (i + 1) / 4, 0.25, 0, -0.5 + (i + 1) / 8, 0.5 - (i + 0.5) / 4)));
+// Еда и мяч: маленькие модели на полу клетки
+const cyl = (r, h) => new THREE.CylinderGeometry(r, r, h, 14);
+const burgerGeo = mergeParts([[cyl(0.28, 0.1), 0, -0.45, 0], [cyl(0.3, 0.08), 0, -0.36, 0], box(0.6, 0.03, 0.6, 0, -0.31, 0),
+  [new THREE.SphereGeometry(0.28, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0, -0.3, 0]]);
+const pizzaGeo = mergeParts([[cyl(0.42, 0.06), 0, -0.47, 0],
+  ...[[0.15, 0.1], [-0.2, 0.05], [0.05, -0.22], [-0.1, -0.12], [0.25, -0.15]].map(([x, z]) => [cyl(0.07, 0.03), x, -0.43, z])]);
+const wingsGeo = mergeParts([[-0.2, 0.15], [0.2, 0.1], [0, -0.2]].flatMap(([x, z]) => [
+  [new THREE.SphereGeometry(0.15, 10, 8).scale(1, 0.8, 1.4), x, -0.38, z],
+  [cyl(0.035, 0.22).rotateX(Math.PI / 2), x, -0.4, z - 0.25]]));
+const ballGeo = mergeParts([[new THREE.SphereGeometry(0.3, 16, 12), 0, -0.2, 0]]);
+const ballTex = canvasTexture(64, 64, ctx => {
+  ctx.fillStyle = "#e8e8e8"; ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = "#222"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(0, 32); ctx.lineTo(64, 32); ctx.moveTo(32, 0); ctx.lineTo(32, 64);
+  ctx.moveTo(0, 0); ctx.quadraticCurveTo(32, 32, 0, 64); ctx.moveTo(64, 0); ctx.quadraticCurveTo(32, 32, 64, 64); ctx.stroke();
+});
+const foodTex = canvasTexture(16, 16, ctx => {
+  ctx.fillStyle = "#ddd"; ctx.fillRect(0, 0, 16, 16);
+  ctx.fillStyle = "#999"; for (const [x, y] of [[3, 4], [10, 2], [7, 9], [13, 12], [2, 13]]) ctx.fillRect(x, y, 2, 2);
+});
+// Шлагбаум: стойка на краю клетки и стрела поперёк; открытый поднимает стрелу вверх
+const barrierGeo = open => mergeParts([box(0.2, 1, 0.2, -0.4, 0, 0),
+  [new THREE.BoxGeometry(0.85, 0.1, 0.1).translate(0.425, 0, 0).rotateZ(open ? 1.4 : 0), -0.4, 0.3, 0]]);
+const barrierGeos = { false: barrierGeo(false), true: barrierGeo(true) };
+const DECOR = { burger: [burgerGeo, "бургер"], pizza: [pizzaGeo, "пиццу"], wings: [wingsGeo, "крылышки"], ball: [ballGeo, ""] };
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
@@ -570,13 +600,23 @@ const LOW_TOP = { table: 0.75, chair: 0.45 };
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
-  const dir = e?.k === "ramp" && RAMP_DIR[e.r];
-  if (!dir) return null;
-  return cy + Math.min(1, Math.max(0, 0.5 + (x - cx - 0.5) * dir[0] + (z - cz - 0.5) * dir[1]));
+  const dir = (e?.k === "ramp" || e?.k === "stairs") && RAMP_DIR[e.r];
+  // Склон считаем только там, где стоит центр игрока: иначе ступеньки, идущие подряд, не дают подняться
+  if (!dir || Math.floor(x) !== cx || Math.floor(z) !== cz) return null;
+  const t = Math.min(1, Math.max(0, 0.5 + (x - cx - 0.5) * dir[0] + (z - cz - 0.5) * dir[1]));
+  return cy + (e.k === "stairs" ? (Math.floor(Math.min(t, 0.999) * 4) + 1) / 4 : t);
 }
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.k === "stairs" || e.k === "barrier" || e.k in DECOR) {
+    const geo = e.k === "stairs" ? stairsGeo : e.k === "barrier" ? barrierGeos[!!e.open] : DECOR[e.k][0];
+    const tex = e.k === "ball" ? ballTex : e.k in DECOR ? foodTex : brickTex;
+    const m = new THREE.Mesh(geo, material(tex, e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
+    return m;
+  }
   if (e.k === "table" || e.k === "chair") {
     const m = new THREE.Mesh(e.k === "table" ? tableGeo : chairGeo, material(woodTex, e.c));
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
@@ -682,8 +722,8 @@ function cellBlocks(cx, cy, cz, x, z) {
   const m = blocks.get(key(cx, cy, cz));
   if (!m) return false;
   const e = m.userData.edit;
-  if (e.k === "door") return !e.open;
-  if (e.k === "ramp" || e.k in LOW_TOP) return false;  // их высоту считает lowTop
+  if (e.k === "door" || e.k === "barrier") return !e.open;
+  if (e.k === "ramp" || e.k === "stairs" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
   if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
   return true;
 }
@@ -961,8 +1001,8 @@ function updateGhosts() {
   ghostMat.color.setRGB(r / 255, g / 255, b / 255);
 
   const item = HOTBAR[slot];
-  const onDoor = hit?.object.userData.edit?.k === "door";  // по двери кликают, чтобы открыть
-  const cell = hit && !onDoor && ["Блок", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол"].includes(item) ? placeCell(hit, item) : null;
+  const onDoor = ["door", "barrier"].includes(hit?.object.userData.edit?.k);  // по двери и шлагбауму кликают, чтобы открыть
+  const cell = hit && !onDoor && Object.keys(KINDS).includes(item) ? placeCell(hit, item) : null;
   ghostBlock.visible = !!cell;
   if (cell) {
     const tall = item === "Дверь" ? 2 : 1, thin = item === "Палка" ? STICK_HALF * 2 : 1;
@@ -980,6 +1020,10 @@ function updateGhosts() {
 
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
+// Какой предмет хотбара какой "вид" блока ставит
+const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table",
+  "Ступеньки": "stairs", "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Мяч": "ball", "Шлагбаум": "barrier" };
+
 function use(action, screen) {
   if (menuOpen || !inGame) return;
   const hit = aim(screen);
@@ -988,6 +1032,8 @@ function use(action, screen) {
   if (action === "remove") {
     if (plankStart) plankStart = null;
     else if (hit && hit.object !== plate) {
+      const eaten = DECOR[hit.object.userData.edit.k]?.[1];  // еду можно съесть
+      if (eaten) addChat(`* ты съел ${eaten}`);
       share(undo(hit.object.userData.edit));
     }
     drawHotbar();
@@ -996,17 +1042,17 @@ function use(action, screen) {
 
   // Дверь под прицелом — открываем или закрываем, чем бы ни кликнули
   const target = hit?.object.userData.edit;
-  if (target?.k === "door") {
+  if (target?.k === "door" || target?.k === "barrier") {
     share({ ...target, open: !target.open }, true);
     return;
   }
-  const kinds = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table" };
-  if (HOTBAR[slot] in kinds && hit) {
+  if (HOTBAR[slot] in KINDS && hit) {
     const cell = placeCell(hit, HOTBAR[slot]);
     const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
-    if (kinds[HOTBAR[slot]]) e.k = kinds[HOTBAR[slot]];
+    if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
-    if (e.k === "ramp" || e.k === "chair") e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["ramp", "chair", "stairs", "barrier", ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (e.k === "barrier") e.open = false;
     if (e.k === "door") { e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
     if (cell) share(e);
   }
@@ -1237,7 +1283,8 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀" };
+const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+  "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Мяч": "(##)", "Шлагбаум": "▮▬▬▬" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -1701,6 +1748,13 @@ async function joinLobby(code, me) {
     if (a && serverNow() - a.t < 10000) showAnnouncement(String(a.text).slice(0, 80), String(a.by || "").slice(0, 16));
   });
   meId = me;
+  const tp = ref(db, `tp/${code}/${me}`);
+  onValue(tp, s => {
+    const v = s.val();
+    if (!v) return;
+    if ([v.x, v.y, v.z].every(Number.isFinite)) { px = v.x; feet = v.y; pz = v.z; vy = 0; addChat("* тебя телепортировал разработчик"); }
+    remove(tp);
+  });
   onValue(ref(db, `prefixes/${code}`), s => {
     prefixes = s.val() || {};
     for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick;
@@ -1741,6 +1795,9 @@ async function joinLobby(code, me) {
     ban: id => set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }),
     // Если правила базы не дают записать — говорим об этом, а не молчим
     setPrefix: (id, text) => (text ? set(ref(db, `prefixes/${code}/${id}`), text) : remove(ref(db, `prefixes/${code}/${id}`)))
+      .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
+    // Вызвать игрока к себе: его клиент сам прочитает точку и сотрёт её
+    summon: id => set(ref(db, `tp/${code}/${id}`), { x: px, y: feet, z: pz })
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     grant: (id, on) => (on ? set(ref(db, `admins/${code}/${id}`), true) : remove(ref(db, `admins/${code}/${id}`)))
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
@@ -1801,7 +1858,8 @@ function drawAdmin() {
     for (const [id, a] of isDev ? others : []) {
       const adm = adminIds[id] ? "[-адм]" : "[+адм]";
       rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""}`),
-        "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║");
+        "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║",
+        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span>` + " ".repeat(W - 1 - 17) + "║");
     }
   }
   rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
@@ -1834,6 +1892,11 @@ adminEl.addEventListener("click", e => {
     online?.grant(id, on);
     addChat(`* ${others.get(id)?.nick} ${on ? "получает" : "теряет"} админ-панель`);
   }
+  if (a.startsWith("tpto:")) {
+    const t = others.get(a.slice(5))?.target;
+    if (t) { px = t.x; feet = t.y; pz = t.z; vy = 0; }
+  }
+  if (a.startsWith("tpme:")) { online?.summon(a.slice(5)); addChat(`* ${others.get(a.slice(5))?.nick} вызван к тебе`); }
   if (a.startsWith("pre:")) {
     const id = a.slice(4);
     ask("ПРЕФИКС (- УБРАТЬ)", prefixes[id] || "", 12).then(t => t && online?.setPrefix(id, t === "-" ? "" : t));
@@ -1995,7 +2058,7 @@ async function deleteLobby(code) {
   if (!isDev) throw new Error("удалять лобби может только разработчик");
   const { db, ref, remove } = await loadFirebase();
   // Удаляем каждый раздел отдельно: если сервер что-то не даст, будет видно, что именно
-  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "lobbyInfo"];
+  const parts = ["players", "world", "chat", "kicks", "bans", "announce", "admins", "prefixes", "tp", "lobbyInfo"];
   const results = await Promise.allSettled(parts.map(part => remove(ref(db, `${part}/${code}`))));
   const denied = parts.filter((_, i) => results[i].status === "rejected");
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
