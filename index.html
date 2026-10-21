@@ -648,6 +648,15 @@ function edit(e, replace = false) {
       edit({ op: "block", x: nx, y: ny, z: nz, c: ny === -DEPTH - 1 ? 13 : ny > -4 ? 10 : 11, t: ny === -DEPTH - 1 ? 2 : 1 });
     }
   }
+  if (e.op === "undig" && dug.delete(`${e.x},${e.y},${e.z}`)) {  // яму засыпали: клетка снова земля
+    if (e.y === -1 && inDigArea(e.x, e.z)) { holeData[(e.z - HOLE_ORIGIN) * HOLE_N + (e.x - HOLE_ORIGIN)] = 0; holesDirty = true; }
+    const near = (x, y, z) => [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([a, b, c]) => dug.has(`${x + a},${y + b},${z + c}`));
+    for (const [dx, dy, dz] of [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const m = blocks.get(key(e.x + dx, e.y + dy, e.z + dz));
+      if (m?.userData.edit.t && !near(e.x + dx, e.y + dy, e.z + dz)) removeSolid(m);
+    }
+    if (feet < 0 && Math.abs(px - e.x - 0.5) < 3 && Math.abs(pz - e.z - 0.5) < 3) { px = pz = SIZE / 2; feet = 0; vy = 0; }  // был в яме — наверх
+  }
   if (e.op === "uncar") removeSolid(cars.get(e.id));
   if (e.op === "ball") {
     const m = balls.get(e.id);
@@ -2648,7 +2657,7 @@ function removeAvatar(id) {
 // Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
 const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op === "dig" ? `d${e.x}_${e.y}_${e.z}` : e.id;
 // Обратное изменение: что сделать, когда предмет удалили из базы
-const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
+const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
   const { db, ref, get, set, push, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp } = await loadFirebase();
@@ -2798,6 +2807,7 @@ async function joinLobby(code, me) {
     ban: id => Promise.all([set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }), remove(ref(db, `players/${code}/${id}`)), remove(ref(db, `lobbyInfo/${code}/online/${id}`))])
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Убирает тех, кто числится в игре, но не в сети (вкладку закрыли, а запись осталась)
+    clearWorld: () => remove(ref(db, `world/${code}`)).catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     cleanGhosts: async () => {
       const [players, onSnap] = await Promise.all([get(ref(db, `players/${code}`)), get(ref(db, `lobbyInfo/${code}/online`))]);
       const on = onSnap.val() || {};
@@ -3018,6 +3028,7 @@ function applyTrollCam() {
   if (trollOn("drunk")) camera.rotation.z += Math.sin(performance.now() / 500) * 0.25;
   if (trollOn("shake")) { camera.position.x += (Math.random() - 0.5) * 0.18; camera.position.y += (Math.random() - 0.5) * 0.18; camera.rotation.z += (Math.random() - 0.5) * 0.06; }
 }
+let clearArmed = 0;  // до какого момента (мс) кнопка очистки ждёт второго нажатия
 let trollPage = false, trollTarget = "all", trollNo = 0;  // trollNo — страница списка шуток  // цель шуток: "all", "me" или id игрока
 function drawTroll() {
   const W = 34;
@@ -3064,7 +3075,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !id.startsWith("vit-"));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -3100,6 +3111,17 @@ adminEl.addEventListener("click", e => {
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
+  if (a === "clearmap") {
+    if (clearArmed > performance.now()) {
+      clearArmed = 0;
+      if (helpers) helpers.queue.length = 0;
+      for (const m of [...solids]) { const e = m.userData.edit; if (e && !e.t) removeSolid(m); }
+      for (const k of [...dug]) { const [x, y, z] = k.split(",").map(Number); edit({ op: "undig", x, y, z }); }
+      for (const m of [...solids]) if (m.userData.edit?.t) removeSolid(m);
+      online?.clearWorld();
+      addChat("* карта очищена");
+    } else { clearArmed = performance.now() + 5000; setTimeout(() => { if (panel === adminEl) drawAdmin(); }, 5100); }
+  }
   if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
   if (a.startsWith("god:")) {
     const id = a.slice(4), on = !godIds[id];
