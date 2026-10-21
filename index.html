@@ -292,7 +292,7 @@ const COLORS = [
 const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
-  "Верити", null, "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
+  "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка"];
 
@@ -347,11 +347,12 @@ let REACH = 8;           // как далеко можно строить
 const SIZES = [0.25, 0.5, 1, 2, 4];
 const BASE = { RADIUS, HEIGHT, EYE, CROUCH_HEIGHT, CROUCH_EYE, STEP, MOVE_SPEED, REACH };
 let size = 1;
-let asVerity = false;  // админ превратил себя в шарик Верити: тело маленькое, как шарик
+let asBall = null;  // админ превратил себя в шарик ("verity" или "fat"): тело маленькое, как у шарика
 function setSize(k) {
   size = k;
-  RADIUS = (asVerity ? 0.4 : BASE.RADIUS) * k; HEIGHT = (asVerity ? 0.84 : BASE.HEIGHT) * k; EYE = (asVerity ? 0.7 : BASE.EYE) * k;
-  CROUCH_HEIGHT = (asVerity ? 0.84 : BASE.CROUCH_HEIGHT) * k; CROUCH_EYE = (asVerity ? 0.7 : BASE.CROUCH_EYE) * k;
+  const bt = asBall && BALL_TYPES[asBall];
+  RADIUS = (bt ? bt.hbR : BASE.RADIUS) * k; HEIGHT = (bt ? bt.hbH : BASE.HEIGHT) * k; EYE = (bt ? bt.hbEye : BASE.EYE) * k;
+  CROUCH_HEIGHT = (bt ? bt.hbH : BASE.CROUCH_HEIGHT) * k; CROUCH_EYE = (bt ? bt.hbEye : BASE.CROUCH_EYE) * k;
   STEP = BASE.STEP * k; MOVE_SPEED = BASE.MOVE_SPEED * k; REACH = BASE.REACH * k;
   JUMP_SPEED = Math.sqrt(2 * GRAVITY * 1.25 * k);  // прыжок на 1.25 роста
   aimRay.far = REACH;
@@ -612,7 +613,9 @@ function edit(e, replace = false) {
   if (e.op === "ball") {
     const m = balls.get(e.id);
     if (!m) {
-      const mesh = new THREE.Mesh(verityGeo, vmaterial(plainTex, 0));
+      const type = BALL_TYPES[e.t] ? e.t : "verity";
+      const mesh = new THREE.Mesh(BALL_TYPES[type].geo, vmaterial(plainTex, 0));
+      mesh.userData.r = BALL_TYPES[type].r;
       mesh.position.set(e.x, e.y, e.z);
       mesh.rotation.y = e.yaw || 0;
       mesh.userData.sim = { vx: 0, vy: 0, vz: 0, send: 0, owned: e.o === myId, moving: e.o === myId };  // свой шарик сначала падает на пол
@@ -891,6 +894,17 @@ const plainTex = canvasTexture(2, 2, ctx => { ctx.fillStyle = "#fff"; ctx.fillRe
 const verityGeo = mergeParts([...P(0xffd21a, ball(BALL_R, 0, 0, 0, 0)),
   ...P(0x161616, ball(0.05, -0.14, 0.18, 0.355, 0, 1, 1.7, 0.5), ball(0.05, 0.14, 0.18, 0.355, 0, 1, 1.7, 0.5),
     [new THREE.TorusGeometry(0.2, 0.022, 6, 18, Math.PI).rotateZ(Math.PI), 0, 0.08, 0.372])]);
+// Жирити: круглый жёлтый толстячок с ручками, пузом и пупком
+const fatGeo = mergeParts([...P(0xffc61a, ball(0.42, 0, -0.04, 0, 0, 1, 0.92, 1), ball(0.27, 0, 0.3, 0.02, 0, 1, 0.95, 1),
+    ball(0.11, -0.4, 0.06, 0.12, 0, 0.9, 1.2, 0.9), ball(0.11, 0.4, 0.06, 0.12, 0, 0.9, 1.2, 0.9), ball(0.07, -0.33, -0.12, 0.3), ball(0.07, 0.33, -0.12, 0.3)),
+  ...P(0xffd84a, ball(0.2, 0, 0.1, 0.24, 0, 1.8, 0.45, 0.8)),
+  ...P(0x161616, ball(0.025, -0.09, 0.34, 0.245, 0, 1, 1.5, 0.5), ball(0.025, 0.09, 0.34, 0.245, 0, 1, 1.5, 0.5),
+    [new THREE.TorusGeometry(0.06, 0.011, 6, 12, Math.PI).rotateZ(Math.PI), 0, 0.27, 0.258]),
+  ...P(0xc9981a, ball(0.03, 0, -0.1, 0.415, 0, 1, 0.6, 0.35))]);
+const BALL_TYPES = {
+  verity: { geo: verityGeo, r: BALL_R, name: "верити", item: "Верити", hbH: 0.84, hbR: 0.4, hbEye: 0.7 },
+  fat: { geo: fatGeo, r: 0.48, name: "жирити", item: "Жирити", hbH: 1, hbR: 0.5, hbEye: 0.85 },
+};
 const coneGeo = mergeParts([...P(0x2e2e30, box(0.56, 0.04, 0.56, 0, -0.48, 0)), ...P(0xff6a1a, [new THREE.ConeGeometry(0.22, 0.75, 12), 0, -0.1, 0], [new THREE.SphereGeometry(0.03, 6, 6), 0, 0.28, 0]),
   ...P(0xf5f5f5, [cyl(0.165, 0.07), 0, -0.26, 0], [cyl(0.115, 0.07), 0, -0.06, 0])]);
 
@@ -1394,13 +1408,13 @@ function updateFlying(dt) {
 let ballPx = 0, ballPz = 0;
 function rollBall(m, dx, dz) {
   const len = Math.hypot(dx, dz);
-  if (len > 1e-5) m.rotateOnWorldAxis(new THREE.Vector3(dz, 0, -dx).normalize(), len / BALL_R);
+  if (len > 1e-5) m.rotateOnWorldAxis(new THREE.Vector3(dz, 0, -dx).normalize(), len / m.userData.r);
 }
 function updateBalls(dt) {
   const pvx = (px - ballPx) / Math.max(dt, 1e-3), pvz = (pz - ballPz) / Math.max(dt, 1e-3);
   ballPx = px; ballPz = pz;
   for (const m of balls.values()) {
-    const s = m.userData.sim, e = m.userData.edit;
+    const s = m.userData.sim, e = m.userData.edit, R = m.userData.r;
     if (!s.owned) {
       const t = m.userData.target;
       if (t) {
@@ -1413,14 +1427,14 @@ function updateBalls(dt) {
     // Толчок от игрока (ходьба) и от машины
     let pushX = 0, pushZ = 0, kickY = 0;
     const dx = p.x - px, dz = p.z - pz, d = Math.hypot(dx, dz);
-    if (!dead && camMode !== "car" && d < BALL_R + RADIUS && p.y + BALL_R > feet && p.y - BALL_R < feet + HEIGHT) {
+    if (!dead && camMode !== "car" && d < R + RADIUS && p.y + R > feet && p.y - R < feet + HEIGHT) {
       const nx = d > 1e-4 ? dx / d : 1, nz = d > 1e-4 ? dz / d : 0, rel = pvx * nx + pvz * nz;
       if (rel > 0.3) { pushX = nx * (rel * 1.3 + 1.5); pushZ = nz * (rel * 1.3 + 1.5); kickY = rel > 3 ? 2.5 : 0; }
-      p.x += nx * (BALL_R + RADIUS - d); p.z += nz * (BALL_R + RADIUS - d);
+      p.x += nx * (R + RADIUS - d); p.z += nz * (R + RADIUS - d);
     }
     if (drivingCar) {
       const cx = p.x - drivingCar.position.x, cz = p.z - drivingCar.position.z, cd = Math.hypot(cx, cz), sp = Math.hypot(carV.x, carV.z);
-      if (cd < 1.5 + BALL_R && sp > 1 && Math.abs(p.y - drivingCar.position.y) < 1.5) { pushX = carV.x * 1.2 + (cx / cd) * 2; pushZ = carV.z * 1.2 + (cz / cd) * 2; kickY = 3; }
+      if (cd < 1.5 + R && sp > 1 && Math.abs(p.y - drivingCar.position.y) < 1.5) { pushX = carV.x * 1.2 + (cx / cd) * 2; pushZ = carV.z * 1.2 + (cz / cd) * 2; kickY = 3; }
     }
     if (pushX || pushZ) {
       if (!s.owned) { s.owned = true; s.vx = s.vy = s.vz = 0; }
@@ -1436,10 +1450,10 @@ function updateBalls(dt) {
     if (!hitsBlock(p.x, p.y - 0.3, p.z + s.vz * dt, 0.6)) p.z += s.vz * dt; else s.vz *= -0.6;
     p.y += s.vy * dt;
     if (s.vy > 0 && hitsBlock(p.x, p.y + 0.3, p.z, 0.2)) s.vy *= -0.4;
-    const ground = Math.max(0, groundHeight(p.x, p.y - BALL_R + 0.3, p.z));
+    const ground = Math.max(0, groundHeight(p.x, p.y - R + 0.3, p.z));
     let onGround = false;
-    if (p.y - BALL_R <= ground) {
-      p.y = ground + BALL_R; onGround = true;
+    if (p.y - R <= ground) {
+      p.y = ground + R; onGround = true;
       s.vy = s.vy < -2 ? -s.vy * 0.65 : 0;
       const g = Math.exp(-0.7 * dt); s.vx *= g; s.vz *= g;
     }
@@ -1753,9 +1767,10 @@ function use(action, screen) {
     if (cell) share(e);
   }
   // Машина встаёт на пол или на блок под прицелом, носом туда, куда смотришь
-  if (HOTBAR[slot] === "Верити" && hit) {
-    const p = hit.point.clone().addScaledVector(hit.normal, BALL_R + 0.03);
-    share({ op: "ball", id: `${myId}-${idCount++}`, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(2), o: myId });
+  const ballType = Object.keys(BALL_TYPES).find(t => BALL_TYPES[t].item === HOTBAR[slot]);
+  if (ballType && hit) {
+    const p = hit.point.clone().addScaledVector(hit.normal, BALL_TYPES[ballType].r + 0.03);
+    share({ op: "ball", id: `${myId}-${idCount++}`, t: ballType, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +yaw.toFixed(2), o: myId });
   }
   if (HOTBAR[slot] === "Машина" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
@@ -2030,7 +2045,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ " };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -2504,18 +2519,20 @@ function makeFigure(mat) {
   return group;
 }
 
-// Облик «Верити»: фигурка прячется, вместо неё жёлтый шарик, который катится, когда игрок идёт
-function setVerityLook(group, on) {
-  let ball = group.userData.verity;
-  if (on && !ball) { ball = new THREE.Mesh(verityGeo, vmaterial(plainTex, 0)); ball.position.y = BALL_R; group.add(ball); group.userData.verity = ball; }
-  for (const c of group.children) if (c !== ball) c.visible = !on;
-  if (ball) ball.visible = on;
+// Облик шарика: фигурка прячется, вместо неё жёлтый шарик, который катится, когда игрок идёт
+function setBallLook(group, type) {
+  const looks = group.userData.looks ??= {};
+  if (type && !looks[type]) { const m = new THREE.Mesh(BALL_TYPES[type].geo, vmaterial(plainTex, 0)); m.position.y = BALL_TYPES[type].r; group.add(m); looks[type] = m; }
+  for (const c of group.children) if (!Object.values(looks).includes(c)) c.visible = !type;
+  for (const t in looks) looks[t].visible = t === type;
+  group.userData.look = type ? looks[type] : null;
+  group.userData.lookType = type;
 }
 function rollFigure(group, dx, dz) {
-  const ball = group.userData.verity, len = Math.hypot(dx, dz);
-  if (!ball?.visible || len < 1e-5) return;
+  const ball = group.userData.look, len = Math.hypot(dx, dz);
+  if (!ball || len < 1e-5) return;
   const c = Math.cos(-group.rotation.y), sn = Math.sin(-group.rotation.y), ax = dz, az = -dx;
-  ball.rotateOnWorldAxis(new THREE.Vector3(ax * c + az * sn, 0, -ax * sn + az * c).normalize(), len / (BALL_R * group.scale.x));
+  ball.rotateOnWorldAxis(new THREE.Vector3(ax * c + az * sn, 0, -ax * sn + az * c).normalize(), len / (BALL_TYPES[group.userData.lookType].r * group.scale.x));
 }
 
 function avatar(id) {
@@ -2540,7 +2557,7 @@ function updateAvatar(id, p) {
   a.group.scale.set(a.size, a.size * (p.cr ? 0.7 : 1), a.size);  // присел — фигурка ниже
   a.group.visible = !p.dd;  // погибший пропадает, пока не возродится
   setHand(a.group, typeof p.w === "string" ? p.w : null);
-  setVerityLook(a.group, p.v === 1);
+  setBallLook(a.group, p.v === 1 ? "verity" : BALL_TYPES[p.v] ? p.v : null);
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 24);
@@ -2678,7 +2695,7 @@ async function joinLobby(code, me) {
     if (!was && isAdmin()) addChat(TOUCH ? "* тебе выдали админ-панель (кнопка АДМИН)" : "* тебе выдали админ-панель (P)");
     if (was && !isAdmin()) {
       addChat("* у тебя забрали админ-панель");
-      asVerity = false;
+      asBall = null;
       flying = false;
       setSize(1);
       endDrone();
@@ -2695,7 +2712,7 @@ async function joinLobby(code, me) {
     }),
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
-      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asVerity ? { v: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
       if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
@@ -2789,10 +2806,10 @@ function drawAdmin() {
     row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
     "║ " + `размер x${size}`.padEnd(14) + `<span class="act" data-a="smaller">[ - ]</span> <span class="act" data-a="bigger">[ + ]</span>` + " ".repeat(W - 1 - 25) + "║",
     row(`сейчас: ${views[camMode]}`),
-    row(`[ стать верити: ${asVerity ? "ВКЛ" : "выкл"} ]`, "verity")];
+    ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
-    if (isDev) rows.push(row("[ удалить половину верити ]", "halfball"));
+    if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
     if (isDev) rows.push(row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby"), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !id.startsWith("vit-"));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
@@ -2825,17 +2842,17 @@ adminEl.addEventListener("click", e => {
     camMode = camMode === "free" ? "first" : "free";
     if (camMode === "free") freePos.copy(camera.position);
   }
-  if (a === "verity") { asVerity = !asVerity; setSize(size); }
+  if (a.startsWith("ball:")) { const t = a.slice(5); asBall = asBall === t ? null : BALL_TYPES[t] ? t : null; setSize(size); }
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
   if (a === "ghosts") online?.cleanGhosts().catch(() => addChat("* не вышло: обнови правила базы в Firebase"));
   if (a === "dellobby" && lobbyCode) confirmDeleteLobby(lobbyCode);
-  if (a === "halfball") {
-    const list = [...balls.values()].sort(() => Math.random() - 0.5);
+  if (a.startsWith("half:")) {
+    const t = a.slice(5), list = [...balls.values()].filter(m => (m.userData.edit.t || "verity") === t).sort(() => Math.random() - 0.5);
     const n = list.length ? Math.max(1, Math.floor(list.length / 2)) : 0;
     for (const m of list.slice(0, n)) share(undo(m.userData.edit));
-    addChat(`* удалено верити: ${n} из ${list.length}`);
+    addChat(`* удалено ${BALL_TYPES[t]?.name}: ${n} из ${list.length}`);
   }
   if (a.startsWith("adm:")) {
     const id = a.slice(4), on = !adminIds[id];
@@ -3165,7 +3182,7 @@ function updateSelfFigure(dt) {
   selfFigure.rotation.y = yaw;
   selfFigure.scale.set(size, size * (crouching ? 0.7 : 1), size);
   setHand(selfFigure, currentWeapon());
-  setVerityLook(selfFigure, asVerity);
+  setBallLook(selfFigure, asBall);
   rollFigure(selfFigure, px - selfPx, pz - selfPz);
   selfPx = px; selfPz = pz;
   const [r, g, b] = COLORS[color].rgb;
@@ -3245,7 +3262,7 @@ function cleanEdit(e) {
   if (e.op === "plank" && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends)) return { op: "plank", id: newId(), ends: e.ends, c };
   if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
-  if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
+  if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), t: BALL_TYPES[e.t] ? e.t : "verity", x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c };
   return null;
 }
@@ -3500,8 +3517,8 @@ const shotRay = new THREE.Raycaster();
 const tmpV = new THREE.Vector3();
 const tmpBox = new THREE.Box3();
 function bodyBox(a) {
-  const ball = a.group.userData.verity?.visible;
-  const p = a.group.position, w = (ball ? 0.42 : 0.35) * (a.size || 1), h = (ball ? 0.9 : 1.9) * a.group.scale.y;
+  const bt = a.group.userData.lookType && BALL_TYPES[a.group.userData.lookType];
+  const p = a.group.position, w = (bt ? bt.hbR + 0.02 : 0.35) * (a.size || 1), h = (bt ? bt.hbH + 0.06 : 1.9) * a.group.scale.y;
   return tmpBox.set(new THREE.Vector3(p.x - w, p.y, p.z - w), new THREE.Vector3(p.x + w, p.y + h, p.z + w));
 }
 // Кого и куда задел луч: ближайший игрок, не закрытый стеной. Возвращает { target: { id, a, dist, point, head } | null, wallDist }
