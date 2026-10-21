@@ -2762,11 +2762,11 @@ function drawMenu() {
     if (!FIREBASE_CONFIG) {
       rows.push(line("Сетевая игра ещё не настроена:"), line("нужны настройки Firebase."));
     } else {
-      rows.push(...(nick.toLowerCase() === DEV_NICK ? [line("[ СОЗДАТЬ ЛОББИ ]", "create")] : []), line("[ ВОЙТИ ПО КОДУ ]", "code"), "╟" + title("ЛОББИ", "─") + "╢");
+      rows.push(...(isDev ? [line("[ СОЗДАТЬ ЛОББИ ]", "create")] : []), line("[ ВОЙТИ ПО КОДУ ]", "code"), "╟" + title("ЛОББИ", "─") + "╢");
       if (!lobbyList.length) rows.push(line("пока пусто — создай своё лобби"));
-      const canDelete = nick.toLowerCase() === DEV_NICK;  // сервер всё равно проверит пароль
+      const canDelete = isDev;  // кнопки только у вошедшего по паролю; сервер всё равно проверит
       for (const l of lobbyList) {
-        const text = `${l.code} ${l.name.slice(0, canDelete ? 10 : 16).padEnd(canDelete ? 10 : 16)} ${String(l.players).padStart(2)}ч ${ACCESS_NAME[l.access].slice(0, 3).padEnd(3)}`;
+        const text = `${l.code} ${l.name.slice(0, canDelete ? 8 : 16).padEnd(canDelete ? 8 : 16)} ${String(l.players).padStart(2)}ч ${ACCESS_NAME[l.access].slice(0, 3).padEnd(3)}`;
         if (!canDelete) { rows.push(line(text, "join:" + l.code)); continue; }
         rows.push("║ " + `<span class="item" data-act="join:${esc(l.code)}">${esc(text)}</span> ` +
           `<span class="item" data-act="ren:${esc(l.code)}">[имя]</span><span class="item" data-act="acc:${esc(l.code)}">[дост]</span><span class="item" data-act="del:${esc(l.code)}">[x]</span>` + " ".repeat(MW - 16 - text.length) + "║");
@@ -2792,7 +2792,7 @@ menuEl.addEventListener("click", e => {
   if (act === "fullscreen") toggleFullscreen();
   if (act === "online") { menuScreen = "online"; menuNote = ""; watchLobbies(); }
   if (act === "back") { menuScreen = "main"; stopLobbyList?.(); stopLobbyList = null; menuNote = ""; }
-  if (act === "nick") changeNick().then(drawMenu);
+  if (act === "nick") changeNick().then(() => { stopLobbyList?.(); stopLobbyList = null; isDev = false; drawMenu(); watchLobbies(); });
   if (act === "create") { menuScreen = "mode"; pendingMode = "create"; }
   if (act === "code") ask("КОД ЛОББИ", "", 4).then(c => c && enterLobby(c));
   if (act.startsWith("join:")) enterLobby(act.slice(5));
@@ -2815,15 +2815,26 @@ async function watchLobbies() {
   if (!FIREBASE_CONFIG || stopLobbyList) return;
   showNote("загрузка…");
   try {
-    const { db, ref, query, orderByChild, limitToLast, onValue } = await loadFirebase();
-    stopLobbyList = onValue(query(ref(db, "lobbyInfo"), orderByChild("created"), limitToLast(20)), snap => {
-      lobbyList = [];
+    // Входим заранее: разработчику нужен пароль, а админов лобби узнаём по своему id
+    let me = null;
+    try { me = await signIn(); } catch (err) { showNote(err.message.length < 38 ? err.message : "не удалось войти"); }
+    drawMenu();
+    const { db, ref, get, query, orderByChild, limitToLast, onValue } = await loadFirebase();
+    let seq = 0;
+    stopLobbyList = onValue(query(ref(db, "lobbyInfo"), orderByChild("created"), limitToLast(20)), async snap => {
+      const mine = ++seq, all = [];
       snap.forEach(l => {
         const v = l.val();
-        lobbyList.push({ code: l.key, name: String(v.name || l.key), players: Object.keys(v.online || {}).length, access: ACCESS.includes(v.access) ? v.access : "all" });
+        all.push({ code: l.key, name: String(v.name || l.key), players: Object.keys(v.online || {}).length, access: ACCESS.includes(v.access) ? v.access : "all" });
       });
-      lobbyList.sort((a, b) => b.players - a.players);
-      lobbyList = lobbyList.slice(0, 8);
+      // «Только я» видит один разработчик, «админы» — разработчик и админы этого лобби, обычные — все
+      const seen = await Promise.all(all.map(async l => {
+        if (l.access === "all" || isDev) return true;
+        if (l.access === "dev" || !me) return false;
+        return get(ref(db, `admins/${l.code}/${me}`)).then(x => x.exists(), () => false);
+      }));
+      if (mine !== seq) return;
+      lobbyList = all.filter((_, i) => seen[i]).sort((a, b) => b.players - a.players).slice(0, 8);
       if (!inGame) showNote("");
     }, () => showNote("нет связи с сервером"));
   } catch {
