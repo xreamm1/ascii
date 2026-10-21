@@ -282,6 +282,7 @@ const FLY_SPEED = 8;       // полёт разработчика: скорос�
 const FREECAM_SPEED = 12;  // скорость свободной камеры
 const DRONE_SPEED = 16;    // скорость FPV дрона
 const BOOM_TIME = 0.8;     // сколько секунд длится взрыв дрона
+const BOOM_RADIUS = 3;     // на каком расстоянии от дрона всё разрушается
 const THIRD_DIST = 4;      // вид от третьего лица: на столько блоков камера позади игрока
 const DEV_NICK = "xreamm"; // ник разработчика: с ним спрашивается пароль
 const DEV_EMAIL = "xreamm@ascii-baseplate.game";  // аккаунт разработчика в Firebase Authentication
@@ -706,6 +707,29 @@ function groundHeight(x, f, z) {
 
 const camRay = new THREE.Raycaster();
 
+// Модель дрона: корпус и четыре винта. Её видят другие игроки, пока ты летишь
+function makeDrone() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.34), new THREE.MeshLambertMaterial({ color: 0x555555 }));
+  g.add(body);
+  const propGeo = new THREE.BoxGeometry(0.22, 0.02, 0.22), propMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+  for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const prop = new THREE.Mesh(propGeo, propMat);
+    prop.position.set(x * 0.3, 0.06, z * 0.3);
+    g.add(prop);
+  }
+  scene.add(g);
+  return g;
+}
+
+// Взрыв дрона ломает всё вокруг: блоки, доски и надписи
+function explode(pos) {
+  for (const m of [...solids]) {
+    const e = m.userData.edit;
+    if (e && m.position.distanceTo(pos) < BOOM_RADIUS) share(undo(e));
+  }
+}
+
 // FPV дрон: камера отделяется от игрока и летит туда, куда смотришь. Коснулся блока, доски или пола — взрыв
 const dronePos = new THREE.Vector3();
 let boom = 0;  // сколько секунд взрыва осталось (0 — дрон летит)
@@ -753,6 +777,7 @@ function updateDrone(dt) {
         boom = BOOM_TIME;
         boomMesh.position.copy(dronePos);
         boomMesh.visible = true;
+        explode(dronePos);
       } else dronePos.copy(next);
     }
   }
@@ -1541,6 +1566,14 @@ function updateAvatar(id, p) {
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 16);
   a.dev = dev;
+  // Дрон другого игрока: модель летает там, где он
+  if (Array.isArray(p.d)) {
+    a.drone ??= makeDrone();
+    a.droneTarget = new THREE.Vector3(p.d[0], p.d[1], p.d[2]);
+    a.drone.rotation.y = +p.d[3] || 0;
+    if (a.drone.visible === false || !a.drone.userData.placed) { a.drone.position.copy(a.droneTarget); a.drone.userData.placed = true; }
+    a.drone.visible = true;
+  } else if (a.drone) a.drone.visible = false;
   a.label.textContent = devPrefix(dev, prefixes[id]) + a.nick;  // textContent: чужой ник выводится только как текст
   a.label.classList.toggle("dev", dev);
   a.label.style.color = `rgb(${r},${g},${b})`;
@@ -1555,6 +1588,7 @@ function removeAvatar(id) {
   const a = others.get(id);
   if (!a) return;
   scene.remove(a.group);
+  if (a.drone) scene.remove(a.drone);
   a.label.remove();
   others.delete(id);
   addChat(`* ${a.nick} вышел`);
@@ -1640,6 +1674,7 @@ async function joinLobby(code, me) {
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
       const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev };
+      if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
     },
@@ -1768,6 +1803,7 @@ function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
   for (const a of others.values()) {
     a.group.position.lerp(a.target, k);
+    if (a.drone?.visible) a.drone.position.lerp(a.droneTarget, k);
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
 
@@ -1906,15 +1942,11 @@ async function deleteLobby(code) {
   if (denied.length) throw new Error(`сервер не дал удалить: ${denied.join(", ")} — обнови правила базы`);
 }
 
-// Спрашиваем подтверждение — удалённое лобби не вернуть
 function confirmDeleteLobby(code) {
-  return ask(`УДАЛИТЬ ${code}? НАПИШИ ДА`, "", 3).then(t => {
-    if (t?.toLowerCase() !== "да") return;
-    return deleteLobby(code).then(
-      () => showNote(`лобби ${code} удалено`),
-      // Длинное объяснение — в чат (в игре) или в подсказку меню, по кусочку на строку
-      err => inGame ? addChat("* " + err.message) : showNote(err.message));
-  });
+  return deleteLobby(code).then(
+    () => showNote(`лобби ${code} удалено`),
+    // Длинное объяснение — в чат (в игре) или в подсказку меню, по кусочку на строку
+    err => inGame ? addChat("* " + err.message) : showNote(err.message));
 }
 
 async function enterLobby(code) {
