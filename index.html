@@ -2503,6 +2503,20 @@ function makeFigure(mat) {
   return group;
 }
 
+// Облик «Верити»: фигурка прячется, вместо неё жёлтый шарик, который катится, когда игрок идёт
+function setVerityLook(group, on) {
+  let ball = group.userData.verity;
+  if (on && !ball) { ball = new THREE.Mesh(verityGeo, vmaterial(plainTex, 0)); ball.position.y = BALL_R; group.add(ball); group.userData.verity = ball; }
+  for (const c of group.children) if (c !== ball) c.visible = !on;
+  if (ball) ball.visible = on;
+}
+function rollFigure(group, dx, dz) {
+  const ball = group.userData.verity, len = Math.hypot(dx, dz);
+  if (!ball?.visible || len < 1e-5) return;
+  const c = Math.cos(-group.rotation.y), sn = Math.sin(-group.rotation.y), ax = dz, az = -dx;
+  ball.rotateOnWorldAxis(new THREE.Vector3(ax * c + az * sn, 0, -ax * sn + az * c).normalize(), len / (BALL_R * group.scale.x));
+}
+
 function avatar(id) {
   if (others.has(id)) return others.get(id);
   const mat = new THREE.MeshLambertMaterial();
@@ -2525,6 +2539,7 @@ function updateAvatar(id, p) {
   a.group.scale.set(a.size, a.size * (p.cr ? 0.7 : 1), a.size);  // присел — фигурка ниже
   a.group.visible = !p.dd;  // погибший пропадает, пока не возродится
   setHand(a.group, typeof p.w === "string" ? p.w : null);
+  setVerityLook(a.group, p.v === 1);
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 24);
@@ -2662,6 +2677,7 @@ async function joinLobby(code, me) {
     if (!was && isAdmin()) addChat(TOUCH ? "* тебе выдали админ-панель (кнопка АДМИН)" : "* тебе выдали админ-панель (P)");
     if (was && !isAdmin()) {
       addChat("* у тебя забрали админ-панель");
+      asVerity = false;
       flying = false;
       setSize(1);
       endDrone();
@@ -2678,7 +2694,7 @@ async function joinLobby(code, me) {
     }),
     // Позицию шлём, только если она изменилась: так меньше трафика
     sendPose: () => {
-      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(currentWeapon() ? { w: currentWeapon() } : {}) };
+      const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asVerity ? { v: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
       if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
       const json = JSON.stringify(p);
       if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
@@ -2759,7 +2775,8 @@ function drawAdmin() {
     row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"),
     row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
     "║ " + `размер x${size}`.padEnd(14) + `<span class="act" data-a="smaller">[ - ]</span> <span class="act" data-a="bigger">[ + ]</span>` + " ".repeat(W - 1 - 25) + "║",
-    row(`сейчас: ${views[camMode]}`)];
+    row(`сейчас: ${views[camMode]}`),
+    row(`[ стать верити: ${asVerity ? "ВКЛ" : "выкл"} ]`, "verity")];
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) rows.push(row("[ удалить половину верити ]", "halfball"));
@@ -2795,6 +2812,7 @@ adminEl.addEventListener("click", e => {
     camMode = camMode === "free" ? "first" : "free";
     if (camMode === "free") freePos.copy(camera.position);
   }
+  if (a === "verity") asVerity = !asVerity;
   if (a === "announce") ask("ОБЪЯВЛЕНИЕ", "", 80).then(t => t && online?.announce(t));
   // Остальное — только разработчику (сервер всё равно проверит)
   if (!isDev) return drawAdmin();
@@ -2847,7 +2865,9 @@ function placeLabel(label, pos, visible, h = 2) {
 function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
   for (const a of others.values()) {
+    const bx = a.group.position.x, bz = a.group.position.z;
     a.group.position.lerp(a.target, k);
+    rollFigure(a.group, a.group.position.x - bx, a.group.position.z - bz);
     if (a.drone?.visible) a.drone.position.lerp(a.droneTarget, k);
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
@@ -3055,6 +3075,7 @@ async function enterLobby(code) {
 // code не задан — одиночная игра
 let lobbyCode = null;  // код лобби, в котором сейчас игра (null — одиночная игра)
 let lobbyName = "", lobbyAccess = "all";
+let asVerity = false;  // админ превратил себя в шарик Верити
 // Кто может войти: все, разработчик и админы, только разработчик
 const ACCESS = ["all", "admins", "dev"];
 const ACCESS_NAME = { all: "все", admins: "админы", dev: "только я" };
@@ -3121,6 +3142,7 @@ try {
 // Своя фигурка с ником — видна, когда смотришь со стороны (вид от 3-го лица или свободная камера)
 const selfMat = new THREE.MeshLambertMaterial();
 const selfFigure = makeFigure(selfMat);
+let selfPx = 0, selfPz = 0;
 const selfLabel = document.createElement("pre");
 selfLabel.className = "nick";
 labels.append(selfLabel);
@@ -3130,6 +3152,9 @@ function updateSelfFigure(dt) {
   selfFigure.rotation.y = yaw;
   selfFigure.scale.set(size, size * (crouching ? 0.7 : 1), size);
   setHand(selfFigure, currentWeapon());
+  setVerityLook(selfFigure, asVerity);
+  rollFigure(selfFigure, px - selfPx, pz - selfPz);
+  selfPx = px; selfPz = pz;
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
 
