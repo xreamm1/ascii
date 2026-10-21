@@ -672,12 +672,15 @@ const barrierGeo = angle => mergeParts([box(0.3, 1.2, 0.3, -0.35, 0.1, 0), box(0
 const barrierGeos = Array.from({ length: BARRIER_STEPS + 1 }, (_, i) => barrierGeo(i / BARRIER_STEPS * 1.4));
 // Длинные предметы занимают ещё клетки: [сколько, вдоль какой оси предмета]
 const EXTRA = { barrier: [BARRIER_ARM, "x"], bed: [1, "z"], sofa: [1, "x"] };
+// Высокие предметы занимают ещё клетки над собой — иначе их можно перепрыгнуть: сколько клеток вверх
+const TALL = { streetlamp: 3, traffic: 2, sign: 1, fridge: 1, terminal: 1 };
 const extraCells = e => {
+  const up = Array.from({ length: TALL[e.k] || 0 }, (_, i) => [e.x, e.y + 1 + i, e.z]);
   const ex = EXTRA[e.k];
-  if (!ex) return [];
+  if (!ex) return up;
   const a = (e.r || 0) * Math.PI / 2;
   const [dx, dz] = ex[1] === "x" ? [Math.cos(a), -Math.sin(a)] : [Math.sin(a), Math.cos(a)];
-  return Array.from({ length: ex[0] }, (_, i) => [e.x + Math.round(dx) * (i + 1), e.y, e.z + Math.round(dz) * (i + 1)]);
+  return [...Array.from({ length: ex[0] }, (_, i) => [e.x + Math.round(dx) * (i + 1), e.y, e.z + Math.round(dz) * (i + 1)]), ...up];
 };
 const lampGeo = mergeParts([[cyl(0.2, 0.05), 0, -0.475, 0], [cyl(0.03, 0.8), 0, -0.075, 0],
   [new THREE.CylinderGeometry(0.1, 0.22, 0.3, 14), 0, 0.35, 0]]);
