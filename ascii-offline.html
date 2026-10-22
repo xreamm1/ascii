@@ -53,7 +53,7 @@
   #flash { position: fixed; inset: 0; background: #f00; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
   #death {
     left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; color: #f55;
-    background: rgba(14, 14, 20, 0.9); border: 1px solid #aa4444; border-radius: 12px; padding: 14px 26px; display: none; pointer-events: none; font-size: 20px; white-space: normal;
+    background: #000; border: 4px double #f55; padding: 10px 24px; display: none; pointer-events: none; font-size: 22px; white-space: normal;
   }
   #hotbar, #inv { white-space: normal; font-size: 14px; }
   .hbs { display: flex; gap: 2px; margin-top: 3px; }
@@ -86,61 +86,59 @@
   #inv .invname { margin: 8px 0 4px; min-height: 1.2em; }
   #inv .invhint { margin-top: 6px; color: #888; font-size: 12px; }
 
-  /* Общий вид окон: тёмные панели с закруглениями и кнопками */
+  /* Общий вид окон — как раньше в ASCII: чёрный фон, двойная белая рамка, кнопки в скобках, моноширинный шрифт */
   #menu, #game, #admin, #palette, #inv, #schem {
-    white-space: normal; background: rgba(14, 14, 20, 0.96); border: 1px solid #3c3c4a; border-radius: 14px;
-    box-shadow: 0 12px 44px rgba(0, 0, 0, 0.65); padding: 16px 18px; color: #eee; font-size: 15px; line-height: 1.35; box-sizing: border-box;
+    white-space: normal; background: #000; border: 4px double #fff; border-radius: 0; box-shadow: none;
+    padding: 10px 14px; color: #fff; font-size: 16px; line-height: 1.35; box-sizing: border-box;
     max-height: 94vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
-  #menu { width: min(92vw, 380px); } #game { width: min(92vw, 360px); } #admin { width: min(94vw, 400px); } #palette { width: min(92vw, 320px); }
-  .gt { font-size: 18px; font-weight: 700; letter-spacing: 0.08em; margin: 0 0 12px; text-align: center; }
-  .gt.big { font-size: 22px; margin-bottom: 16px; }
-  .gl { color: #a8a8b4; margin: 6px 0; }
+  #menu { width: min(94vw, 420px); } #game { width: min(94vw, 400px); } #admin { width: min(96vw, 440px); } #palette { width: min(94vw, 340px); }
+  .gt { margin: 0 0 8px; text-align: center; }
+  .gt::before { content: "═══ "; } .gt::after { content: " ═══"; }
+  .gl { color: #fff; margin: 3px 0; }
   .gl.note { color: #ffd84a; }
-  .gs { border-top: 1px solid #3c3c4a; margin: 12px 0 6px; padding-top: 4px; color: #8a8a98; font-size: 12px; letter-spacing: 0.1em; }
-  .gb { display: block; padding: 9px 14px; margin: 5px 0; background: #20202b; border: 1px solid #4a4a5a; border-radius: 9px; cursor: pointer; text-align: center; color: #fff; transition: background 0.1s; }
-  .gb:hover { background: #30303f; border-color: #8c8ca4; }
-  .gb:active { background: #3c3c50; }
-  .gb.small { display: inline-block; padding: 4px 10px; margin: 2px; font-size: 13px; }
-  .gb.big { padding: 13px 14px; font-size: 17px; margin: 8px 0; }
-  .gb.on { background: #24402a; border-color: #5cae66; }
-  .gb.warn { border-color: #b8584a; }
-  .gg { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; }
-  .gg .gl { margin: 0 6px 0 0; }
-  .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
-  .gx { color: #7c7c8a; font-size: 12px; text-align: center; margin-top: 12px; }
+  .gs { border-top: 1px solid #fff; margin: 8px 0 4px; padding-top: 2px; font-size: 13px; }
+  .gb { display: block; padding: 0 4px; margin: 2px 0; background: none; border: none; border-radius: 0; cursor: pointer; text-align: left; color: #fff; }
+  .gb::before { content: "[ "; } .gb::after { content: " ]"; }
+  .gb:hover { background: #fff; color: #000; }
+  .gb.small { display: inline-block; margin: 0 4px 0 0; padding: 0 2px; font-size: inherit; }
+  .gb.on { font-weight: 700; }
+  .gb.warn { text-decoration: underline; }
+  .gg { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center; margin: 2px 0; }
+  .gg .gl { margin: 0 8px 0 0; }
+  .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .gx { margin-top: 8px; border-top: 1px solid #fff; padding-top: 2px; font-size: 13px; }
   .lobbyrow { display: flex; gap: 4px; align-items: center; }
   .lobbyrow .gb:first-child { flex: 1; text-align: left; }
-  #palette .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 4px 0 8px; }
-  #palette .option { aspect-ratio: 1; border-radius: 8px; border: 2px solid #2a2a36; cursor: pointer; }
-  #palette .option:hover { border-color: #aaa; }
-  #palette .option.sel { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
-  #palette .cname { text-align: center; min-height: 1.3em; color: #ccc; }
-  #inv, #schem { border: 1px solid #3c3c4a; }
-  .slot, .cell { border-radius: 7px; }
-  .ann { background: rgba(14, 14, 20, 0.96); border: 1px solid #ffd84a; border-radius: 12px; padding: 12px 22px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
-  .ann b { display: block; font-size: 13px; letter-spacing: 0.1em; color: #ffd84a; margin-bottom: 4px; }
-  .hpb { width: 150px; height: 14px; border: 1px solid #aa4444; border-radius: 7px; background: rgba(0,0,0,0.6); overflow: hidden; margin-top: 4px; }
-  .hpb i { display: block; height: 100%; background: linear-gradient(#ff6b6b, #c93030); }
-  .hpb.god i { background: linear-gradient(#ffe066, #d9a400); }
-  #stick { width: 120px; height: 120px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; background: rgba(255,255,255,0.08); font-size: 0; }
-  #knob { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); font-size: 0; }
+  #palette .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 4px 0 8px; }
+  #palette .option { aspect-ratio: 1; border: 2px solid #333; border-radius: 0; cursor: pointer; }
+  #palette .option:hover { border-color: #fff; }
+  #palette .option.sel { border: 3px double #fff; }
+  #palette .cname { text-align: center; min-height: 1.3em; }
+  #inv, #schem { border: 4px double #fff; }
+  .slot, .cell { border-radius: 0; border: 1px solid #666; background: rgba(0, 0, 0, 0.6); }
+  .slot.sel { border: 3px double #fff; background: rgba(40, 40, 40, 0.85); }
+  .cell:hover { border-color: #fff; background: #222; }
+  .ann { background: #000; border: 4px double #ffd84a; border-radius: 0; padding: 8px 20px; text-align: center; }
+  .ann b { display: block; font-weight: 400; color: #ffd84a; margin-bottom: 2px; }
+  #stick { width: 120px; height: 120px; border: 2px solid #fff; border-radius: 50%; background: rgba(255,255,255,0.06); font-size: 0; }
+  #knob { width: 46px; height: 46px; border: 2px solid #fff; border-radius: 50%; background: rgba(255,255,255,0.5); font-size: 0; }
 
   /* Окошко ввода (ник, чат, текст) */
   #ask {
     position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%);
-    background: rgba(14, 14, 20, 0.97); border: 1px solid #3c3c4a; border-radius: 14px; box-shadow: 0 12px 44px rgba(0,0,0,0.65);
-    color: #fff; font: 16px/1.3 "JetBrains Mono", Consolas, "Courier New", monospace; padding: 16px 18px; width: min(92vw, 360px); box-sizing: border-box; display: none;
+    background: #000; border: 4px double #fff; color: #fff;
+    font: 16px/1.35 "JetBrains Mono", Consolas, "Courier New", monospace; padding: 10px 14px; width: min(94vw, 380px); box-sizing: border-box; display: none;
   }
-  #askTop { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 10px; text-align: center; }
+  #askTop { margin-bottom: 8px; text-align: center; }
+  #askTop::before { content: "═══ "; } #askTop::after { content: " ═══"; }
   #ask input {
-    width: 100%; box-sizing: border-box; padding: 9px 11px; font: inherit; color: #fff; background: #0c0c12; border: 1px solid #5a5a6c; border-radius: 8px; outline: none;
+    width: 100%; box-sizing: border-box; padding: 2px 4px; font: inherit; color: #fff; background: #000; border: none; border-bottom: 1px solid #fff; outline: none;
     /* Без этого Safari на iPhone не даёт печатать: у страницы выделение текста выключено */
     -webkit-user-select: text; user-select: text; touch-action: auto;
   }
-  #ask input:focus { border-color: #fff; }
-  #ask .askbtns { display: flex; gap: 8px; margin-top: 12px; }
-  #ask .askbtns .gb { flex: 1; margin: 0; }
+  #ask .askbtns { display: flex; gap: 16px; margin-top: 10px; border-top: 1px solid #fff; padding-top: 4px; }
+  #ask .askbtns .gb { margin: 0; }
 
   #chat {
     left: 16px;
@@ -148,9 +146,8 @@
     max-width: 60ch;
     white-space: pre-wrap;
     pointer-events: none;
-    background: rgba(14, 14, 20, 0.5);
-    border-radius: 8px;
-    padding: 4px 10px;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 2px 6px;
   }
   .nick {
     transform: translate(-50%, -100%);
@@ -165,7 +162,7 @@
     transform: translate(-50%, -50%);
     background: #000;
   }
-  #lobby { left: 16px; top: 16px; pointer-events: none; background: rgba(14, 14, 20, 0.65); border-radius: 8px; padding: 4px 10px; }
+  #lobby { left: 16px; top: 16px; pointer-events: none; background: rgba(0, 0, 0, 0.55); padding: 2px 6px; }
   #lobby:empty, #chat:empty { display: none; }
   #admin {
     left: 50%;
@@ -183,9 +180,8 @@
     transform: translate(-50%, -50%);
     pointer-events: none;
     display: none;
-    background: rgba(14, 14, 20, 0.75);
-    border-radius: 10px;
-    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 10px;
   }
   #announce {
     left: 50%;
@@ -225,11 +221,10 @@
   @media (orientation: portrait) { #touch .row.bottom { bottom: 90px; } }
   #touch .button {
     position: static;
-    padding: 9px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    border-radius: 12px;
-    background: rgba(14, 14, 20, 0.62);
-    font-size: 13px;
+    padding: 8px 10px;
+    border: 2px solid #fff;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.6);
   }
   #touch .button.big { padding: 14px 18px; }
   #touch .button.active { color: #000; background: #fff; }
@@ -268,7 +263,7 @@
 <div id="ask">
   <div id="askTop"></div>
   <input id="askInput" enterkeyhint="done" autocomplete="off">
-  <div class="askbtns"><span class="gb btn" data-a="ok">Готово</span><span class="gb btn" data-a="cancel">Отмена</span></div>
+  <div class="askbtns"><span class="gb btn" data-a="ok">ГОТОВО</span><span class="gb btn" data-a="cancel">ОТМЕНА</span></div>
 </div>
 <div id="touch">
   <div class="row top">
@@ -340,7 +335,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Верити", "Жирити",
   "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота",  // материалы (страницы 9–12)
   "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
-  "Огниво", "ТНТ", "Трамплин", "Танк",
+  "Огниво", "ТНТ", "Трамплин", "Танк", "Автобус",
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит",
@@ -793,7 +788,7 @@ function edit(e, replace = false) {
   if (e.op === "car") {
     const m = cars.get(e.id);
     if (!m) {
-      const mesh = new THREE.Mesh(carGeo, [material(foodTex, e.c), glassMaterial(e.c), carDarkMat, carHeadMat, carTailMat]);
+      const mesh = new THREE.Mesh(e.bus ? busGeo : carGeo, [material(foodTex, e.c), glassMaterial(e.c), carDarkMat, carHeadMat, carTailMat]);
       mesh.position.set(e.x, e.y, e.z);
       mesh.rotation.y = e.yaw;
       addSolid(mesh, e);
@@ -1166,6 +1161,24 @@ const carGeo = mergeParts([
   [new THREE.BoxGeometry(0.28, 0.008, 0.012).rotateZ(0.12), -0.15, 0.54, -0.31, 2], [new THREE.BoxGeometry(0.28, 0.008, 0.012).rotateZ(0.12), 0.15, 0.54, -0.31, 2],   // дворники
   [new THREE.CylinderGeometry(0.004, 0.004, 0.2, 6), 0.3, 0.82, 0.4, 2]]).scale(2, 2, 2);                                                  // антенна
 
+
+// Автобус: 2,8 × 3 × 8,8 блока. Нос смотрит в -z, как у машины
+const busGeo = mergeParts([
+  box(2.7, 1.9, 8.8, 0, 1.45, 0), box(2.5, 0.12, 8.5, 0, 2.46, 0), box(2.74, 0.18, 8.84, 0, 0.82, 0),                       // кузов, крыша, пояс
+  box(2.6, 0.3, 8.6, 0, 0.38, 0, 2), box(2.8, 0.22, 0.3, 0, 0.5, -4.5, 2), box(2.8, 0.22, 0.3, 0, 0.5, 4.5, 2),               // днище и бамперы
+  ...[-1, 1].flatMap(x => times(7, i => box(0.03, 0.78, 0.95, x * 1.36, 1.85, -3.4 + i * 1.12, 1))),                                  // окна по бортам
+  box(0.04, 1.6, 1.0, 1.37, 1.3, -3.7, 2), box(0.04, 1.6, 1.0, 1.37, 1.3, 0.35, 2),                                          // двери (справа)
+  box(2.4, 1.0, 0.03, 0, 1.9, -4.42, 1), box(2.2, 0.7, 0.03, 0, 1.95, 4.42, 1),                                              // лобовое и заднее стекло
+  box(1.7, 0.3, 0.03, 0, 2.3, -4.43, 2), box(1.0, 0.45, 0.03, 0, 1.0, -4.43, 2),                                              // табло маршрута, решётка
+  box(0.34, 0.2, 0.04, -0.95, 0.95, -4.43, 3), box(0.34, 0.2, 0.04, 0.95, 0.95, -4.43, 3),                                    // фары
+  box(0.34, 0.2, 0.04, -0.95, 0.95, 4.43, 4), box(0.34, 0.2, 0.04, 0.95, 0.95, 4.43, 4),                                      // стоп-сигналы
+  box(2.72, 0.14, 8.82, 0, 1.2, 0, 4),                                                                                         // полоса по борту
+  box(0.5, 0.1, 0.5, 0, 2.55, 1.5, 2), box(0.5, 0.1, 0.5, 0, 2.55, -1.5, 2),                                                  // люки
+  ...[-1, 1].flatMap(x => [[-3.0], [2.6]].flatMap(([z]) => [[new THREE.CylinderGeometry(0.58, 0.58, 0.4, 20).rotateZ(Math.PI / 2), x * 1.25, 0.58, z, 2],
+    [new THREE.CylinderGeometry(0.34, 0.34, 0.42, 14).rotateZ(Math.PI / 2), x * 1.25, 0.58, z, 0]])),                          // колёса и диски
+  box(1.4, 0.5, 0.5, 0.2, 1.3, -3.6, 2), [new THREE.TorusGeometry(0.25, 0.03, 6, 14).rotateX(0.9), -0.45, 1.75, -3.55, 2],     // водитель: сиденье и руль
+  ...times(5, i => [[-0.6, -0.15], [0.6, 0.0]].map(([x]) => box(0.7, 0.9, 0.5, x, 1.1, -1.6 + i * 1.2, 2))).flat()]);          // кресла
+
 // Стоящая машина — препятствие и поверхность: кабина высотой 1.45, капот и багажник — 0.92.
 // Точка (x, z) в системе координат машины: вперёд — -z, кабина занимает z от -0.55 до 0.95
 function carLocal(m, x, z) {
@@ -1176,8 +1189,10 @@ const carHits = (x, f, z, h) => !!carAt(x, f, z, h);
 // Какая машина занимает это место (или null)
 function carAt(x, f, z, h) {
   for (const m of cars.values()) {
-    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > 20) continue;
+    const bus = m.userData.edit.bus;
+    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > (bus ? 48 : 20)) continue;
     const [lx, lz] = carLocal(m, x, z), y = m.position.y;
+    if (bus) { if (Math.abs(lx) < 1.4 + RADIUS && Math.abs(lz) < 4.4 + RADIUS && f + h > y && f < y + 2.9) return m; continue; }
     if (Math.abs(lx) >= 0.9 + RADIUS || f + h <= y) continue;
     if (Math.abs(lz) < 1.8 + RADIUS && f < y + 0.92 - 0.01) return m;                          // капот, багажник, низ кузова
     if (lz > -0.55 - RADIUS && lz < 0.95 + RADIUS && f < y + 1.45 - 0.01) return m;             // кабина
@@ -1188,8 +1203,10 @@ function carAt(x, f, z, h) {
 function carTop(x, z, f) {
   let top = -Infinity;
   for (const m of cars.values()) {
-    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > 20) continue;
+    const bus = m.userData.edit.bus;
+    if (m === drivingCar || (x - m.position.x) ** 2 + (z - m.position.z) ** 2 > (bus ? 48 : 20)) continue;
     const [lx, lz] = carLocal(m, x, z);
+    if (bus) { const t = m.position.y + 2.9; if (Math.abs(lx) < 1.4 && Math.abs(lz) < 4.4 && t <= f + STEP) top = Math.max(top, t); continue; }
     if (Math.abs(lx) >= 0.9 || Math.abs(lz) >= 1.8) continue;
     const t = m.position.y + (lz > -0.55 && lz < 0.95 ? 1.45 : 0.92);
     if (t <= f + STEP) top = Math.max(top, t);
@@ -1692,8 +1709,8 @@ function drawHp() {
   const show = gameMode === "survival" && inGame;
   hpEl.style.display = show ? "block" : "none";
   if (!show) return;
-  const god = isGod(), v = Math.max(0, Math.ceil(hp)), t = god ? "god" : v;
-  if (t !== lastHpText) { lastHpText = t; hpEl.innerHTML = `<span>♥ ${god ? "БОГ" : v}</span><div class="hpb${god ? " god" : ""}"><i style="width:${god ? 100 : Math.min(100, v / MAX_HP * 100)}%"></i></div>`; }
+  const t = isGod() ? "♥ БОГ\n" + "█".repeat(10) : `♥ ${Math.max(0, Math.ceil(hp))}\n` + "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10));
+  if (t !== lastHpText) { lastHpText = t; hpEl.textContent = t; }
 }
 
 // Урон: в творческом режиме его нет. by — кто виноват (для сообщения о гибели)
@@ -1794,7 +1811,7 @@ let carV = { x: 0, z: 0 }, carYaw = 0, nitroOn = false, carVy = 0;
 function nearestCar() {
   let best = null, bestD = 6;
   for (const m of cars.values()) {
-    const d = Math.hypot(m.position.x - px, m.position.z - pz);
+    const d = Math.hypot(m.position.x - px, m.position.z - pz) - (m.userData.edit.bus ? 3 : 0);
     if (d < bestD && Math.abs(m.position.y - feet) < 3) { best = m; bestD = d; }
   }
   return best;
@@ -1840,8 +1857,9 @@ function exitCar() {
   const m = drivingCar;
   drivingCar = null;
   // Выходим вбок от машины
-  px = m.position.x + Math.cos(carYaw) * 2.2;
-  pz = m.position.z - Math.sin(carYaw) * 2.2;
+  const side = m.userData.edit.bus ? 3.4 : 2.2;  // у автобуса выходим у правой двери
+  px = m.position.x + Math.cos(carYaw) * side;
+  pz = m.position.z - Math.sin(carYaw) * side;
   feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
   vy = 0;
   crouching = false;
@@ -2147,15 +2165,16 @@ function updateCar(dt) {
   let [f, r] = dirs();
   // Руль работает, только пока машина едет; ручник поворачивает резче
   const vf0 = carV.x * f[0] + carV.z * f[1];
-  carYaw -= steer * 1.9 * Math.max(-1, Math.min(1, vf0 / 6)) * (hand ? 1.4 : 1) * dt;
+  const bus = !!m.userData.edit.bus;  // автобус: тяжелее, медленнее и поворачивает плавнее
+  carYaw -= steer * (bus ? 1.1 : 1.9) * Math.max(-1, Math.min(1, vf0 / 6)) * (hand ? 1.4 : 1) * dt;
   [f, r] = dirs();
   // Скорость остаётся прежней, а нос повернулся: часть скорости оказывается "вбок" — это и есть занос
   let vf = carV.x * f[0] + carV.z * f[1], vl = carV.x * r[0] + carV.z * r[1];
   nitroOn = !!(keys.ShiftLeft || keys.ShiftRight) && throttle > 0;  // нитро на Shift: сильнее разгон и выше потолок скорости
   const iceUnder = blocks.get(key(Math.floor(m.position.x), Math.floor(m.position.y - 0.1), Math.floor(m.position.z)))?.userData.edit.k === "ice";  // лёд: мало сцепления
-  vf += throttle * (nitroOn ? 34 : 14) * (iceUnder ? 0.6 : 1) * dt;
+  vf += throttle * (bus ? (nitroOn ? 16 : 8) : nitroOn ? 34 : 14) * (iceUnder ? 0.6 : 1) * dt;
   if (!throttle) vf -= vf * Math.min(1, (iceUnder ? 0.15 : 1.2) * dt);
-  vf = Math.max(-8, Math.min(nitroOn ? 40 : 24, vf));
+  vf = Math.max(-6, Math.min(bus ? (nitroOn ? 24 : 15) : nitroOn ? 40 : 24, vf));
   vl *= Math.exp(-(hand ? 1 : iceUnder ? 0.5 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
   carV = { x: f[0] * vf + r[0] * vl, z: f[1] * vf + r[1] * vl };
 
@@ -2164,8 +2183,8 @@ function updateCar(dt) {
   const y = m.position.y;
   const blocked = (cx, cz) => {
     ignoreJump = true;
-    const hit = [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]
-      .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1));
+    const hit = (bus ? [[0, 0], [4.2, 0], [-4.2, 0], [2.4, 1.3], [2.4, -1.3], [-2.4, 1.3], [-2.4, -1.3], [0, 1.3], [0, -1.3]] : [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]])
+      .some(([a, b]) => hitsSolid(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, bus ? 2.6 : 1));
     ignoreJump = false;
     return hit;
   };
@@ -2173,8 +2192,8 @@ function updateCar(dt) {
   const speed = Math.hypot(carV.x, carV.z);
   // Врезались в чужую машину на скорости — она отлетает
   const rammed = (cx, cz) => {
-    for (const [a, b] of [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]]) {
-      const o = carAt(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, 1);
+    for (const [a, b] of (bus ? [[0, 0], [4.2, 0], [-4.2, 0], [0, 1.3], [0, -1.3]] : [[0, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7]])) {
+      const o = carAt(cx + f[0] * a + r[0] * b, y, cz + f[1] * a + r[1] * b, bus ? 2.6 : 1);
       if (o && o !== m) return o;
     }
     return null;
@@ -2199,12 +2218,12 @@ function updateCar(dt) {
   // Камера сзади и чуть сверху, плавно догоняет поворот машины
   yaw += Math.atan2(Math.sin(carYaw - yaw), Math.cos(carYaw - yaw)) * Math.min(1, dt * 4);
   pitch = -0.2;
-  const head = new THREE.Vector3(x, m.position.y + 2.4, z);
+  const head = new THREE.Vector3(x, m.position.y + (bus ? 4.2 : 2.4), z), dist = bus ? 17 : 12;
   const back = new THREE.Vector3(Math.sin(yaw), 0.35, Math.cos(yaw)).normalize();
   camRay.set(head, back);
-  camRay.far = 12;
+  camRay.far = dist;
   const hit = camRay.intersectObjects(solids)[0];
-  camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : 12);
+  camera.position.copy(head).addScaledVector(back, hit ? Math.max(0.5, hit.distance - 0.3) : dist);
   scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
   camera.rotation.set(pitch, yaw, 0);
 }
@@ -2254,7 +2273,7 @@ function update(dt) {
     camera.rotation.set(0.9, yaw, 0.3);
     const left = Math.ceil((respawnAt - performance.now()) / 1000);
     deathEl.style.display = "block";
-    deathEl.innerHTML = `<b>ТЫ ПОГИБ</b><br>возрождение через ${Math.max(left, 0)}`;
+    deathEl.textContent = `ТЫ ПОГИБ\nвозрождение через ${Math.max(left, 0)}`;
     if (left <= 0) respawn();
     return;
   }
@@ -2526,6 +2545,10 @@ function use(action, screen) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "tank", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), tu: +yaw.toFixed(2), bp: 0 });
   }
+  if (HOTBAR[slot] === "Автобус" && hit && hit.normal.y > 0.5) {
+    const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
+    share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color, bus: 1 });
+  }
   if (HOTBAR[slot] === "Машина" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color });
@@ -2789,7 +2812,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -2803,7 +2826,7 @@ function rgb(c) {
 const ICON_PX = 96;
 const iconCache = new Map(), iconQueue = [], iconPending = new Set();
 let iconBusy = false, iconR = null, iconScene = null, iconCam = null;
-const iconUsesColor = name => name in KINDS || name === "Блок" || name === "Доска" || name === "Текст" || name === "Машина";
+const iconUsesColor = name => name in KINDS || name === "Блок" || name === "Доска" || name === "Текст" || name === "Машина" || name === "Автобус";
 const iconKey = name => name + "|" + (iconUsesColor(name) ? color : "");
 function iconModel(name, c) {
   const fake = (k, ex = {}) => ({ op: "block", x: 0, y: 0, z: 0, c, ...(k ? { k } : {}), ...ex });
@@ -2818,6 +2841,7 @@ function iconModel(name, c) {
   else if (name === "Прочный щит") m = blockMesh(fake("shield"));
   else if (name in KINDS) m = blockMesh(fake(KINDS[name], { r: 0 }));
   else if (name === "Машина") m = new THREE.Mesh(carGeo, [material(foodTex, c), glassMaterial(c), carDarkMat, carHeadMat, carTailMat]);
+  else if (name === "Автобус") m = new THREE.Mesh(busGeo, [material(foodTex, c), glassMaterial(c), carDarkMat, carHeadMat, carTailMat]);
   else if (name === "Самолёт") m = new THREE.Mesh(planeGeo, plain());
   else if (name === "Танк") {
     m = new THREE.Mesh(tankHullGeo, plain());
@@ -2936,7 +2960,7 @@ const INV_TABS = {
   "Мебель": ["Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
   "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
   "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
-  "Транспорт": ["Машина", "Танк", "Самолёт"],
+  "Транспорт": ["Машина", "Автобус", "Танк", "Самолёт"],
   "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"],
 };
 const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"];
@@ -4024,7 +4048,7 @@ const adminEl = document.getElementById("admin");
 function drawAdmin() {
   if (trollPage && isDev) return drawTroll();
   const row = (text, act) => act ? gbtn(text, act, /ВКЛ/.test(text) ? "on" : /ЗАПРЕЩЕНО|ТОЧНО/.test(text) ? "warn" : "") : glabel(text);
-  const two = list => `<div class="gcols">${list.join("")}</div>`;
+  const two = list => list.join("");  // как раньше: одна колонка
   const views = { first: "от 1-го лица", third: "от 3-го лица", free: "свободная камера", drone: "FPV дрон" };
   const rows = [gtitle("АДМИН"), gsep("ПЕРСОНАЖ"),
     two([row(`[ полёт: ${flying ? "ВКЛ" : "выкл"} ]`, "fly"), row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis")]),
@@ -4963,7 +4987,7 @@ function cleanEdit(e) {
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
   if (e.op === "animal" && ANIMALS[e.t] && num(e.x, e.y, e.z)) return { op: "animal", id: newId(), t: e.t, x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), t: BALL_TYPES[e.t] ? e.t : "verity", x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
-  if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c };
+  if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c, ...(e.bus === 1 ? { bus: 1 } : {}) };
   return null;
 }
 
