@@ -55,7 +55,13 @@
     left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; color: #f55;
     background: #000; display: none; pointer-events: none; font-size: 22px;
   }
-  #hotbar .slot { display: inline-block; cursor: pointer; }
+  #hotbar, #inv { white-space: normal; font-size: 14px; }
+  .hbs { display: flex; gap: 2px; margin-top: 3px; }
+  .slot, .cell { width: var(--slot, 44px); height: var(--slot, 44px); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; position: relative; cursor: pointer; border: 1px solid #555; background: rgba(0,0,0,0.55); }
+  .slot.sel { border: 2px solid #fff; background: rgba(60,60,60,0.8); }
+  .slot img, .cell img { width: 92%; height: 92%; object-fit: contain; pointer-events: none; }
+  .slot b { position: absolute; left: 2px; bottom: 0; font-size: 10px; color: #bbb; pointer-events: none; }
+  .ph { font-size: 9px; color: #888; pointer-events: none; }
   #hotbar .page { cursor: pointer; }
   #palette {
     left: 50%;
@@ -64,10 +70,18 @@
     background: #000;
     display: none;
   }
-  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; }
-  #inv .tab, #inv .cell, #inv .slot { cursor: pointer; }
+  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; border: 2px solid #fff; padding: 10px; width: calc(var(--slot, 44px) * 9 + 36px); box-sizing: border-box; }
+  #inv .invt { margin-bottom: 6px; }
+  #inv .tabs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
+  #inv .tab { cursor: pointer; padding: 0 3px; }
   #inv .tab.on { background: #fff; color: #000; }
+  #inv .grid { display: grid; grid-template-columns: repeat(9, var(--slot, 44px)); gap: 2px; }
   #inv .cell:hover, #inv .tab:hover { background: #333; }
+  #schem { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; border: 2px solid #fff; padding: 10px; white-space: normal; font-size: 14px; max-width: 96vw; box-sizing: border-box; line-height: 1.5; }
+  #schem .sact { cursor: pointer; }
+  #schem .sact:hover { background: #333; }
+  #inv .invname { margin: 8px 0 4px; min-height: 1.2em; }
+  #inv .invhint { margin-top: 6px; color: #888; font-size: 12px; }
   #palette .option { cursor: pointer; }
   #palette .option:hover { background: #333; }
 
@@ -210,6 +224,7 @@
 <pre id="death"></pre>
 <pre id="palette"></pre>
 <pre id="inv"></pre>
+<pre id="schem"></pre>
 <pre id="chat"></pre>
 <pre id="lobby"></pre>
 <pre id="admin"></pre>
@@ -2545,6 +2560,7 @@ addEventListener("keydown", e => {
     if (n >= 0 && n < BAR_SIZE) { selectSlot(n); if (!e.repeat) flatDown(); }
   }
   if (e.code === "Tab") e.preventDefault();
+  if (e.code === "KeyM" && !e.repeat && (!menuOpen || panel === schemEl)) toggleSchem();
   if (e.code === "KeyE" && !e.repeat) {  // E: сесть в машину, если рядом есть; иначе инвентарь
     if (panel === inv) toggleInventory();
     else if (!menuOpen) { if (drivingCar || drivingPlane || drivingTank || (camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) toggleCar(); else toggleInventory(); }
@@ -2757,23 +2773,117 @@ function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
 }
 
-const slotHtml = (i, withNum = true) => {
+// ---- Значки предметов: настоящие модели, нарисованные отдельным маленьким рендерером и запомненные картинками
+const ICON_PX = 96;
+const iconCache = new Map(), iconQueue = [], iconPending = new Set();
+let iconBusy = false, iconR = null, iconScene = null, iconCam = null;
+const iconUsesColor = name => name in KINDS || name === "Блок" || name === "Доска" || name === "Текст" || name === "Машина";
+const iconKey = name => name + "|" + (iconUsesColor(name) ? color : "");
+function iconModel(name, c) {
+  const fake = (k, ex = {}) => ({ op: "block", x: 0, y: 0, z: 0, c, ...(k ? { k } : {}), ...ex });
+  const plain = () => vmaterial(plainTex, 0);
+  let m = null;
+  if (name === "Блок") m = blockMesh(fake());
+  else if (name === "Доска") { m = new THREE.Mesh(plankGeo, material(woodTex, c)); m.scale.set(1, 1, 2.2); }
+  else if (name === "Текст") m = textMesh("Aa", c);
+  else if (RS_ITEMS[name]) { const it = RS_ITEMS[name]; m = blockMesh(it.k === "door" ? fake("door", { c: 12, r: 0, open: false, i: 1 }) : fake(it.k, { a: 3, f: 0, d: 1, on: false })); }
+  else if (name.startsWith("Прочн") && name !== "Прочный щит" && name !== "Прочная решётка") m = blockMesh(fake("flat", { c: 16 }));
+  else if (name === "Прочная решётка") m = blockMesh(fake("grate"));
+  else if (name === "Прочный щит") m = blockMesh(fake("shield"));
+  else if (name in KINDS) m = blockMesh(fake(KINDS[name], { r: 0 }));
+  else if (name === "Машина") m = new THREE.Mesh(carGeo, [material(foodTex, c), glassMaterial(c), carDarkMat, carHeadMat, carTailMat]);
+  else if (name === "Самолёт") m = new THREE.Mesh(planeGeo, plain());
+  else if (name === "Танк") {
+    m = new THREE.Mesh(tankHullGeo, plain());
+    const turret = new THREE.Mesh(tankTurretGeo, plain()), barrel = new THREE.Mesh(tankBarrelGeo, plain());
+    turret.position.y = 1.55; barrel.position.set(0, 0.05, -1.3);
+    turret.add(barrel); m.add(turret);
+  }
+  else if (ANIMAL_BY_ITEM[name]) { m = new THREE.Mesh(ANIMALS[ANIMAL_BY_ITEM[name]].geo, plain()); m.rotation.y = 2.4; }
+  else if (Object.values(BALL_TYPES).some(t => t.item === name)) m = new THREE.Mesh(Object.values(BALL_TYPES).find(t => t.item === name).geo, plain());
+  else if (name === "Бот-боец" || name === "Бот-строитель") {
+    m = new THREE.Group();
+    const [r, g, b] = COLORS[name === "Бот-боец" ? 1 : 6].rgb;
+    m.add(new THREE.Mesh(avatarGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, g / 255, b / 255) })));
+    const eyes = new THREE.Mesh(avatarEyes, eyesMat);
+    eyes.position.set(0, 1.5, -0.205);
+    m.add(eyes);
+    m.rotation.y = Math.PI * 0.8;
+  }
+  else if (WEAPON_GEO[name]) { m = new THREE.Mesh(WEAPON_GEO[name], weaponMats); m.rotation.y = -Math.PI / 2; }
+  return m;
+}
+function iconRender(obj) {
+  if (!iconR) {
+    iconR = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    iconR.setPixelRatio(1);
+    iconR.setSize(ICON_PX, ICON_PX);
+    iconR.outputColorSpace = renderer.outputColorSpace;
+    iconScene = new THREE.Scene();
+    iconScene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.1 * Math.PI));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4 * Math.PI);
+    sun.position.set(2, 3, 1.5);
+    iconScene.add(sun);
+    iconCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 200);
+  }
+  const wrap = new THREE.Group();
+  wrap.add(obj);
+  iconScene.add(wrap);
+  wrap.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(wrap), center = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 * 1.02;
+  obj.position.sub(center);
+  wrap.updateMatrixWorld(true);
+  iconCam.left = -r; iconCam.right = r; iconCam.top = r; iconCam.bottom = -r;
+  iconCam.position.set(1, 0.8, 1.2).normalize().multiplyScalar(r * 4);
+  iconCam.lookAt(0, 0, 0);
+  iconCam.updateProjectionMatrix();
+  iconR.setClearColor(0x000000, 0);
+  iconR.render(iconScene, iconCam);
+  const url = iconR.domElement.toDataURL("image/png");
+  iconScene.remove(wrap);
+  return url;
+}
+const iconImg = name => { const u = iconCache.get(iconKey(name)); return u ? `<img src="${u}" alt="">` : `<span class="ph" data-ph="${name}">${ICONS[name] ?? ""}</span>`; };
+function iconStep() {
+  const job = iconQueue.shift();
+  if (job) {
+    const [name, c, k] = job;
+    let url = "";
+    try {
+      const m = iconModel(name, c);
+      if (m) { url = iconRender(m); for (const set of [barriers, lamps, tvs, shields]) set.delete(m); }  // blockMesh записывает модели в общие списки — значку там не место
+    } catch {}
+    iconCache.set(k, url);
+    iconPending.delete(k);
+    if (url) for (const el of document.querySelectorAll(".ph")) if (el.dataset.ph === name && iconKey(name) === k) el.outerHTML = `<img src="${url}" alt="">`;
+  }
+  if (iconQueue.length) requestAnimationFrame(iconStep); else iconBusy = false;
+}
+function wantIcons(names) {
+  for (const name of names) {
+    if (!name) continue;
+    const k = iconKey(name);
+    if (iconCache.has(k) || iconPending.has(k)) continue;
+    iconPending.add(k);
+    iconQueue.push([name, color, k]);
+  }
+  if (iconQueue.length && !iconBusy) { iconBusy = true; requestAnimationFrame(iconStep); }
+}
+
+const slotHtml = i => {
   const item = HOTBAR[i];
-  const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
-  const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
-  const style = i === slot ? "" : ' style="color:#666"';
-  return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${i + 1}${h}${h}${br}</span>`;
+  return `<span class="slot${i === slot ? " sel" : ""}" data-slot="${i}" title="${item || ""}">${item ? iconImg(item) : ""}<b>${i + 1}</b></span>`;
 };
 function drawHotbar() {
   let label = (HOTBAR[slot] || "—") + (HOTBAR[slot] === "Блок" && flatBlock ? " (без текстуры)" : "");
   if (plankStart) label += " — выбери вторую точку";
-  hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "ИНВЕНТАРЬ" : "E — инвентарь"}]</span>` + "\n" + HOTBAR.map((_, i) => slotHtml(i)).join("");
+  wantIcons(HOTBAR);
+  hotbar.innerHTML = `<div>${label} <span class="page">[${TOUCH ? "ИНВЕНТАРЬ" : "E — инвентарь"}]</span></div><div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>`;
   if (panel === inv) drawInventory();
 }
-// Хотбар и инвентарь из 9 слотов по 6 знаков должны помещаться в ширину экрана
+// Хотбар и инвентарь из 9 клеток должны помещаться в ширину экрана
 function fitBars() {
-  const px = Math.max(8, Math.min(16, Math.floor((innerWidth - 24) / (60 * 0.6))));
-  hotbar.style.fontSize = inv.style.fontSize = px + "px";
+  document.documentElement.style.setProperty("--slot", Math.max(26, Math.min(54, Math.floor((innerWidth - 40) / 9))) + "px");
 }
 addEventListener("resize", fitBars);
 
@@ -2825,32 +2935,18 @@ const invTabs = () => {
   return tabs;
 };
 function drawInventory() {
-  const W = 56, tabs = invTabs();
+  const tabs = invTabs();
   if (!tabs[invTab]) invTab = "Блоки";
   const list = tabs[invTab];
-  const pad = (t, n) => t + " ".repeat(Math.max(0, n - t.length));
-  let html = "╔" + "═".repeat(W) + "╗\n║" + pad(" ИНВЕНТАРЬ", W) + "║\n║ ";
-  let used = 1;
-  for (const name of Object.keys(tabs)) {
-    if (used + name.length + 2 > W) { html += " ".repeat(W - used) + "║\n║ "; used = 1; }
-    html += `<span class="tab${name === invTab ? " on" : ""}" data-tab="${name}">${name}</span>  `;
-    used += name.length + 2;
-  }
-  html += " ".repeat(Math.max(0, W - used)) + "║\n╟" + "─".repeat(W) + "╢\n";
-  for (let r = 0; r < Math.ceil(list.length / 9); r++) {
-    html += "║ ";
-    for (let c = 0; c < 9; c++) {
-      const name = list[r * 9 + c];
-      html += name ? `<span class="cell" data-item="${name}" style="color:${rgb(color)}"> ${ICONS[name] ?? "????"} </span>` : "      ";
-    }
-    html += " ║\n║" + " ".repeat(W) + "║\n";  // пустая строка между рядами, чтобы значки не слипались
-  }
-  html += "╟" + "─".repeat(W) + "╢\n║ <span id=\"invname\">" + pad(invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот"), W - 2) + "</span> ║\n╟" + "─".repeat(W) + "╢\n";
-  const line = i => `<span class="slot" data-slot="${i}" style="color:${i === slot ? "#fff" : "#777"}">${i === slot ? "║" : "│"}${HOTBAR[i] ? `<span style="color:${rgb(color)}">${ICONS[HOTBAR[i]]}</span>` : "    "}${i === slot ? "║" : "│"}</span>`;
-  html += "║ " + HOTBAR.map((_, i) => line(i)).join("") + " ║\n";
-  html += "╟" + "─".repeat(W) + "╢\n║" + pad(TOUCH ? " ИНВЕНТАРЬ — закрыть" : " E — закрыть", W) + "║\n╚" + "═".repeat(W) + "╝";
-  inv.innerHTML = html;
+  wantIcons(list);
+  inv.innerHTML = `<div class="invt">ИНВЕНТАРЬ</div>
+<div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
+<div class="grid">${list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("")}</div>
+<div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
+<div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
+<div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div>`;
 }
+
 function drawPalette() {
   const W = 22;  // ширина внутри рамки
   let html = "╔" + "═".repeat(W) + "╗\n";
@@ -2896,7 +2992,7 @@ inv.addEventListener("contextmenu", e => {  // правая кнопка по с
 });
 inv.addEventListener("mouseover", e => {
   const cell = e.target.closest(".cell"), el = document.getElementById("invname");
-  if (cell && el) { invHover = cell.dataset.item; el.textContent = invHover.padEnd(54).slice(0, 54); }
+  if (cell && el) { invHover = cell.dataset.item; el.textContent = invHover; }
 });
 function toggleAdmin() { if (isAdmin()) togglePanel(adminEl, drawAdmin); }
 
@@ -3923,7 +4019,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), ...BAN_TABS.map(t => row(`[ ${t.toLowerCase()}: ${banned.has(t) ? "ЗАПРЕЩЕНО" : "можно"} ]`, "ban:" + t)), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row("[ схематика (M) ]", "schem"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), ...BAN_TABS.map(t => row(`[ ${t.toLowerCase()}: ${banned.has(t) ? "ЗАПРЕЩЕНО" : "можно"} ]`, "ban:" + t)), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !isNpc(id));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -3983,6 +4079,7 @@ adminEl.addEventListener("click", e => {
     setBan([...next]);
     online?.setBan([...next]);
   }
+  if (a === "schem") toggleSchem();
   if (a === "delbots") { const n = bots.size; for (const b of [...bots.values()]) removeBot(b); addChat(`* ботов удалено: ${n}`); }
   if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
   if (a.startsWith("god:")) {
@@ -4906,6 +5003,153 @@ worldFileEl.addEventListener("change", () => {
   if (file) file.text().then(importWorld, () => addChat("* не удалось прочитать файл"));
 });
 
+
+// ---------- Схематика (как Litematica): схема из .baseAscii показывается призраком в мире, видно, чего не хватает; клавиша M, только разработчик ----------
+const schemEl = document.getElementById("schem");
+const schem = { list: [], name: "", ox: 0, oy: 0, oz: 0, rot: 0, show: true, layer: -1, miss: 0, wrong: 0, mesh: null, cells: [], h: 0, timer: 0 };
+const schemFileEl = Object.assign(document.createElement("input"), { type: "file", hidden: true });
+document.body.append(schemFileEl);
+const schemAllowed = () => !online || isDev;
+const ROT_DIR = { 0: 4, 4: 1, 1: 5, 5: 0 };  // поворот на 90°: +x → +z → −x → −z
+// Блоки схемы в мире: поворачиваем вокруг вертикали и сдвигаем так, чтобы угол схемы стоял в (ox, oy, oz)
+function schemCells() {
+  const src = schem.list;
+  if (!src.length) return [];
+  const minx = Math.min(...src.map(e => e.x)), miny = Math.min(...src.map(e => e.y)), minz = Math.min(...src.map(e => e.z));
+  const rot = (x, z) => { for (let i = 0; i < schem.rot; i++) [x, z] = [-z, x]; return [x, z]; };
+  const moved = src.map(e => { const [x, z] = rot(e.x - minx, e.z - minz); return { e, x, y: e.y - miny, z }; });
+  const mx = Math.min(...moved.map(m => m.x)), mz = Math.min(...moved.map(m => m.z));
+  schem.h = Math.max(...moved.map(m => m.y)) + 1;
+  return moved.map(({ e, x, y, z }) => {
+    const n = { ...e, x: schem.ox + x - mx, y: schem.oy + y, z: schem.oz + z - mz };
+    for (let i = 0; i < schem.rot; i++) { if (n.r !== undefined) n.r = (n.r + 1) % 4; for (const f of ["f", "a"]) if (n[f] !== undefined && n[f] in ROT_DIR) n[f] = ROT_DIR[n[f]]; }
+    return n;
+  });
+}
+const schemSame = (have, want) => have.k === want.k && (want.k?.startsWith("rs_") || (have.c | 0) === (want.c | 0));
+function schemRefresh() {
+  schem.cells = schemCells();
+  const n = schem.cells.length;
+  if (!schem.mesh || schem.mesh.instanceMatrix.count < n) {
+    if (schem.mesh) { scene.remove(schem.mesh); schem.mesh.dispose(); }
+    schem.mesh = new THREE.InstancedMesh(boxGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false }), Math.max(n, 1));
+    schem.mesh.frustumCulled = false;
+    schem.mesh.renderOrder = 5;
+    scene.add(schem.mesh);
+  }
+  const mesh = schem.mesh, m4 = new THREE.Matrix4(), col = new THREE.Color();
+  let shown = 0, miss = 0, wrong = 0;
+  schem.cells.forEach((c, i) => {
+    const have = rsAt(c.x, c.y, c.z) ?? blocks.get(key(c.x, c.y, c.z))?.userData.edit;
+    const state = !have ? 1 : schemSame(have, c) ? 0 : 2;
+    c.state = state;
+    if (state === 1) miss++; else if (state === 2) wrong++;
+    if (!state || !schem.show || (schem.layer >= 0 && c.y !== schem.oy + schem.layer)) return;
+    m4.makeScale(0.94, 0.94, 0.94).setPosition(c.x + 0.5, c.y + 0.5, c.z + 0.5);
+    mesh.setMatrixAt(shown, m4);
+    mesh.setColorAt(shown, col.set(state === 1 ? 0x3a8bff : 0xff3a3a));
+    shown++;
+  });
+  schem.miss = miss; schem.wrong = wrong;
+  mesh.count = shown;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.visible = schem.show && shown > 0;
+}
+function updateSchem(dt) {
+  if (!schem.list.length) return;
+  schem.timer -= dt;
+  if (schem.timer > 0) return;
+  schem.timer = panel === schemEl ? 0.5 : 1.5;
+  schemRefresh();
+  if (panel === schemEl) drawSchem();
+}
+function schemLoad(text, name) {
+  let data;
+  try { data = JSON.parse(text); } catch { return addChat("* это не файл схемы"); }
+  if (data?.format !== "baseAscii" || !Array.isArray(data.edits)) return addChat("* это не файл схемы .baseAscii");
+  schem.list = data.edits.slice(0, MAX_WORLD).map(cleanEdit).filter(e => e && e.op === "block");
+  if (!schem.list.length) return addChat("* в схеме нет блоков");
+  schem.name = name; schem.rot = 0; schem.layer = -1; schem.show = true;
+  schemPlace();
+  addChat(`* схема «${name}»: ${schem.list.length} блоков. M — панель`);
+}
+// Угол схемы встаёт туда, куда смотришь (или под ноги)
+function schemPlace() {
+  const hit = aim();
+  const cell = hit && !isTerr(hit.object.userData.edit ?? {}) ? blockCell(hit) : null;
+  [schem.ox, schem.oy, schem.oz] = cell ?? [Math.floor(px), Math.max(0, Math.floor(feet)), Math.floor(pz)];
+  schemRefresh();
+}
+function schemBuild(fixWrong) {
+  if (!schemAllowed()) return;
+  const edits = [];
+  for (const c of schem.cells) {
+    if (!c.state || (c.state === 2 && !fixWrong)) continue;
+    if (c.state === 2) { const old = blocks.get(key(c.x, c.y, c.z))?.userData.edit; if (old && !isTerr(old)) edits.push(undo(old)); }
+    const { state, ...clean } = c;
+    edits.push(clean);
+  }
+  if (!edits.length) return addChat("* строить нечего");
+  addChat(`* строю: ${edits.length}`);
+  let i = 0;
+  (function chunk() {
+    const part = edits.slice(i, i += 400);
+    for (const e of part) try { edit(e); } catch {}
+    online?.sendEdits(part);
+    if (i < edits.length) setTimeout(chunk, online ? 250 : 16); else { addChat("* готово"); schemRefresh(); }
+  })();
+}
+function schemMaterials() {
+  const names = {};
+  for (const [n, k] of Object.entries(KINDS)) if (k) names[k] = n;
+  for (const [n, it] of Object.entries(RS_ITEMS)) names[it.k] = n;
+  const count = new Map();
+  for (const c of schem.cells) if (c.state) { const n = names[c.k] ?? (c.k === "flat" ? "Блок (гладкий)" : "Блок"); count.set(n, (count.get(n) || 0) + 1); }
+  if (!count.size) return addChat("* всё на месте");
+  addChat("* не хватает: " + [...count].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, v]) => `${n} ×${v}`).join(", "));
+}
+function drawSchem() {
+  const act = (a, t) => `<span class="sact" data-a="${a}">${t}</span>`;
+  schemEl.innerHTML = `<div class="invt">СХЕМАТИКА (M)</div>
+<div>${schem.list.length ? `${schem.name}: ${schem.list.length} блоков, не хватает ${schem.miss}, не те ${schem.wrong}` : "схема не загружена"}</div>
+<div>${act("load", "[ загрузить схему ]")} ${act("clear", "[ убрать ]")}</div>
+<div>${act("place", "[ поставить сюда: куда смотришь ]")}</div>
+<div>место: x ${schem.ox}, y ${schem.oy}, z ${schem.oz}</div>
+<div>сдвиг: ${act("m:x-", "[x−]")} ${act("m:x+", "[x+]")} ${act("m:y-", "[y−]")} ${act("m:y+", "[y+]")} ${act("m:z-", "[z−]")} ${act("m:z+", "[z+]")}</div>
+<div>${act("rot", "[ повернуть ]")} поворот ${schem.rot * 90}°</div>
+<div>слой: ${act("l-", "[−]")} ${schem.layer < 0 ? "все" : schem.layer + 1 + " из " + schem.h} ${act("l+", "[+]")}   ${act("show", `[ показ: ${schem.show ? "да" : "нет"} ]`)}</div>
+<div>${act("mat", "[ чего не хватает → чат ]")}</div>
+<div>${act("build", "[ достроить недостающее ]")}</div>
+<div>${act("fix", "[ достроить и заменить неправильное ]")}</div>
+<div class="invhint">M — закрыть. Синее — нет блока, красное — стоит не тот</div>`;
+}
+function toggleSchem() {
+  if (!schemAllowed()) return addChat("* схематика только у разработчика");
+  togglePanel(schemEl, drawSchem);
+}
+schemEl.addEventListener("click", e => {
+  const a = e.target.closest(".sact")?.dataset.a;
+  if (!a) return;
+  if (a === "load") schemFileEl.click();
+  else if (a === "clear") { schem.list = []; schem.cells = []; if (schem.mesh) schem.mesh.visible = false; schem.miss = schem.wrong = 0; }
+  else if (a === "place") { if (schem.list.length) { const hit = aim(); const cell = hit ? blockCell(hit) : null; [schem.ox, schem.oy, schem.oz] = cell ?? [Math.floor(px), Math.max(0, Math.floor(feet)), Math.floor(pz)]; schemRefresh(); } }
+  else if (a.startsWith("m:")) { const v = a[2] === "x" ? "ox" : a[2] === "y" ? "oy" : "oz"; schem[v] += a[3] === "+" ? 1 : -1; schemRefresh(); }
+  else if (a === "rot") { schem.rot = (schem.rot + 1) % 4; schemRefresh(); }
+  else if (a === "l-") { schem.layer = Math.max(-1, schem.layer - 1); schemRefresh(); }
+  else if (a === "l+") { schem.layer = Math.min(schem.h - 1, schem.layer + 1); schemRefresh(); }
+  else if (a === "show") { schem.show = !schem.show; schemRefresh(); }
+  else if (a === "mat") schemMaterials();
+  else if (a === "build") schemBuild(false);
+  else if (a === "fix") schemBuild(true);
+  drawSchem();
+});
+schemFileEl.addEventListener("change", () => {
+  const file = schemFileEl.files[0];
+  schemFileEl.value = "";
+  if (file) file.text().then(t => { schemLoad(t, file.name.replace(/\.baseascii$/i, "")); drawSchem(); }, () => addChat("* не удалось прочитать файл"));
+});
+
 function toggleGameMenu() { togglePanel(gameEl, drawGameMenu); }
 
 // Мышь освободилась (Esc, переключение окна) — ставим игру на паузу
@@ -5712,7 +5956,7 @@ function rsTick() {
       }
       case "rs_piston": case "rs_sticky": {
         const p = rsPowered(x, y, z);
-        if (p !== s.pw) s.pend = { at: rsTickN + 1, v: p };
+        if (p !== s.pw) s.pend = { at: rsTickN, v: p };  // сразу, без задержки
         s.pw = p;
         if (s.pend && s.pend.at <= rsTickN) { const v = s.pend.v; s.pend = null; if (v && !s.ext) rsExtend(r); else if (!v && s.ext) rsRetract(r); }
         break;
@@ -6215,6 +6459,7 @@ function updateWeapons(dt) {
   updateAnimals(dt);
   updateBots(dt);
   updateRedstone(dt);
+  updateSchem(dt);
   updateRegen(dt);
   updateCulling(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
