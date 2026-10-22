@@ -299,7 +299,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   "Огниво", "ТНТ", "Трамплин", "Танк",
   "Самолёт", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
-  "Прочный блок", "Прочная решётка", "Базука и точка"];
+  "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 // Слабые телефоны: определяем по видеочипу (его имя отдаёт браузер) и по модели. Данные из характеристик:
@@ -644,6 +644,7 @@ function edit(e, replace = false) {
     addSolid(mesh, e);
     if (e.k === "glass") mesh.castShadow = false;
     blocks.set(key(e.x, e.y, e.z), mesh);
+    if (e.k === "shield") shields.add(mesh);
     if (e.k === "door") blocks.set(key(e.x, e.y + 1, e.z), mesh);  // дверь занимает две клетки
     for (const c of extraCells(e)) blocks.set(key(...c), mesh);  // шлагбаум, кровать и диван длиннее одной клетки
   }
@@ -826,6 +827,7 @@ function removeSolid(mesh) {
   lamps.delete(mesh);
   tvs.delete(mesh);
   barriers.delete(mesh);
+  shields.delete(mesh);
 }
 
 // Рампа — клин, поднимающийся от низа клетки к верху. Сторона подъёма: r = 0..3, как у двери
@@ -1285,6 +1287,11 @@ function blockMesh(e) {
     m.rotation.y = a + (e.open ? Math.PI / 2 : 0);
     return m;
   }
+  if (e.k === "shield") {  // защитный блок: фиолетово-чёрная шахматка
+    const m = new THREE.Mesh(boxGeo, shieldMat);
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    return m;
+  }
   const m = new THREE.Mesh(boxGeo, material(brickTex, e.c));
   m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
   m.userData.mergeable = true;  // рисуется склейкой, см. rebuildChunks
@@ -1498,6 +1505,7 @@ function makeDrone() {
 
 // Взрыв дрона ломает всё вокруг: блоки, доски и надписи
 function explode(pos, radius = BOOM_RADIUS) {
+  if (shields.size) return;  // защитный блок в мире: взрывы блоки не ломают
   const r2 = radius * radius, batch = [];
   for (const m of solids) {
     const e = m.userData.edit;
@@ -2107,7 +2115,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate" };
+  "Телевизор": "tv", "Раковина": "sink", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -2457,7 +2465,7 @@ const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Те�
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
-  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█", "Танк": "▟██▙", "Самолёт": "─╋╋─" };
+  "Телевизор": "▐▓▓▌", "Раковина": "╤▄╤ ", "Нож": " ▬▶ ", "Меч": "┼═══", "Топор": "─┤▌ ", "Бита": " ━━▬", "Пистолет": "▄█▀ ", "Дробовик": "━━╾▄", "МП5": "▄▀▀▌", "АК": "▄▄▀▀", "АВП": "══▪═", "Базука": "▐██▌", "Граната": " ◖◗ ", "Прочный блок": "▓▓▓▓", "Прочная решётка": "▓╫╫▓", "Прочный щит": "▚▞▞▚", "Базука и точка": "▐▓▓▌", "Верити": " ◖◗ ", "Жирити": "◖██◗", "Огниво": "▟▙╱ ", "ТНТ": "▐▓▓▌", "Трамплин": " ▗▟█", "Танк": "▟██▙", "Самолёт": "─╋╋─" };
 
 function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
@@ -4397,6 +4405,13 @@ function updateRockets(dt) {
 // Мир ломает тот, кто поджёг (остальные получают изменения через общий мир), а картинку взрыва и урон каждый считает у себя
 const TNT_R = 4.5, TNT_DMG = 70;
 const primed = [];
+const shieldTex = canvasTexture(16, 16, ctx => {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 16, 16);
+  ctx.fillStyle = "#b020ff"; ctx.fillRect(0, 0, 8, 8); ctx.fillRect(8, 8, 8, 8);
+});
+shieldTex.magFilter = shieldTex.minFilter = THREE.NearestFilter;
+const shieldMat = new THREE.MeshLambertMaterial({ map: shieldTex });
+const shields = new Set();  // пока стоит хоть один защитный блок, взрывы ничего не разрушают
 const flashGeo = new THREE.BoxGeometry(1.01, 1.01, 1.01), flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });  // общие на все заряды
 let lastCrater = 0;
 function startPrimed(x, y, z, fuse, own, v, impact) {
@@ -4431,6 +4446,7 @@ function tntBoom(p, own, bomb) {
   }
   explode(p, TNT_R);
   // Воронка в земле. Бомбы с самолёта роют поменьше и не чаще четырёх раз в секунду — иначе слишком много работы
+  if (shields.size) return;  // и землю не роют
   const nowMs = performance.now(), cr = bomb ? 3 : TNT_R;
   if (bomb && nowMs - lastCrater < 250) return;
   lastCrater = nowMs;
