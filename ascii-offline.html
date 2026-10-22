@@ -64,6 +64,10 @@
     background: #000;
     display: none;
   }
+  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; }
+  #inv .tab, #inv .cell, #inv .slot { cursor: pointer; }
+  #inv .tab.on { background: #fff; color: #000; }
+  #inv .cell:hover, #inv .tab:hover { background: #333; }
   #palette .option { cursor: pointer; }
   #palette .option:hover { background: #333; }
 
@@ -205,6 +209,7 @@
 <div id="flash"></div>
 <pre id="death"></pre>
 <pre id="palette"></pre>
+<pre id="inv"></pre>
 <pre id="chat"></pre>
 <pre id="lobby"></pre>
 <pre id="admin"></pre>
@@ -228,6 +233,7 @@
     <pre class="button" data-action="car">МАШИНА</pre>
     <pre class="button" data-action="chat">ЧАТ</pre>
     <pre class="button" data-action="color">ЦВЕТ</pre>
+    <pre class="button" data-action="inv">ИНВ</pre>
   </div>
   <div class="row bottom">
     <pre class="button big" data-weapon data-action="fire" style="display: none">ОГОНЬ</pre>
@@ -286,8 +292,8 @@ const COLORS = [
   { name: "Небесный",   rgb: [140, 200, 255] },
 ];
 
-// Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
+// Все предметы игры. Хотбар (9 слотов) собирается из них в инвентаре (E)
+const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити",
@@ -296,7 +302,16 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Огниво", "ТНТ", "Трамплин", "Танк",
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
-  "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
+  "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит",
+  "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"].filter(Boolean);
+const BAR_SIZE = 9;
+const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
+const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("bar")); } catch {}
+  return Array.from({ length: BAR_SIZE }, (_, i) => Array.isArray(saved) ? (ITEMS.includes(saved[i]) ? saved[i] : null) : DEFAULT_BAR[i]);
+})();
+const saveBar = () => { try { localStorage.setItem("bar", JSON.stringify(HOTBAR)); } catch {} };
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 // Слабые телефоны: определяем по видеочипу (его имя отдаёт браузер) и по модели. Данные из характеристик:
@@ -658,6 +673,17 @@ const stickGeo = new THREE.CylinderGeometry(STICK_HALF, STICK_HALF, 1, 10);
 const plankGeo = new THREE.BoxGeometry(PLANK_W, PLANK_T, 1);  // длина задаётся масштабом по Z
 
 const blocks = new Map();  // "x,y,z" → меш блока
+const RS_ITEMS = {
+  "Редстоун": { k: "rs_dust", mode: "floor" }, "Факел редстоуна": { k: "rs_torch", mode: "attach" }, "Рычаг": { k: "rs_lever", mode: "attach" },
+  "Кнопка": { k: "rs_button", mode: "attach" }, "Нажимная плита": { k: "rs_plate", mode: "floor" }, "Повторитель": { k: "rs_repeater", mode: "dir4" },
+  "Компаратор": { k: "rs_comparator", mode: "dir4" }, "Блок редстоуна": { k: "rs_block" }, "Лампа редстоуна": { k: "rs_lamp" },
+  "Поршень": { k: "rs_piston", mode: "face" }, "Липкий поршень": { k: "rs_sticky", mode: "face" }, "Наблюдатель": { k: "rs_observer", mode: "face" },
+  "Раздатчик": { k: "rs_dispenser", mode: "face" }, "Нотный блок": { k: "rs_note" }, "Железная дверь": { k: "door", mode: "iron" },
+};
+const RS_ACTIVE = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator", "rs_block", "rs_lamp", "rs_piston", "rs_sticky", "rs_observer", "rs_dispenser", "rs_note", "door", "tnt"]);
+const rsRec = new Map();   // "x,y,z" → { e, m, s } — всё, что умеет работать с сигналом
+const rsStash = new Map(); // состояние убранного блока: нужно, когда рычаг или повторитель заменяют на себя же
+let rsTickN = 0, rsAcc = 0;
 const planks = new Map();  // id доски → её меш
 const cars = new Map();    // id машины → её меш
 // Свет дают только 3 ближайшие лампы: каждый источник замедляет отрисовку всего мира
@@ -713,6 +739,8 @@ function edit(e, replace = false) {
     if (e.k === "shield") shields.add(mesh);
     if (e.k === "door") blocks.set(key(e.x, e.y + 1, e.z), mesh);  // дверь занимает две клетки
     for (const c of extraCells(e)) blocks.set(key(...c), mesh);  // шлагбаум, кровать и диван длиннее одной клетки
+    rsAdd(e, mesh);
+    if (rsRec.size) rsChanged(e.x, e.y, e.z);
   }
   if (e.op === "plank" && !planks.has(e.id)) {
     const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
@@ -920,6 +948,7 @@ function removeSolid(mesh) {
   if (e.op === "block") blocks.delete(key(e.x, e.y, e.z));
   if (e.k === "door") blocks.delete(key(e.x, e.y + 1, e.z));
   for (const c of extraCells(e)) blocks.delete(key(...c));
+  if (e.op === "block") { rsRemove(e); if (rsRec.size) rsChanged(e.x, e.y, e.z); }
   if (e.op === "plank") planks.delete(e.id);
   if (e.op === "text") texts.delete(e.id);
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
@@ -1357,6 +1386,7 @@ const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
+const RS_THIN = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator"]);  // редстоун-мелочь: через неё проходят
 const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
 let onIce = false, iceVx = 0, iceVz = 0;  // лёд: игрок скользит
 let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
@@ -1373,6 +1403,7 @@ function lowTop(cx, cy, cz, x, z) {
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.k?.startsWith("rs_")) return rsBuild(e);
   if (e.k in GLASSY) {
     const screen = e.k === "tv" ? tvMat : e.k === "terminal" ? kioskMat : glassMaterial(e.c);
     const m = new THREE.Mesh(GLASSY[e.k], [vmaterial(foodTex, e.c), screen]);
@@ -1536,6 +1567,7 @@ function cellBlocks(cx, cy, cz, x, z) {
   if (!m) return false;
   const e = m.userData.edit;
   if (e.k === "door" || e.k === "barrier") return !e.open;
+  if (RS_THIN.has(e.k)) return false;
   if (e.k === "ramp" || e.k === "stairs" || e.k === "jump" || e.k === "portal" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
   if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
   return true;
@@ -2387,6 +2419,7 @@ function use(action, screen) {
         drawHotbar();
         return;
       }
+      if (t.k === "rs_head") return;  // голову поршня не сломать
       if (t.p && online && !isDev) { addChat("* этот блок может сломать только разработчик"); return; }
       const eaten = DECOR[hit.object.userData.edit.k]?.[1];  // еду можно съесть
       if (eaten) {
@@ -2403,9 +2436,11 @@ function use(action, screen) {
   // Дверь под прицелом — открываем или закрываем, чем бы ни кликнули
   const target = hit?.object.userData.edit;
   if (target?.k === "door" || target?.k === "barrier") {
-    share({ ...target, open: !target.open }, true);
+    if (!target.i) share({ ...target, open: !target.open }, true);  // железная дверь открывается только сигналом
     return;
   }
+  if (target && rsInteract(target)) return;  // рычаг, кнопка, повторитель, нота
+  if (RS_ITEMS[HOTBAR[slot]] && hit) { rsPlace(RS_ITEMS[HOTBAR[slot]], hit); return; }
   if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
     const t = hit?.object.userData.edit;
     if (t?.k === "tnt") igniteTnt(t, 3);
@@ -2480,34 +2515,7 @@ function use(action, screen) {
 
 // ---------- Управление с клавиатуры и мыши ----------
 
-// В панели 5 слотов, остальные предметы — на следующей странице (Tab или нажатие на «стр»)
-const PAGE = 5, PAGES = Math.ceil(HOTBAR.length / PAGE);
-const SECRET = PAGES - 1;  // последняя страница — прочные блоки: открывается удержанием Tab
-let page = 0;
-function togglePage() {
-  page = page === SECRET ? 0 : (page + 1) % SECRET;
-  selectSlot(page * PAGE + slot % PAGE);
-}
-function holdPage() {
-  page = page === SECRET ? 0 : SECRET;
-  selectSlot(page * PAGE + slot % PAGE);
-}
-
-// Нажатие на кнопку страниц: короткое листает, долгое (полсекунды) открывает скрытую страницу
-const HOLD_PAGE = 500;
-let pageTimer = 0, pageHeld = false;
-function pageDown() {
-  pageHeld = false;
-  clearTimeout(pageTimer);
-  pageTimer = setTimeout(() => { pageHeld = true; holdPage(); }, HOLD_PAGE);
-}
-function pageUp() {
-  if (!pageTimer) return;
-  clearTimeout(pageTimer);
-  pageTimer = 0;
-  if (!pageHeld) togglePage();
-}
-
+const HOLD_PAGE = 500;  // сколько держать, чтобы считалось долгим нажатием (мс)
 // Блок: обычный — с текстурой кирпича, а если зажать слот 1 (клавишу 1 или палец на слоте), ставится гладкий, просто выбранного цвета. Зажать ещё раз — обратно
 let flatBlock = false, flatTimer = 0;
 function flatDown() {
@@ -2533,11 +2541,13 @@ addEventListener("keydown", e => {
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
-    if (n >= 0 && n < PAGE) selectSlot(page * PAGE + n);
-    if (n === 0 && !e.repeat) flatDown();
+    if (n >= 0 && n < BAR_SIZE) { selectSlot(n); if (!e.repeat) flatDown(); }
   }
-  if (e.code === "Tab") { e.preventDefault(); if (!e.repeat) pageDown(); }
-  if (e.code === "KeyE" && !e.repeat && !menuOpen) toggleCar();
+  if (e.code === "Tab") e.preventDefault();
+  if (e.code === "KeyE" && !e.repeat) {  // E: сесть в машину, если рядом есть; иначе инвентарь
+    if (panel === inv) toggleInventory();
+    else if (!menuOpen) { if (drivingCar || drivingPlane || drivingTank || (camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) toggleCar(); else toggleInventory(); }
+  }
   if (e.code === "KeyT" && !e.repeat && !menuOpen && !typing && (isAdmin() || !online)) { e.preventDefault(); askTeleport(); }
   if (e.code === "KeyR" && !e.repeat) startReload();
   if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
@@ -2553,8 +2563,7 @@ addEventListener("keydown", e => {
 });
 addEventListener("keyup", e => {
   keys[e.code] = false;
-  if (e.code === "Tab") pageUp();
-  if (e.code === "Digit1") flatUp();
+  if (e.code.startsWith("Digit")) flatUp();
 });
 
 // Захват клавиатуры: в полноэкранном режиме Chrome и Edge отдают игре даже Ctrl+W,
@@ -2708,6 +2717,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "crouch") keys.ControlLeft = true;
     if (action === "nitro") keys.ShiftLeft = true;
     if (action === "color") togglePalette();
+    if (action === "inv") toggleInventory();
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
     if (action === "admin") toggleAdmin();
@@ -2736,7 +2746,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -2746,31 +2756,89 @@ function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
 }
 
+const slotHtml = (i, withNum = true) => {
+  const item = HOTBAR[i];
+  const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
+  const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
+  const style = i === slot ? "" : ' style="color:#666"';
+  return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${i + 1}${h}${h}${br}</span>`;
+};
 function drawHotbar() {
-  const slots = Array.from({ length: PAGE }, (_, j) => HOTBAR[page * PAGE + j]).map((item, j) => {
-    const i = page * PAGE + j;
-    const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
-    const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
-    const style = i === slot ? "" : ' style="color:#666"';
-    return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${j + 1}${h}${h}${br}</span>`;
-  });
   let label = (HOTBAR[slot] || "—") + (HOTBAR[slot] === "Блок" && flatBlock ? " (без текстуры)" : "");
   if (plankStart) label += " — выбери вторую точку";
-  hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "" : "Tab "}${page === SECRET ? "прочные, держи — назад" : `стр ${page + 1}/${SECRET}`}]</span>` + "\n" + slots.join("");
+  hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "ИНВЕНТАРЬ" : "E — инвентарь"}]</span>` + "\n" + HOTBAR.map((_, i) => slotHtml(i)).join("");
+  if (panel === inv) drawInventory();
 }
+// Хотбар и инвентарь из 9 слотов по 6 знаков должны помещаться в ширину экрана
+function fitBars() {
+  const px = Math.max(8, Math.min(16, Math.floor((innerWidth - 24) / (60 * 0.6))));
+  hotbar.style.fontSize = inv.style.fontSize = px + "px";
+}
+addEventListener("resize", fitBars);
 
 hotbar.addEventListener("pointerdown", e => {
-  if (e.target.closest(".page")) pageDown();
   const s = e.target.closest(".slot");
   if (s && HOTBAR[Number(s.dataset.slot)] === "Блок") { slot = Number(s.dataset.slot); flatDown(); }
 });
-hotbar.addEventListener("pointerup", () => { pageUp(); flatUp(); });
-hotbar.addEventListener("pointerleave", () => { clearTimeout(pageTimer); pageTimer = 0; flatUp(); });
+hotbar.addEventListener("pointerup", flatUp);
+hotbar.addEventListener("pointerleave", flatUp);
 hotbar.addEventListener("click", e => {
+  if (e.target.closest(".page")) return toggleInventory();
   const s = e.target.closest(".slot");
   if (s) selectSlot(Number(s.dataset.slot));
 });
+// Колесо мыши листает слоты (с зажатой C оно меняет зум)
+addEventListener("wheel", e => {
+  if (keys.KeyC || typing || !inGame || menuOpen || !e.deltaY) return;
+  selectSlot((slot + (e.deltaY > 0 ? 1 : BAR_SIZE - 1)) % BAR_SIZE);
+});
 
+// ---------- Инвентарь: все предметы по вкладкам, клик кладёт предмет в выбранный слот хотбара ----------
+const INV_TABS = {
+  "Блоки": ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Ступеньки", "Шлагбаум", "Решётка", "Окно", "Лампа", "Вывеска", "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота", "Адский камень", "Светокамень", "Трамплин"],
+  "Мебель": ["Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
+  "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
+  "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
+  "Транспорт": ["Машина", "Танк", "Самолёт"],
+  "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"],
+};
+const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"];
+let invTab = "Блоки", invHover = "";
+const inv = document.getElementById("inv");
+fitBars();
+const invTabs = () => {
+  const tabs = { ...INV_TABS, ...(REDSTONE_ITEMS.length ? { "Редстоун": REDSTONE_ITEMS } : {}) };
+  const listed = new Set(Object.values(tabs).flat());
+  tabs["Блоки"] = [...tabs["Блоки"], ...ITEMS.filter(i => !listed.has(i))];  // всё, что не попало во вкладки
+  return tabs;
+};
+function drawInventory() {
+  const W = 56, tabs = invTabs();
+  if (!tabs[invTab]) invTab = "Блоки";
+  const list = tabs[invTab];
+  const pad = (t, n) => t + " ".repeat(Math.max(0, n - t.length));
+  let html = "╔" + "═".repeat(W) + "╗\n║" + pad(" ИНВЕНТАРЬ", W) + "║\n║ ";
+  let used = 1;
+  for (const name of Object.keys(tabs)) {
+    if (used + name.length + 2 > W) { html += " ".repeat(W - used) + "║\n║ "; used = 1; }
+    html += `<span class="tab${name === invTab ? " on" : ""}" data-tab="${name}">${name}</span>  `;
+    used += name.length + 2;
+  }
+  html += " ".repeat(Math.max(0, W - used)) + "║\n╟" + "─".repeat(W) + "╢\n";
+  for (let r = 0; r < Math.ceil(list.length / 9); r++) {
+    html += "║ ";
+    for (let c = 0; c < 9; c++) {
+      const name = list[r * 9 + c];
+      html += name ? `<span class="cell" data-item="${name}" style="color:${rgb(color)}"> ${ICONS[name] ?? "????"} </span>` : "      ";
+    }
+    html += " ║\n║" + " ".repeat(W) + "║\n";  // пустая строка между рядами, чтобы значки не слипались
+  }
+  html += "╟" + "─".repeat(W) + "╢\n║ <span id=\"invname\">" + pad(invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот"), W - 2) + "</span> ║\n╟" + "─".repeat(W) + "╢\n";
+  const line = i => `<span class="slot" data-slot="${i}" style="color:${i === slot ? "#fff" : "#777"}">${i === slot ? "║" : "│"}${HOTBAR[i] ? `<span style="color:${rgb(color)}">${ICONS[HOTBAR[i]]}</span>` : "    "}${i === slot ? "║" : "│"}</span>`;
+  html += "║ " + HOTBAR.map((_, i) => line(i)).join("") + " ║\n";
+  html += "╟" + "─".repeat(W) + "╢\n║" + pad(TOUCH ? " ИНВЕНТАРЬ — закрыть" : " E — закрыть", W) + "║\n╚" + "═".repeat(W) + "╝";
+  inv.innerHTML = html;
+}
 function drawPalette() {
   const W = 22;  // ширина внутри рамки
   let html = "╔" + "═".repeat(W) + "╗\n";
@@ -2801,6 +2869,23 @@ function togglePanel(el, draw) {
   }
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
+function toggleInventory() { togglePanel(inv, drawInventory); }
+inv.addEventListener("click", e => {
+  const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
+  if (tab) { invTab = tab.dataset.tab; drawInventory(); }
+  else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
+  else if (sl) selectSlot(Number(sl.dataset.slot));
+});
+inv.addEventListener("contextmenu", e => {  // правая кнопка по слоту — очистить его
+  const sl = e.target.closest(".slot");
+  if (!sl) return;
+  e.preventDefault();
+  HOTBAR[Number(sl.dataset.slot)] = null; saveBar(); drawHotbar();
+});
+inv.addEventListener("mouseover", e => {
+  const cell = e.target.closest(".cell"), el = document.getElementById("invname");
+  if (cell && el) { invHover = cell.dataset.item; el.textContent = invHover.padEnd(54).slice(0, 54); }
+});
 function toggleAdmin() { if (isAdmin()) togglePanel(adminEl, drawAdmin); }
 
 palette.addEventListener("click", e => {
@@ -3865,7 +3950,7 @@ adminEl.addEventListener("click", e => {
   if (a === "clearmap") {
     if (clearArmed > performance.now()) {
       clearArmed = 0;
-      const keys = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e)))].map(worldKey).concat([...dug].map(k => "d" + k.split(",").join("_")));
+      const keys = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr))].map(worldKey).concat([...dug].map(k => "d" + k.split(",").join("_")));
       clearMapLocal();
       online?.clearWorld(keys);
       addChat("* карта очищена");
@@ -4559,7 +4644,7 @@ function p2pAddPeer(link, fixedId) {
   if (host) {
     const send = (type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
     p2pSendTo(peer, { t: "hello", mode: gameMode, id });
-    const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e))), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+    const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
     send("edits", list);  // мир хозяина — только новому другу
     poseSent.clear();
     p2pOut({ t: "needfull" });  // остальные пришлют позы целиком, чтобы новичок увидел всех
@@ -4735,7 +4820,7 @@ document.body.append(worldFileEl);
 
 function exportWorld() {
   // Каждый предмет мира хранит запись, из которой он создан (userData.edit)
-  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e))), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
   const blob = new Blob([JSON.stringify({ format: "baseAscii", version: 1, edits })], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "world" + WORLD_EXT });
   a.click();
@@ -4744,7 +4829,7 @@ function exportWorld() {
 }
 
 // Проверяем каждую запись из файла: берём только известные поля, id заводим свои, чтобы не пересеклись с чужими
-const KIND_SET = new Set([...Object.values(KINDS).filter(Boolean), "flat"]);
+const KIND_SET = new Set([...Object.values(KINDS).filter(Boolean), "flat", ...Object.values(RS_ITEMS).map(i => i.k)]);
 const num = (...v) => v.every(Number.isFinite);
 const newId = () => `${myId}-${idCount++}`;
 function cleanEdit(e) {
@@ -4756,6 +4841,12 @@ function cleanEdit(e) {
     if (e.k !== undefined) { if (!KIND_SET.has(e.k)) return null; out.k = e.k; }
     if (Number.isInteger(e.r) && e.r >= 0 && e.r < 4) out.r = e.r;
     if (e.k === "door" || e.k === "barrier") out.open = e.open === true;
+    if (e.k === "door" && e.i === 1) out.i = 1;
+    for (const f of ["a", "f"]) if (Number.isInteger(e[f]) && e[f] >= 0 && e[f] < 6) out[f] = e[f];
+    if (e.on === true) out.on = true;
+    if (Number.isInteger(e.d) && e.d >= 1 && e.d <= 4) out.d = e.d;
+    if (e.m === 1) out.m = 1;
+    if (Number.isInteger(e.n) && e.n >= 0 && e.n < 25) out.n = e.n;
     if (e.p === true) out.p = true;
     return out;
   }
@@ -5263,6 +5354,413 @@ function rocketBoom(pos, own, W) {
   }
 }
 
+// ---------- Редстоун ----------
+// Сигнал 0–15. Считает каждый телефон/компьютер у себя, 10 раз в секунду (один «тик» редстоуна = 0,1 с), поэтому результат у всех одинаковый.
+// Состояния, которые нужны другим игрокам (рычаг, задержка повторителя, нота), лежат в самом блоке; кнопки рассылаются сообщением.
+// Направления — как у граней: 0 +x, 1 −x, 2 +y, 3 −y, 4 +z, 5 −z (пара получается через ^ 1)
+const RSD = FACE_DIR;
+const RS_NEEDS_FLOOR = new Set(["rs_dust", "rs_plate", "rs_repeater", "rs_comparator"]);
+const rsAt = (x, y, z) => blocks.get(key(x, y, z))?.userData.edit;
+const dirIndex = v => { const a = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)], i = a.indexOf(Math.max(...a)); return i === 0 ? (v.x > 0 ? 0 : 1) : i === 1 ? (v.y > 0 ? 2 : 3) : (v.z > 0 ? 4 : 5); };
+
+// Проводит ли блок сигнал сквозь себя: сплошной блок, не источник сигнала и не стекло
+const rsConductor = e => !!e && e.op === "block" && (!e.k || e.k === "flat" || (e.k in BLOCK_TEX && !["ice", "slime", "neon", "lava"].includes(e.k)) || e.k === "rs_lamp" || e.k === "rs_note" || e.k === "rs_dispenser");
+const rsSolid = e => !!e && e.op === "block" && !(e.k in LOW_TOP) && !["rs_torch", "rs_lever", "rs_button", "rs_dust", "rs_plate", "rs_repeater", "rs_comparator", "rs_head", "door"].includes(e.k);
+
+// --- Модели
+const rsLit = new THREE.MeshBasicMaterial({ vertexColors: true });
+const rsDustMats = Array.from({ length: 16 }, (_, l) => new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color((70 + l * 12) / 255, l ? 0.02 : 0, l ? 0.02 : 0) }));
+const rsDull = () => vmaterial(plainTex, 0);
+const rsGeos = new Map();
+const rsGeo = (id, build) => { let g = rsGeos.get(id); if (!g) rsGeos.set(id, g = build()); return g; };
+const DOWN = new THREE.Vector3(0, -1, 0);
+// Поворот готовой модели «вниз → к стене, на которой она держится»
+const toAttach = (g, a) => { if (a !== 3) g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(...RSD[a]))); return g; };
+const rsFace = (m, f) => {  // модель смотрит в +x; поворачиваем лицом в нужную сторону
+  if (f === 2 || f === 3) { m.rotation.set(0, 0, f === 2 ? Math.PI / 2 : -Math.PI / 2); return; }
+  m.rotation.set(0, { 0: 0, 1: Math.PI, 4: -Math.PI / 2, 5: Math.PI / 2 }[f] ?? 0, 0);
+};
+const rsDustGeo = conn => rsGeo("dust" + conn.join(""), () => {
+  const y = -0.48, parts = [box(0.3, 0.03, 0.3, 0, y, 0)];
+  const arms = [[0, 1, 0], [1, -1, 0], [2, 0, 1], [3, 0, -1]];  // направление в conn → смещение
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const n = conn.filter(Boolean).length;
+  conn.forEach((c, i) => {
+    const link = c || (n === 1 && conn[i ^ 1] ? 1 : 0);
+    if (!link) return;
+    const [dx, dz] = dirs[i];
+    parts.push(box(dx ? 0.5 : 0.2, 0.03, dz ? 0.5 : 0.2, dx * 0.25, y, dz * 0.25));
+    if (c === 2) parts.push(box(dx ? 0.03 : 0.2, 1, dz ? 0.03 : 0.2, dx * 0.49, 0, dz * 0.49));  // по стене вверх
+  });
+  return mergeParts(P(0xffffff, ...parts));
+});
+const rsTorchGeo = (lit, a) => rsGeo(`torch${lit}${a}`, () => {
+  const off = a === 3 ? [0, 0] : [RSD[a][0] * 0.28, RSD[a][2] * 0.28];
+  return mergeParts([...P(0x6b3f1a, box(0.12, 0.55, 0.12, off[0], a === 3 ? -0.22 : -0.12, off[1])), ...P(lit ? 0xff3a1a : 0x4a2018, box(0.17, 0.17, 0.17, off[0], a === 3 ? 0.12 : 0.2, off[1]))]);
+});
+const rsLeverGeo = (on, a) => rsGeo(`lever${on}${a}`, () => toAttach(mergeParts([...P(0x8a8a8a, box(0.4, 0.14, 0.3, 0, -0.43, 0)),
+  ...P(on ? 0xff5a3a : 0x6b3f1a, [new THREE.BoxGeometry(0.07, 0.45, 0.07).rotateZ(on ? -0.6 : 0.6), on ? 0.1 : -0.1, -0.2, 0])]), a));
+const rsButtonGeo = (on, a) => rsGeo(`btn${on}${a}`, () => toAttach(mergeParts(P(0x8a8a8a, box(0.34, on ? 0.04 : 0.1, 0.22, 0, on ? -0.48 : -0.45, 0))), a));
+const rsPlateGeo = on => rsGeo("plate" + on, () => mergeParts(P(0x9a9a9a, box(0.86, on ? 0.03 : 0.06, 0.86, 0, on ? -0.485 : -0.47, 0))));
+const rsRepeaterGeo = (d, lit) => rsGeo(`rep${d}${lit}`, () => mergeParts([...P(0x9a9a9a, box(1, 0.125, 1, 0, -0.4375, 0)), ...P(0x4a1a1a, box(0.1, 0.22, 0.1, -0.3, -0.28, 0)),
+  ...P(lit ? 0xff3a1a : 0x4a1a1a, box(0.1, 0.22, 0.1, 0.35 - d * 0.1, -0.28, 0)), ...P(0xff3a1a, box(0.3, 0.02, 0.06, 0.3 - d * 0.1, -0.37, 0))]));
+const rsComparatorGeo = (m, lit) => rsGeo(`cmp${m}${lit}`, () => mergeParts([...P(0x9a9a9a, box(1, 0.125, 1, 0, -0.4375, 0)), ...P(0x4a1a1a, box(0.1, 0.2, 0.1, -0.3, -0.28, 0.25), box(0.1, 0.2, 0.1, -0.3, -0.28, -0.25)),
+  ...P(lit || m ? 0xff3a1a : 0x4a1a1a, box(0.1, 0.2, 0.1, 0.3, -0.28, 0))]));
+const rsCubeGeo = (id, hex, extra = []) => rsGeo("cube" + id, () => mergeParts([...P(hex, box(0.98, 0.98, 0.98, 0, 0, 0)), ...extra]));
+const rsPistonGeo = (sticky, ext) => rsGeo(`pis${sticky}${ext}`, () => mergeParts([...P(0x8a8a8a, box(0.75, 0.98, 0.98, -0.125, 0, 0)), ...(ext ? [] : P(sticky ? 0x6ab04f : 0xb98e4e, box(0.25, 0.98, 0.98, 0.375, 0, 0)))]));
+const rsHeadGeo = sticky => rsGeo("head" + sticky, () => mergeParts([...P(sticky ? 0x6ab04f : 0xb98e4e, box(0.25, 0.98, 0.98, 0.375, 0, 0)), ...P(0x6b4a22, box(0.75, 0.25, 0.25, -0.125, 0, 0))]));
+const rsObserverGeo = on => rsGeo("obs" + on, () => mergeParts([...P(0x6b6b6b, box(0.98, 0.98, 0.98, 0, 0, 0)), ...P(0x222222, box(0.02, 0.35, 0.5, 0.5, 0.1, 0)), ...P(on ? 0xff3a1a : 0x333333, box(0.04, 0.2, 0.2, -0.5, 0, 0))]));
+
+function rsBuild(e) {
+  const k = e.k;
+  let geo, mat = rsLit;
+  if (k === "rs_dust") { geo = rsDustGeo([0, 0, 0, 0]); mat = rsDustMats[0]; }
+  else if (k === "rs_torch") geo = rsTorchGeo(true, e.a ?? 3);
+  else if (k === "rs_lever") geo = rsLeverGeo(!!e.on, e.a ?? 3);
+  else if (k === "rs_button") geo = rsButtonGeo(false, e.a ?? 3);
+  else if (k === "rs_plate") { geo = rsPlateGeo(false); mat = rsDull(); }
+  else if (k === "rs_repeater") geo = rsRepeaterGeo(e.d || 1, false);
+  else if (k === "rs_comparator") geo = rsComparatorGeo(e.m || 0, false);
+  else if (k === "rs_block") { geo = rsCubeGeo("block", 0xb01414, P(0xd23a3a, box(0.5, 0.5, 1.0, 0, 0, 0))); mat = rsDull(); }
+  else if (k === "rs_lamp") { geo = rsCubeGeo("lampoff", 0x6b5a2a); mat = rsDull(); }
+  else if (k === "rs_piston" || k === "rs_sticky") { geo = rsPistonGeo(k === "rs_sticky", false); mat = rsDull(); }
+  else if (k === "rs_head") { geo = rsHeadGeo(!!e.s); mat = rsDull(); }
+  else if (k === "rs_observer") { geo = rsObserverGeo(false); mat = rsDull(); }
+  else if (k === "rs_dispenser") { geo = rsCubeGeo("disp", 0x7a7a7a, P(0x1a1a1a, box(0.02, 0.4, 0.4, 0.5, 0, 0))); mat = rsDull(); }
+  else { geo = rsCubeGeo("note", 0x8a5a2c, P(0x4a2a10, box(0.3, 0.02, 0.3, 0, 0.5, 0))); mat = rsDull(); }  // нотный блок
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+  if (e.f !== undefined) rsFace(m, e.f);
+  return m;
+}
+
+// --- Учёт: кто сейчас умеет работать с сигналом
+function rsAdd(e, mesh) {
+  if (!RS_ACTIVE.has(e.k)) return;
+  const kk = key(e.x, e.y, e.z), old = rsStash.get(kk);
+  rsStash.delete(kk);
+  const s = old && old.k === e.k ? old.s : { lit: true, out: 0, pw: false, ev: [], ext: false, until: 0, start: 0, pin: 0, off: 0, next: null, lvl: 0, conn: [0, 0, 0, 0] };
+  rsRec.set(kk, { e, m: mesh, s, k: e.k });
+  if (mesh) rsPaint(rsRec.get(kk), true);
+}
+function rsRemove(e) {
+  const kk = key(e.x, e.y, e.z), r = rsRec.get(kk);
+  if (!r) return;
+  rsStash.set(kk, r);
+  rsRec.delete(kk);
+  if (r.s.ext && e.f !== undefined) {  // убрали выдвинутый поршень — голова уходит вместе с ним
+    const hk = key(e.x + RSD[e.f][0], e.y + RSD[e.f][1], e.z + RSD[e.f][2]), h = blocks.get(hk);
+    if (h?.userData.edit.k === "rs_head") removeSolid(h);
+    r.s.ext = false;
+  }
+  if (rsStash.size > 300) rsStash.clear();
+}
+// Поставили или убрали что-то в клетке: наблюдатели рядом это замечают
+function rsChanged(x, y, z) {
+  for (let i = 0; i < 6; i++) {
+    const nx = x + RSD[i][0], ny = y + RSD[i][1], nz = z + RSD[i][2], r = rsRec.get(key(nx, ny, nz));
+    if (r?.k === "rs_observer" && nx + RSD[r.e.f][0] === x && ny + RSD[r.e.f][1] === y && nz + RSD[r.e.f][2] === z && rsTickN >= r.s.until) { r.s.start = rsTickN + 1; r.s.until = rsTickN + 3; }
+  }
+}
+
+// --- Сигнал. rsOut — сколько сигнала даёт соседняя клетка в сторону d (strong: считаем, как для сплошного блока рядом)
+function rsOut(x, y, z, d, strong, skipDust) {
+  const r = rsRec.get(key(x, y, z));
+  if (!r) return 0;
+  const { e, s } = r;
+  switch (r.k) {
+    case "rs_block": return strong ? 0 : 15;
+    case "rs_lever": return e.on ? (strong ? (d === e.a ? 15 : 0) : 15) : 0;
+    case "rs_button": return rsTickN < s.until ? (strong ? (d === e.a ? 15 : 0) : 15) : 0;
+    case "rs_plate": return s.pw ? (strong ? (d === 3 ? 15 : 0) : 15) : 0;
+    case "rs_torch": return s.lit && d !== e.a && (!strong || d === 2) ? 15 : 0;
+    case "rs_repeater": return s.out && d === e.f ? 15 : 0;
+    case "rs_comparator": return d === e.f ? s.out : 0;
+    case "rs_observer": return rsTickN >= s.start && rsTickN < s.until && d === (e.f ^ 1) ? 15 : 0;
+    case "rs_dust": return skipDust ? 0 : (d === 3 || rsPoints(r, d) ? s.lvl : 0);
+    default: return 0;
+  }
+}
+// Сколько сигнала в сплошном блоке: то, что в него упирается
+function rsStrong(x, y, z, skipDust) {
+  let v = 0;
+  for (let k = 0; k < 6; k++) v = Math.max(v, rsOut(x + RSD[k][0], y + RSD[k][1], z + RSD[k][2], k ^ 1, true, skipDust));
+  return v;
+}
+// Сколько сигнала приходит в клетку (x, y, z) со стороны k
+function rsRead(x, y, z, k, skipDust) {
+  const nx = x + RSD[k][0], ny = y + RSD[k][1], nz = z + RSD[k][2];
+  return rsConductor(rsAt(nx, ny, nz)) ? rsStrong(nx, ny, nz, skipDust) : rsOut(nx, ny, nz, k ^ 1, false, skipDust);
+}
+const rsPowered = (x, y, z) => { for (let k = 0; k < 6; k++) if (rsRead(x, y, z, k) > 0) return true; return false; };
+
+// --- Пыль: соединения и уровни
+const HDIR = [0, 1, 4, 5];
+function rsConnect(r) {
+  const { e } = r;
+  const conn = [0, 0, 0, 0];
+  HDIR.forEach((d, i) => {
+    const x = e.x + RSD[d][0], y = e.y, z = e.z + RSD[d][2], n = rsRec.get(key(x, y, z));
+    if (n) {
+      if (n.k === "rs_dust" || ["rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_block"].includes(n.k) || (n.k === "rs_observer" && (n.e.f ^ 1) === (d ^ 1)) ||
+          ((n.k === "rs_repeater" || n.k === "rs_comparator") && (n.e.f === d || n.e.f === (d ^ 1)))) conn[i] = 1;
+    }
+    if (!conn[i] && rsConductor(rsAt(x, y, z)) && !rsConductor(rsAt(e.x, e.y + 1, e.z)) && rsRec.get(key(x, y + 1, z))?.k === "rs_dust") conn[i] = 2;
+    if (!conn[i] && !rsSolid(rsAt(x, y, z)) && rsRec.get(key(x, y - 1, z))?.k === "rs_dust") conn[i] = 3;
+  });
+  return conn;
+}
+function rsPoints(r, d) {
+  if (d === 2) return false;
+  const i = HDIR.indexOf(d), c = r.s.conn, n = c.filter(Boolean).length;
+  return n === 0 || !!c[i] || (n === 1 && !!c[i ^ 1]);
+}
+const rsDustNeighbors = r => {
+  const out = [];
+  HDIR.forEach((d, i) => {
+    const c = r.s.conn[i];
+    if (!c) return;
+    const n = rsRec.get(key(r.e.x + RSD[d][0], r.e.y + (c === 2 ? 1 : c === 3 ? -1 : 0), r.e.z + RSD[d][2]));
+    if (n?.k === "rs_dust") out.push(n);
+  });
+  return out;
+};
+function rsSolveDust() {
+  const dust = [...rsRec.values()].filter(r => r.k === "rs_dust");
+  for (const r of dust) r.s.conn = rsConnect(r);
+  for (const r of dust) {
+    let v = 0;
+    for (let k = 0; k < 6; k++) {
+      if (HDIR.includes(k) && rsRec.get(key(r.e.x + RSD[k][0], r.e.y, r.e.z + RSD[k][2]))?.k === "rs_dust") continue;  // соседнюю пыль считаем ниже
+      v = Math.max(v, rsRead(r.e.x, r.e.y, r.e.z, k, true));
+    }
+    r.s.lvl = v;
+  }
+  for (let pass = 0; pass < 17; pass++) {
+    let changed = false;
+    for (const r of dust) for (const n of rsDustNeighbors(r)) if (n.s.lvl < r.s.lvl - 1) { n.s.lvl = r.s.lvl - 1; changed = true; }
+    if (!changed) break;
+  }
+}
+const rsAround = (r, k) => rsRec.get(key(r.e.x + RSD[k][0], r.e.y + RSD[k][1], r.e.z + RSD[k][2]));
+
+// --- Внешний вид по состоянию
+function rsPaint(r, force) {
+  const { e, s, m } = r;
+  if (!m) return;
+  const sig = r.k === "rs_dust" ? s.lvl + s.conn.join("") : r.k === "rs_lamp" ? s.lit && s.out : r.k === "rs_torch" ? s.lit : r.k === "rs_lever" ? e.on : r.k === "rs_button" ? rsTickN < s.until :
+    r.k === "rs_plate" ? s.pw : r.k === "rs_repeater" ? s.out : r.k === "rs_comparator" ? s.out > 0 : r.k === "rs_observer" ? rsTickN >= s.start && rsTickN < s.until : r.k === "rs_piston" || r.k === "rs_sticky" ? s.ext : "";
+  if (!force && s.sig === sig) return;
+  s.sig = sig;
+  if (r.k === "rs_dust") { m.geometry = rsDustGeo(s.conn); m.material = rsDustMats[s.lvl]; }
+  else if (r.k === "rs_lamp") { const on = s.lit && s.out; m.geometry = rsCubeGeo(on ? "lampon" : "lampoff", on ? 0xfff2b0 : 0x6b5a2a); m.material = on ? rsLit : rsDull(); }
+  else if (r.k === "rs_torch") m.geometry = rsTorchGeo(s.lit, e.a ?? 3);
+  else if (r.k === "rs_lever") m.geometry = rsLeverGeo(!!e.on, e.a ?? 3);
+  else if (r.k === "rs_button") m.geometry = rsButtonGeo(rsTickN < s.until, e.a ?? 3);
+  else if (r.k === "rs_plate") m.geometry = rsPlateGeo(s.pw);
+  else if (r.k === "rs_repeater") m.geometry = rsRepeaterGeo(e.d || 1, !!s.out);
+  else if (r.k === "rs_comparator") m.geometry = rsComparatorGeo(e.m || 0, s.out > 0);
+  else if (r.k === "rs_observer") m.geometry = rsObserverGeo(rsTickN >= s.start && rsTickN < s.until);
+  else if (r.k === "rs_piston" || r.k === "rs_sticky") m.geometry = rsPistonGeo(r.k === "rs_sticky", s.ext);
+}
+
+// --- Поршень
+const rsMovable = e => !!e && e.op === "block" && !e.p && !isTerr(e) && !["obsidian", "portal", "shield", "rs_head", "door", "barrier", "jump"].includes(e.k) && !(rsRec.get(key(e.x, e.y, e.z))?.s.ext);
+function rsLine(x, y, z, d) {  // что поршень толкает: цепочка блоков до первой пустой клетки, не больше 12
+  const list = [];
+  for (let i = 0; i < 13; i++) {
+    x += RSD[d][0]; y += RSD[d][1]; z += RSD[d][2];
+    if (y < 0) return null;
+    const e = rsAt(x, y, z);
+    if (!e) return list;
+    if (!rsMovable(e)) return null;
+    if (list.length >= 12) return null;
+    list.push(e);
+  }
+  return null;
+}
+function rsShift(e, d) {  // блок e сдвигается на клетку в сторону d
+  removeSolid(blocks.get(key(e.x, e.y, e.z)));
+  const n = { ...e, x: e.x + RSD[d][0], y: e.y + RSD[d][1], z: e.z + RSD[d][2] };
+  edit(n);
+  return n;
+}
+function rsExtend(r) {
+  const { e, s } = r, d = e.f, list = rsLine(e.x, e.y, e.z, d);
+  if (!list) return false;
+  // мягкие предметы (пыль, факелы, рычаги…) поршень просто ломает
+  for (let i = list.length - 1; i >= 0; i--) rsShift(list[i], d);
+  edit({ op: "block", x: e.x + RSD[d][0], y: e.y + RSD[d][1], z: e.z + RSD[d][2], c: 0, k: "rs_head", f: d, s: r.k === "rs_sticky" ? 1 : 0, tr: true });
+  s.ext = true;
+  return true;
+}
+function rsRetract(r) {
+  const { e, s } = r, d = e.f, fx = e.x + RSD[d][0], fy = e.y + RSD[d][1], fz = e.z + RSD[d][2];
+  const head = rsAt(fx, fy, fz);
+  if (head?.k === "rs_head") removeSolid(blocks.get(key(fx, fy, fz)));
+  if (r.k === "rs_sticky") {  // липкий тянет за собой блок
+    const nx = fx + RSD[d][0], ny = fy + RSD[d][1], nz = fz + RSD[d][2], t = rsAt(nx, ny, nz);
+    if (rsMovable(t)) rsShift(t, d ^ 1);
+  }
+  s.ext = false;
+}
+
+// --- Звук нотного блока
+let rsAudio = null;
+function rsPlayNote(n) {
+  try {
+    rsAudio ??= new (window.AudioContext || window.webkitAudioContext)();
+    const o = rsAudio.createOscillator(), g = rsAudio.createGain();
+    o.type = "triangle";
+    o.frequency.value = 185 * 2 ** (n / 12);
+    g.gain.setValueAtTime(0.25, rsAudio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, rsAudio.currentTime + 0.5);
+    o.connect(g).connect(rsAudio.destination);
+    o.start();
+    o.stop(rsAudio.currentTime + 0.5);
+  } catch {}
+}
+// Раздатчик стреляет стрелой вперёд: каждый у себя проверяет, не попали ли в него
+function rsShoot(r) {
+  const { e } = r, d = RSD[e.f], from = new THREE.Vector3(e.x + 0.5 + d[0] * 0.6, e.y + 0.5 + d[1] * 0.6, e.z + 0.5 + d[2] * 0.6), dir = new THREE.Vector3(...d);
+  const { target, wallDist } = rayTarget(from, dir, 24);
+  const len = Math.min(wallDist, 24);
+  spawnTracer(from, from.clone().addScaledVector(dir, len));
+  shotRay.set(from, dir); shotRay.far = len;
+  if (!dead && shotRay.ray.intersectBox(new THREE.Box3(new THREE.Vector3(px - 0.35, feet, pz - 0.35), new THREE.Vector3(px + 0.35, feet + 1.8, pz + 0.35)), tmpV)) damage(5, "раздатчика");
+  if (target) { const id = target.id; if (id.startsWith("bot-")) { const b = bots.get(id); if (b) hurtBot(b, 5); } }
+}
+
+// --- Один тик
+function rsTick() {
+  rsTickN++;
+  // опоры: убрали блок под пылью, факелом, рычагом — предмет падает
+  for (const r of [...rsRec.values()]) {
+    const { e } = r;
+    let ok = true;
+    if (RS_NEEDS_FLOOR.has(r.k)) ok = e.y === 0 || rsSolid(rsAt(e.x, e.y - 1, e.z));
+    else if (e.a !== undefined && ["rs_torch", "rs_lever", "rs_button"].includes(r.k)) ok = (e.a === 3 && e.y === 0) || rsSolid(rsAt(e.x + RSD[e.a][0], e.y + RSD[e.a][1], e.z + RSD[e.a][2]));
+    if (!ok) { const m = blocks.get(key(e.x, e.y, e.z)); if (m) removeSolid(m); }
+  }
+  // нажимные плиты: кто-то стоит сверху
+  const bodies = [[px, feet, pz], ...[...others.values()].map(a => [a.group.position.x, a.group.position.y, a.group.position.z]), ...[...animals.values()].map(m => [m.position.x, m.position.y, m.position.z]), ...[...cars.values()].map(m => [m.position.x, m.position.y - 0.4, m.position.z])];
+  for (const r of rsRec.values()) if (r.k === "rs_plate") r.s.pw = bodies.some(([x, y, z]) => x > r.e.x - 0.15 && x < r.e.x + 1.15 && z > r.e.z - 0.15 && z < r.e.z + 1.15 && y > r.e.y - 0.4 && y < r.e.y + 0.6);
+  rsSolveDust();
+  const host = !online || isDev;  // то, что меняет мир для всех (ТНТ), запускает только хозяин
+  for (const r of [...rsRec.values()]) {
+    const { e, s } = r, x = e.x, y = e.y, z = e.z;
+    switch (r.k) {
+      case "rs_torch": {
+        const a = e.a ?? 3, ax = x + RSD[a][0], ay = y + RSD[a][1], az = z + RSD[a][2];
+        const want = !(rsConductor(rsAt(ax, ay, az)) ? rsStrong(ax, ay, az) > 0 : false);
+        if (s.next && s.next.at <= rsTickN) { s.lit = s.next.v; s.next = null; }
+        if (want !== s.lit && (!s.next || s.next.v !== want)) s.next = { at: rsTickN + 1, v: want };
+        else if (want === s.lit && s.next && s.next.v !== want) s.next = null;
+        break;
+      }
+      case "rs_repeater": {
+        const input = rsRead(x, y, z, e.f ^ 1) > 0;
+        while (s.ev.length && s.ev[0].at <= rsTickN) s.out = s.ev.shift().v ? 15 : 0;
+        if (input !== !!s.pin) { s.pin = input ? 1 : 0; s.ev.push({ at: rsTickN + (e.d || 1), v: input }); }
+        break;
+      }
+      case "rs_comparator": {
+        const back = rsRead(x, y, z, e.f ^ 1);
+        const left = e.f < 2 ? 4 : 0, right = left ^ 1, side = Math.max(rsSide(r, left), rsSide(r, right));
+        const want = (e.m ? Math.max(0, back - side) : back >= side ? back : 0);
+        if (s.next && s.next.at <= rsTickN) { s.out = s.next.v; s.next = null; }
+        if (want !== s.out && (!s.next || s.next.v !== want)) s.next = { at: rsTickN + 1, v: want };
+        else if (want === s.out && s.next) s.next = null;
+        break;
+      }
+      case "rs_lamp": {
+        const p = rsPowered(x, y, z);
+        if (p) { s.out = 1; s.lit = true; s.off = 0; } else if (s.out && !s.off) s.off = rsTickN + 2;
+        if (s.off && rsTickN >= s.off) { s.out = 0; s.off = 0; }
+        break;
+      }
+      case "rs_piston": case "rs_sticky": {
+        const p = rsPowered(x, y, z);
+        if (p !== s.pw) s.pend = { at: rsTickN + 1, v: p };
+        s.pw = p;
+        if (s.pend && s.pend.at <= rsTickN) { const v = s.pend.v; s.pend = null; if (v && !s.ext) rsExtend(r); else if (!v && s.ext) rsRetract(r); }
+        break;
+      }
+      case "rs_dispenser": {
+        const p = rsPowered(x, y, z);
+        if (p && !s.pw) rsShoot(r);
+        s.pw = p;
+        break;
+      }
+      case "rs_note": {
+        const p = rsPowered(x, y, z);
+        if (p && !s.pw) rsPlayNote(e.n || 0);
+        s.pw = p;
+        break;
+      }
+      case "tnt": {
+        const p = rsPowered(x, y, z);
+        if (p && !s.pw && host) igniteTnt(e, 3);
+        s.pw = p;
+        break;
+      }
+      case "door": {
+        const p = rsPowered(x, y, z) || rsPowered(x, y + 1, z);
+        if (p !== s.pw) { s.pw = p; if (!!e.open !== p && (e.i || s.seen)) edit({ ...e, open: p }, true); }
+        s.seen = true;
+        break;
+      }
+    }
+  }
+  for (const r of rsRec.values()) rsPaint(r);
+}
+const rsSide = (r, k) => {  // боковой вход компаратора: только пыль и повторители
+  const n = rsAround(r, k);
+  return n?.k === "rs_dust" ? n.s.lvl : (n?.k === "rs_repeater" || n?.k === "rs_comparator") && n.e.f === (k ^ 1) ? (n.s.out ? 15 : 0) : 0;
+};
+function updateRedstone(dt) {
+  if (!rsRec.size) return;
+  rsAcc += Math.min(dt, 0.25);
+  let n = 0;
+  while (rsAcc >= 0.1 && n++ < 3) { rsAcc -= 0.1; rsTick(); }
+}
+
+// --- Использование: нажатия на рычаг, кнопку и так далее; установка предметов
+function rsInteract(t) {
+  const r = rsRec.get(key(t.x, t.y, t.z));
+  if (!r) return false;
+  if (r.k === "rs_lever") { share({ ...t, on: !t.on }, true); return true; }
+  if (r.k === "rs_button") { rsPress(t.x, t.y, t.z); online?.fx({ t: "rsbtn", x: t.x, y: t.y, z: t.z }); return true; }
+  if (r.k === "rs_repeater") { share({ ...t, d: ((t.d || 1) % 4) + 1 }, true); return true; }
+  if (r.k === "rs_comparator") { share({ ...t, m: t.m ? 0 : 1 }, true); return true; }
+  if (r.k === "rs_note") { const n = ((t.n || 0) + 1) % 25; share({ ...t, n }, true); rsPlayNote(n); return true; }
+  return false;
+}
+function rsPress(x, y, z) {
+  const r = rsRec.get(key(x, y, z));
+  if (r?.k === "rs_button") r.s.until = rsTickN + 10;
+}
+function rsPlace(item, hit) {
+  const cell = blockCell(hit);
+  if (!cell) return;
+  const [x, y, z] = cell;
+  if (blocks.has(key(x, y, z)) || (item.k === "door" && blocks.has(key(x, y + 1, z)))) return;
+  const e = { op: "block", x, y, z, c: 0, k: item.k };
+  const floorOk = y === 0 || rsSolid(rsAt(x, y - 1, z));
+  if (item.mode === "floor" || item.mode === "dir4") { if (!floorOk) return; }
+  if (item.mode === "attach") {
+    const a = dirIndex(hit.normal) ^ 1, ax = x + RSD[a][0], ay = y + RSD[a][1], az = z + RSD[a][2];
+    if (!((a === 3 && y === 0) || rsSolid(rsAt(ax, ay, az))) || (item.k === "rs_torch" && a === 2)) return;
+    e.a = a;
+  }
+  if (item.mode === "dir4") { const v = camDir(); v.y = 0; e.f = dirIndex(v); }
+  if (item.mode === "face") e.f = dirIndex(camDir()) ^ 1;
+  if (item.mode === "iron") { e.c = 12; e.i = 1; e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
+  if (item.k === "rs_lever") e.on = false;
+  if (item.k === "rs_repeater") e.d = 1;
+  share(e);
+}
+
 // --- Отсечение, как мод Entity Culling: игроков, ботов, животных и машины, закрытых стенами, не рисуем.
 // Луч идёт по клеткам от камеры к телу (по таблице блоков, без обхода всех мешей). Скрытому объекту ставим слой 1, камера видит только слой 0
 const CULL_OPAQUE = e => e && e.op === "block" && (!e.k || e.k === "flat" || e.k === "door" || (e.k in BLOCK_TEX && e.k !== "ice" && e.k !== "slime"));
@@ -5621,6 +6119,7 @@ function handleFx(f) {
   if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, f.tank ? TANK_SHELL : WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
   if (f.t === "tnts" && Array.isArray(f.l)) for (const b of f.l.slice(0, 8)) if (Array.isArray(b) && b.length === 6 && b.every(Number.isFinite)) startPrimed(b[0], b[1], b[2], 8, false, [b[3], b[4], b[5]], true);
   if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null, !!f.imp);
+  if (f.t === "rsbtn" && [f.x, f.y, f.z].every(Number.isInteger)) rsPress(f.x, f.y, f.z);
   if (f.t === "bothit" && typeof f.id === "string" && bots.has(f.id) && Number.isFinite(f.dmg)) hurtBot(bots.get(f.id), Math.min(250, Math.max(0, f.dmg)));
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
@@ -5634,13 +6133,10 @@ function toggleScope() {
   if (n && WEAPONS[n].scope && !reloadEnd) scoped = !scoped;
 }
 function toggleWeaponPage() {
-  const first = HOTBAR.indexOf("Нож"), wp = Math.floor(first / PAGE);
-  if (page === wp) { page = lastPage; selectSlot(page * PAGE + slot % PAGE); return; }
-  lastPage = page;
-  page = wp;
-  selectSlot(first);
+  for (let k = 1; k <= BAR_SIZE; k++) { const i = (slot + k) % BAR_SIZE; if (HOTBAR[i] && HOTBAR[i] in WEAPONS) return selectSlot(i); }
+  invTab = "Оружие";  // в хотбаре нет оружия — открываем вкладку с ним
+  toggleInventory();
 }
-let lastPage = 0;
 
 function updateWeapons(dt) {
   const n = camMode === "first" && !dead && inGame ? currentWeapon() : null;
@@ -5687,6 +6183,7 @@ function updateWeapons(dt) {
   updateBalls(dt);
   updateAnimals(dt);
   updateBots(dt);
+  updateRedstone(dt);
   updateRegen(dt);
   updateCulling(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
