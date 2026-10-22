@@ -559,20 +559,25 @@ const vitSignTex = (() => {
   const c = document.createElement("canvas");
   c.width = 384; c.height = 128;
   const g = c.getContext("2d");
-  g.fillStyle = "#0a5a2a"; g.fillRect(0, 0, 384, 128);
-  g.strokeStyle = "#f2c200"; g.lineWidth = 6; g.strokeRect(6, 6, 372, 116);
-  g.fillStyle = "#ff8a00"; g.beginPath(); g.arc(70, 64, 28, 0, Math.PI * 2); g.fill();
-  g.fillStyle = "#f2c200";
-  for (const [x, a] of [[22, -0.35], [38, -0.18], [102, 0.18], [118, 0.35]]) { g.save(); g.translate(x + 8, 64); g.rotate(a); g.fillRect(-6, -42, 12, 84); g.restore(); }
-  g.fillStyle = "#f2c200"; g.textBaseline = "middle"; g.font = "bold 40px sans-serif";
-  g.fillText("ВКУСНО", 150, 42); g.fillText("— И ТОЧКА", 150, 86);
+  g.fillStyle = "#1f5c45"; g.fillRect(0, 0, 384, 128);
+  g.strokeStyle = "#e8730a"; g.lineWidth = 5; g.strokeRect(6, 6, 372, 116);
+  // Знак: красно-оранжевая точка и две оранжевые наклонные «палочки», как у настоящего логотипа
+  g.fillStyle = "#f5481f"; g.beginPath(); g.arc(34, 88, 17, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#e8730a";
+  for (const x of [70, 108]) {
+    g.save(); g.translate(x, 60); g.rotate(-0.32);
+    g.beginPath(); g.roundRect(-11, -42, 22, 84, 11); g.fill();
+    g.restore();
+  }
+  g.textBaseline = "middle"; g.font = "bold 40px sans-serif"; g.fillStyle = "#f4f4f4";
+  g.fillText("ВКУСНО", 150, 42); g.fillStyle = "#f08a1a"; g.fillText("— И ТОЧКА", 150, 86);
   const t = new THREE.CanvasTexture(c);
   t.anisotropy = 4;
   return t;
 })();
 const portalPlane = new THREE.PlaneGeometry(1, 1);
 const vitSignGeo = new THREE.BoxGeometry(3, 1, 0.18).translate(1, 0, 0);
-const vitSignMats = [0, 1, 2, 3].map(() => new THREE.MeshLambertMaterial({ color: 0x0a5a2a })).concat([new THREE.MeshLambertMaterial({ map: vitSignTex }), new THREE.MeshLambertMaterial({ map: vitSignTex })]);
+const vitSignMats = [0, 1, 2, 3].map(() => new THREE.MeshLambertMaterial({ color: 0x1f5c45 })).concat([new THREE.MeshLambertMaterial({ map: vitSignTex }), new THREE.MeshLambertMaterial({ map: vitSignTex })]);
 // Портал: фиолетовое мерцающее полотно в рамке из обсидиана
 const portalTex = pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, ["#5a14a0", "#7a28d0", "#9a48f0", "#4a0e8a"][Math.floor(rnd() * 4)]); });
 portalTex.wrapS = portalTex.wrapT = THREE.RepeatWrapping;
