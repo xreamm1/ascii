@@ -5302,6 +5302,10 @@ function tntBoom(p, own, bomb) {
   const d = Math.hypot(px - p.x, feet + 1 - p.y, pz - p.z);
   if (d < TNT_R) damage(TNT_DMG * (1 - d / TNT_R), "ТНТ");
   if (!own) return;
+  for (const [id, a] of others) {  // ботов взрыв тоже ранит (игроки получают урон у себя сами)
+    const bd = a.group.position.clone().add(new THREE.Vector3(0, 0.9, 0)).distanceTo(p);
+    if (id.startsWith("bot-") && bd < TNT_R) hitPlayer(id, TNT_DMG * (1 - bd / TNT_R), "ТНТ", false);
+  }
   for (const m of [...solids]) {  // соседние ТНТ загораются
     const e = m.userData.edit;
     if (e?.k === "tnt" && m.position.distanceTo(p) < TNT_R * 1.3) {
