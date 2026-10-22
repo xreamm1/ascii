@@ -3897,7 +3897,7 @@ function updateOnline(dt) {
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
 
-    placeLabel(a.label, a.group.position, !a.invis, 2 * (a.size || 1));
+    placeLabel(a.label, a.group.position, !a.invis && !a.group.userData.cull?.hidden, 2 * (a.size || 1));
   }
   for (const m of cars.values()) {
     const t = m.userData.target;
@@ -5210,6 +5210,59 @@ function rocketBoom(pos, own, W) {
   }
 }
 
+// --- Отсечение, как мод Entity Culling: игроков, ботов, животных и машины, закрытых стенами, не рисуем.
+// Луч идёт по клеткам от камеры к телу (по таблице блоков, без обхода всех мешей). Скрытому объекту ставим слой 1, камера видит только слой 0
+const CULL_OPAQUE = e => e && e.op === "block" && (!e.k || e.k === "door" || (e.k in BLOCK_TEX && e.k !== "ice" && e.k !== "slime"));
+function cullBlocked(from, to) {
+  const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+  if (Math.hypot(dx, dy, dz) < 3) return false;
+  let x = Math.floor(from.x), y = Math.floor(from.y), z = Math.floor(from.z);
+  const ex = Math.floor(to.x), ey = Math.floor(to.y), ez = Math.floor(to.z);
+  const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
+  const tdx = dx ? Math.abs(1 / dx) : Infinity, tdy = dy ? Math.abs(1 / dy) : Infinity, tdz = dz ? Math.abs(1 / dz) : Infinity;
+  let tmx = dx ? (sx > 0 ? x + 1 - from.x : from.x - x) * tdx : Infinity, tmy = dy ? (sy > 0 ? y + 1 - from.y : from.y - y) * tdy : Infinity, tmz = dz ? (sz > 0 ? z + 1 - from.z : from.z - z) * tdz : Infinity;
+  for (let i = 0; i < 300; i++) {
+    if (tmx < tmy && tmx < tmz) { x += sx; tmx += tdx; } else if (tmy < tmz) { y += sy; tmy += tdy; } else { z += sz; tmz += tdz; }
+    if (x === ex && y === ey && z === ez) return false;
+    if (CULL_OPAQUE(blocks.get(key(x, y, z))?.userData.edit)) return true;
+  }
+  return false;
+}
+const cullTarget = new THREE.Vector3(), cullSide = new THREE.Vector3();
+// Закрыт ли объект целиком: проверяем несколько точек тела, хватит одной видимой
+function cullHidden(obj, r, h, eye) {
+  const p = obj.position;
+  cullSide.set(p.z - eye.z, 0, -(p.x - eye.x)).normalize().multiplyScalar(r);
+  for (const [k, s] of [[0.5, 0], [0.95, 0], [0.1, 1], [0.7, -1]]) {
+    cullTarget.set(p.x + cullSide.x * s, p.y + h * k, p.z + cullSide.z * s);
+    if (!cullBlocked(eye, cullTarget)) return false;
+  }
+  return true;
+}
+let cullList = [], cullI = 0, cullListT = 0;
+function updateCulling(dt) {
+  cullListT -= dt;
+  if (cullListT <= 0) {
+    cullListT = 0.5;
+    cullList = [];
+    for (const a of others.values()) { const s = a.size || 1; cullList.push([a.group, 0.5 * s, 1.8 * s]); if (a.drone) cullList.push([a.drone, 0.8, 0.5]); }
+    for (const m of animals.values()) cullList.push([m, 0.6, 1]);
+    for (const m of cars.values()) if (m !== drivingCar) cullList.push([m, 1.6, 1.2]);
+    for (const m of tanks.values()) if (m !== drivingTank) cullList.push([m, 2, 1.5]);
+    for (const m of planes.values()) if (m !== drivingPlane) cullList.push([m, 3, 1.5]);
+    for (const m of balls.values()) cullList.push([m, 0.6, 0.8]);
+  }
+  const eye = camera.position;
+  for (let n = Math.min(8, cullList.length); n > 0; n--) {
+    const [obj, r, h] = cullList[cullI++ % cullList.length];
+    const st = obj.userData.cull ??= { miss: 0, hidden: false };
+    st.miss = obj.position.distanceTo(eye) > 3 && cullHidden(obj, r, h, eye) ? st.miss + 1 : 0;
+    const hide = st.miss >= 2;
+    if (hide || st.hidden) obj.traverse(c => c.layers.set(hide ? 1 : 0));  // у скрытого заново, чтобы новые части (оружие в руке) тоже пропали
+    st.hidden = hide;
+  }
+}
+
 // --- Боты: ходят, строят и (боевые) стреляют, как живые игроки. Считает их тот, кто поставил; остальные видят ботов как обычных игроков (id bot-N)
 const bots = new Map();
 const BOT_NAMES = ["Саня", "Вован", "Макс", "Жека", "Лёха", "Дима", "Гоша", "Тёма"];
@@ -5582,6 +5635,7 @@ function updateWeapons(dt) {
   updateAnimals(dt);
   updateBots(dt);
   updateRegen(dt);
+  updateCulling(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
