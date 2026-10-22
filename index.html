@@ -4125,7 +4125,7 @@ function p2pConnected(dc, role) {
   online = {
     sendEdits: list => sendList("edits", list),
     sendPose: () => { const p = buildPose(), json = JSON.stringify(p); if (json !== lastPose) { lastPose = json; send({ t: "pose", id: role, p }); } },
-    sendChat: text => { addChat(`${devPrefix(isDev, prefixes[meId])}${nick}: ${text}`); send({ t: "chat", nick, text, dev: isDev, pre: prefixes[meId] || null }); },
+    sendChat: text => send({ t: "chat", nick, text, dev: isDev, pre: prefixes[meId] || null }),  // своё сообщение уже добавил openChat
     kick: () => { send({ t: "bye" }); setTimeout(() => dc.close(), 100); },
     ban: () => { send({ t: "bye" }); setTimeout(() => dc.close(), 100); },
     setPrefix: (id, text) => { prefixes[peerId] = text || ""; refreshLabels(); send({ t: "prefix", text }); },

@@ -1,8 +1,9 @@
 // Кэш для игры: после первого захода с интернетом она открывается и без него (установи игру на главный экран)
-const CACHE = "ascii-v1";
+const CACHE = "ascii-v2";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "worlds/vkusno-i-tochka-3-etazha.baseAscii"];
 const LIBS = ["https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"];
+const CACHED_HOSTS = ["cdn.jsdelivr.net", "www.gstatic.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 const FONT_CSS = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap";
 
 self.addEventListener("install", e => e.waitUntil((async () => {
@@ -22,8 +23,9 @@ self.addEventListener("activate", e => e.waitUntil(caches.keys().then(keys => Pr
 self.addEventListener("fetch", e => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== "GET" || !url.protocol.startsWith("http")) return;
-  if (/firebaseio\.com|identitytoolkit|securetoken/.test(url.hostname)) return;  // сетевая игра — только напрямую
   const same = url.origin === location.origin;
+  // Кэшируем только свои файлы и известные библиотеки. Всё остальное (в первую очередь сервер игры, Firebase) идёт напрямую, мимо кэша
+  if (!same && !CACHED_HOSTS.includes(url.hostname)) return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     if (same) {  // свои файлы: сначала сеть (всегда свежая версия), нет сети — из кэша
