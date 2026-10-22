@@ -110,6 +110,7 @@
     .gt { margin-bottom: 4px; }
     .gb { margin: 1px 0; }
   }
+  #menu, #game, #admin, #palette, #inv, #schem, #p2p { touch-action: pan-y; overscroll-behavior: contain; }
   .gt { margin: 0 0 8px; text-align: center; }
   .gt::before { content: "═══ "; } .gt::after { content: " ═══"; }
   .gl { color: #fff; margin: 3px 0; }
@@ -2714,7 +2715,7 @@ function screenPoint(t) {
 
 addEventListener("touchstart", e => {
   for (const t of e.changedTouches) {
-    if (!inGame || t.target.closest(".button, #hotbar, #palette, #ask")) continue;
+    if (!inGame || menuOpen || t.target.closest(".button, #hotbar, #palette, #ask, #inv, #admin, #game, #schem, #menu, #p2p")) continue;  // пока открыто окно, камера и движение не работают: палец листает окно
     if (!press) {
       const screen = screenPoint(t);
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
@@ -2738,6 +2739,7 @@ addEventListener("touchstart", e => {
 }, { passive: false });
 
 addEventListener("touchmove", e => {
+  if (e.target.closest?.("#inv, #admin, #game, #schem, #palette, #menu, #p2p")) return;  // внутри окон палец листает список, а не крутит камеру
   e.preventDefault();
   for (const t of e.changedTouches) {
     // Палец заметно сдвинулся — значит, это ходьба или поворот, а не нажатие
