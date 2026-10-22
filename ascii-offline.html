@@ -2440,6 +2440,7 @@ function use(action, screen) {
     return;
   }
   if (target && rsInteract(target)) return;  // рычаг, кнопка, повторитель, нота
+  if (itemBanned(HOTBAR[slot])) return;
   if (RS_ITEMS[HOTBAR[slot]] && hit) { rsPlace(RS_ITEMS[HOTBAR[slot]], hit); return; }
   if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
     const t = hit?.object.userData.edit;
@@ -2804,6 +2805,17 @@ const INV_TABS = {
 };
 const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"];
 let invTab = "Блоки", invHover = "";
+// Что разработчик запретил ставить обычным игрокам: названия вкладок инвентаря
+const BAN_TABS = ["Блоки", "Мебель", "Оружие", "Живое", "Транспорт", "Редстоун"];
+let banned = new Set(), banNoteAt = 0;
+const setBan = list => { banned = new Set((Array.isArray(list) ? list : []).filter(t => BAN_TABS.includes(t))); if (panel === adminEl) drawAdmin(); };
+function itemBanned(name) {
+  if (!online || isDev || !name || !banned.size) return false;
+  const tabs = invTabs();
+  const t = [...banned].find(b => tabs[b]?.includes(name));
+  if (t && performance.now() - banNoteAt > 2000) { banNoteAt = performance.now(); addChat(`* разработчик запретил: ${t.toLowerCase()}`); }
+  return !!t;
+}
 const inv = document.getElementById("inv");
 fitBars();
 const invTabs = () => {
@@ -3490,6 +3502,7 @@ async function joinLobby(code, me) {
   const checkAccess = () => {
     if (adminsLoaded && !isDev && (lobbyAccess === "dev" || (lobbyAccess === "admins" && !adminGranted))) leave("доступ к лобби закрыт");
   };
+  onValue(ref(db, `lobbyInfo/${code}/ban`), s => setBan(typeof s.val() === "string" ? s.val().split(",") : []));
   onValue(ref(db, `lobbyInfo/${code}/access`), s => {
     lobbyAccess = ACCESS.includes(s.val()) ? s.val() : "all";
     checkAccess();
@@ -3643,6 +3656,7 @@ async function joinLobby(code, me) {
       set(r, p).catch(() => {});
     }),
     removeBot: id => { botSeen.delete(id); remove(ref(db, `players/${code}/${id}`)).catch(() => {}); },
+    setBan: list => update(ref(db, `lobbyInfo/${code}`), { ban: list.join(",") }).catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     clearHelpers: () => { for (const i of helperSeen) remove(ref(db, `players/${code}/vit-${i}`)).catch(() => {}); helperSeen.clear(); },
     announce: text => set(ref(db, `announce/${code}`), { text, by: nick, t: serverTimestamp() })
       .catch(() => addChat("* объявление не отправилось: обнови правила базы в Firebase")),
@@ -3909,7 +3923,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), ...BAN_TABS.map(t => row(`[ ${t.toLowerCase()}: ${banned.has(t) ? "ЗАПРЕЩЕНО" : "можно"} ]`, "ban:" + t)), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !isNpc(id));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -3963,6 +3977,12 @@ adminEl.addEventListener("click", e => {
       spawnBot(new THREE.Vector3(x, groundHeight(x, 40, z), z), i % 2 ? "fight" : "build");
     }
   });
+  if (a.startsWith("ban:") && BAN_TABS.includes(a.slice(4))) {
+    const next = new Set(banned);
+    if (!next.delete(a.slice(4))) next.add(a.slice(4));
+    setBan([...next]);
+    online?.setBan([...next]);
+  }
   if (a === "delbots") { const n = bots.size; for (const b of [...bots.values()]) removeBot(b); addChat(`* ботов удалено: ${n}`); }
   if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
   if (a.startsWith("god:")) {
@@ -4567,6 +4587,7 @@ function p2pStart(role) {
     setBots: list => list.forEach(({ id, p }) => poseOut(id, p)),
     removeBot: id => { poseSent.delete(id); p2pOut({ t: "gone", id }); },
     clearHelpers: () => { for (let i = 0; i < 6; i++) poseSent.delete(`vit-${i}`); p2pOut({ t: "clearhelpers" }); },
+    setBan: list => p2pOut({ t: "ban", l: list }),
     clearWorld: () => p2pOut({ t: "clear" }),
     cleanGhosts: async () => {},
   };
@@ -4595,6 +4616,7 @@ function p2pHandle(m, from) {
   if (m.t === "god") { godGranted = !!m.on; if (godGranted) hp = MAX_HP; drawHp(); addChat(godGranted ? "* тебе выдали режим бога" : "* режим бога у тебя забрали"); }
   if (m.t === "prefix") { prefixes[meId] = String(m.text || "").slice(0, 12); refreshP2pLabels(); }
   if (m.t === "clear") { clearMapLocal(); addChat("* карта очищена"); }
+  if (m.t === "ban") setBan(m.l);
   if (m.t === "clearhelpers") for (const id of [...others.keys()]) if (id.startsWith("vit-")) removeAvatar(id);
   if (m.t === "gone" && typeof m.id === "string" && (from === "host" || m.id.startsWith("bot-"))) { poseCache.delete(m.id); removeAvatar(m.id.slice(0, 24)); }
   if (m.t === "bye") { if (p2p.role === "guest") { addChat("* хозяин закрыл игру"); p2p.peers.get("host")?.dc.close(); } else p2p.peers.get(from)?.dc.close(); }
@@ -4644,6 +4666,7 @@ function p2pAddPeer(link, fixedId) {
   if (host) {
     const send = (type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
     p2pSendTo(peer, { t: "hello", mode: gameMode, id });
+    if (banned.size) p2pSendTo(peer, { t: "ban", l: [...banned] });
     const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
     send("edits", list);  // мир хозяина — только новому другу
     poseSent.clear();
@@ -5149,6 +5172,7 @@ function tryFire() {
   if (!n || dead || camMode !== "first" || menuOpen || typing || !inGame) return;
   const W = WEAPONS[n], now = performance.now() / 1000;
   if (W.dev && online && !isDev) return addChat("* это оружие только у разработчика");
+  if (itemBanned(n)) return;
   if (now < nextShot || reloadEnd) return;
   if (W.kind !== "melee" && ammo[n] <= 0) return startReload();
   nextShot = now + W.cd;
