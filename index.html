@@ -5688,7 +5688,10 @@ function rsTick() {
   }
   // нажимные плиты: кто-то стоит сверху
   const bodies = [[px, feet, pz], ...[...others.values()].map(a => [a.group.position.x, a.group.position.y, a.group.position.z]), ...[...animals.values()].map(m => [m.position.x, m.position.y, m.position.z]), ...[...cars.values()].map(m => [m.position.x, m.position.y - 0.4, m.position.z])];
-  for (const r of rsRec.values()) if (r.k === "rs_plate") r.s.pw = bodies.some(([x, y, z]) => x > r.e.x - 0.15 && x < r.e.x + 1.15 && z > r.e.z - 0.15 && z < r.e.z + 1.15 && y > r.e.y - 0.4 && y < r.e.y + 0.6);
+  for (const r of rsRec.values()) if (r.k === "rs_plate") {  // как в майнкрафте, после ухода последнего плита отпускается ещё секунду (10 тиков)
+    if (bodies.some(([x, y, z]) => x > r.e.x - 0.15 && x < r.e.x + 1.15 && z > r.e.z - 0.15 && z < r.e.z + 1.15 && y > r.e.y - 0.4 && y < r.e.y + 0.6)) r.s.hold = rsTickN + 10;
+    r.s.pw = rsTickN < (r.s.hold || 0);
+  }
   rsSolveDust();
   const host = !online || isDev;  // то, что меняет мир для всех (ТНТ), запускает только хозяин
   for (const r of [...rsRec.values()]) {
