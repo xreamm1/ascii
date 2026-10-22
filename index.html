@@ -311,7 +311,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   "Огниво", "ТНТ", "Трамплин", "Танк",
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
-  "Корова", "Овца", "Курица", "Собака", null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -2423,6 +2423,8 @@ function use(action, screen) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "plane", id: `${myId}-${idCount++}`, x, y: +(y + 0.8).toFixed(2), z, yaw: +yaw.toFixed(2), pt: 0, rl: 0 });
   }
+  if ((HOTBAR[slot] === "Бот-боец" || HOTBAR[slot] === "Бот-строитель") && hit && hit.normal.y > 0.5)
+    spawnBot(hit.point.clone(), HOTBAR[slot] === "Бот-боец" ? "fight" : "build");
   if (HOTBAR[slot] === "Танк" && hit && hit.normal.y > 0.5) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "tank", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), tu: +yaw.toFixed(2), bp: 0 });
@@ -2699,7 +2701,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -3252,6 +3254,7 @@ function rollFigure(group, dx, dz) {
   ball.rotateOnWorldAxis(new THREE.Vector3(ax * c + az * sn, 0, -ax * sn + az * c).normalize(), len / (BALL_TYPES[group.userData.lookType].r * group.scale.x));
 }
 
+const isNpc = id => id.startsWith("vit-") || id.startsWith("bot-");  // помощники и боты — не настоящие игроки
 function avatar(id) {
   if (others.has(id)) return others.get(id);
   const mat = new THREE.MeshLambertMaterial();
@@ -3294,7 +3297,7 @@ function updateAvatar(id, p) {
   if (a.fresh) {
     a.group.position.copy(a.target);
     a.fresh = false;
-    if (!id.startsWith("vit-")) addChat(`* ${a.nick} зашёл`);
+    if (!isNpc(id)) addChat(`* ${a.nick} зашёл`);
   }
 }
 
@@ -3305,7 +3308,7 @@ function removeAvatar(id) {
   if (a.drone) scene.remove(a.drone);
   a.label.remove();
   others.delete(id);
-  if (!id.startsWith("vit-")) addChat(`* ${a.nick} вышел`);
+  if (!isNpc(id)) addChat(`* ${a.nick} вышел`);
 }
 
 // Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
@@ -3337,7 +3340,7 @@ async function joinLobby(code, me) {
   onChildRemoved(world, s => { try { edit(undo(s.val())); } catch {} });
 
   const players = ref(db, `players/${code}`);
-  const onPlayer = s => { if (s.key !== me && !(helpers && s.key.startsWith("vit-"))) try { updateAvatar(s.key, s.val()); } catch {} };
+  const onPlayer = s => { if (s.key !== me && !bots.has(s.key) && !(helpers && s.key.startsWith("vit-"))) try { updateAvatar(s.key, s.val()); } catch {} };
   onChildAdded(players, onPlayer);
   onChildChanged(players, onPlayer);
   onChildRemoved(players, s => removeAvatar(s.key));
@@ -3442,7 +3445,7 @@ async function joinLobby(code, me) {
     } else if (panel === adminEl) drawAdmin();
   });
 
-  const helperSeen = new Set();
+  const helperSeen = new Set(), botSeen = new Set();
   online = {
     // Несколько изменений уходят одним запросом (взрывы, воронки, импорт), а не сотней отдельных
     sendEdits: list => {
@@ -3475,7 +3478,7 @@ async function joinLobby(code, me) {
       const [players, onSnap] = await Promise.all([get(ref(db, `players/${code}`)), get(ref(db, `lobbyInfo/${code}/online`))]);
       const on = onSnap.val() || {};
       const ghosts = [];
-      players.forEach(p => { if (p.key !== me && !(p.key in on) && !(helpers && p.key.startsWith("vit-"))) ghosts.push(p.key); });
+      players.forEach(p => { if (p.key !== me && !(p.key in on) && !bots.has(p.key) && !(helpers && p.key.startsWith("vit-"))) ghosts.push(p.key); });
       await Promise.all(ghosts.map(id => remove(ref(db, `players/${code}/${id}`))));
       addChat(`* убрано застрявших игроков: ${ghosts.length}`);
     },
@@ -3486,9 +3489,9 @@ async function joinLobby(code, me) {
     summon: id => set(ref(db, `tp/${code}/${id}`), { x: px, y: feet, z: pz })
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Урон и эффекты оружия. Урон считает стрелявший, а жертва сама вычитает его у себя из HP
-    hit: (id, dmg, w, head) => {
+    hit: (id, dmg, w, head, who) => {
       if (gameMode !== "survival") return;
-      push(ref(db, `hits/${code}/${id}`), { by: me, nick, dmg: Math.round(Math.min(dmg, 250)), w, h: !!head, t: serverTimestamp() }).catch(() => {});
+      push(ref(db, `hits/${code}/${id}`), { by: me, nick: who || nick, dmg: Math.round(Math.min(dmg, 250)), w, h: !!head, t: serverTimestamp() }).catch(() => {});
     },
     fx: f => push(ref(db, `fx/${code}`), { ...f, by: me, t: serverTimestamp() }).then(r => setTimeout(() => remove(r), 4000)).catch(() => {}),
     setSize: (id, k) => set(ref(db, `sizes/${code}/${id}`), k)
@@ -3504,6 +3507,12 @@ async function joinLobby(code, me) {
       if (!helperSeen.has(i)) { helperSeen.add(i); onDisconnect(r).remove(); }
       set(r, h).catch(() => {});
     }),
+    setBots: list => list.forEach(({ id, p }) => {
+      const r = ref(db, `players/${code}/${id}`);
+      if (!botSeen.has(id)) { botSeen.add(id); onDisconnect(r).remove(); }
+      set(r, p).catch(() => {});
+    }),
+    removeBot: id => { botSeen.delete(id); remove(ref(db, `players/${code}/${id}`)).catch(() => {}); },
     clearHelpers: () => { for (const i of helperSeen) remove(ref(db, `players/${code}/vit-${i}`)).catch(() => {}); helperSeen.clear(); },
     announce: text => set(ref(db, `announce/${code}`), { text, by: nick, t: serverTimestamp() })
       .catch(() => addChat("* объявление не отправилось: обнови правила базы в Firebase")),
@@ -3739,7 +3748,7 @@ function sendTroll(type, text) {
   if (!TROLLS.some(t => t[0] === type)) return;
   if (type === "msg" && text === undefined) return ask("ТЕКСТ НА ЭКРАН", "", 60).then(t => t && sendTroll(type, t));
   if (trollTarget === "me" || !online) return runTroll(type, text);
-  const ids = trollTarget === "all" ? [...others.keys()].filter(id => !id.startsWith("vit-")) : [trollTarget];
+  const ids = trollTarget === "all" ? [...others.keys()].filter(id => !isNpc(id)) : [trollTarget];
   for (const id of ids) online.troll(id, type, text);
   addChat(`* шутка «${TROLLS.find(t => t[0] === type)[1]}» отправлена: ${ids.length}`);
 }
@@ -3771,7 +3780,7 @@ function drawAdmin() {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
     if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
-    const people = [...others].filter(([id]) => !id.startsWith("vit-"));
+    const people = [...others].filter(([id]) => !isNpc(id));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
       const adm = adminIds[id] ? "[-адм]" : "[+адм]";
@@ -3826,7 +3835,7 @@ adminEl.addEventListener("click", e => {
   if (a === "trback") trollPage = false;
   if (a === "trnext") trollNo = (trollNo + 1) % Math.ceil(TROLLS.length / 12);
   if (a === "trtarget") {
-    const order = ["all", ...[...others.keys()].filter(id => !id.startsWith("vit-")), "me"], i = order.indexOf(trollTarget);
+    const order = ["all", ...[...others.keys()].filter(id => !isNpc(id)), "me"], i = order.indexOf(trollTarget);
     trollTarget = order[(i + 1) % order.length];
   }
   if (a.startsWith("tr:")) sendTroll(a.slice(3));
@@ -3913,7 +3922,7 @@ function updateOnline(dt) {
     m.userData.barrel.rotation.x += ((t.bp || 0) - m.userData.barrel.rotation.x) * k;
   }
   poseTimer += dt;
-  if (online && poseTimer > 1 / 8) {
+  if (online && poseTimer > (online.poseEvery || 1 / 8)) {
     poseTimer = 0;
     online.sendPose();
     if (drivingCar) online.sendEdits([drivingCar.userData.edit]);
@@ -4280,13 +4289,12 @@ async function p2pShowCode(title, code, nextText) {
     return;
   }
 }
-async function p2pHost(mode) {
-  let cam = null, pc = null;
+// Обмен кодами с одним гостем: возвращает { pc, dc, fast }. dc — надёжный канал (мир, чат, блоки), fast — быстрый без повторов (позы)
+async function p2pOffer(cam) {
+  const pc = new RTCPeerConnection({ iceServers: [] });
   try {
-    p2pShow("<div>Нужен доступ к камере: так телефоны увидят друг друга в сети и прочитают QR-коды.</div>");
-    cam = await openCamera();
-    pc = new RTCPeerConnection({ iceServers: [] });
     const dc = pc.createDataChannel("game");
+    const fast = pc.createDataChannel("fast", { ordered: false, maxRetransmits: 0 });
     const opened = new Promise((res, rej) => { dc.onopen = res; pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") rej(new Error("соединение не удалось: устройства в разных сетях?")); }; });
     await pc.setLocalDescription(await pc.createOffer());
     await iceGathered(pc);
@@ -4295,13 +4303,37 @@ async function p2pHost(mode) {
     await pc.setRemoteDescription(unpackSignal(answer));
     p2pShow("<div>Соединяюсь…</div>");
     await Promise.race([opened, new Promise((_, rej) => setTimeout(() => rej(new Error("не дождался друга")), 25000))]);
-    cam?.getTracks().forEach(t => t.stop());
+    return { pc, dc, fast };
+  } catch (err) { try { pc.close(); } catch {} throw err; }
+}
+async function p2pHost(mode) {
+  let cam = null;
+  try {
+    p2pShow("<div>Нужен доступ к камере: так телефоны увидят друг друга в сети и прочитают QR-коды.</div>");
+    cam = await openCamera();
+    const link = await p2pOffer(cam);
+    cam.getTracks().forEach(t => t.stop());
     p2pHide();
     isDev = true;  // хозяин игры — «разработчик» этой игры
     gameMode = mode;
-    p2pConnected(dc, "host");
+    p2pStart("host");
+    p2pAddPeer(link);
     startGame("P2P", "Игра без интернета", "host");
-  } catch (err) { cam?.getTracks().forEach(t => t.stop()); try { pc?.close(); } catch {} p2pFail(err); }
+  } catch (err) { cam?.getTracks().forEach(t => t.stop()); p2pFail(err); }
+}
+// Ещё один друг в уже идущую игру (до 4 игроков)
+async function p2pAddGuest() {
+  if (p2p.role !== "host") return;
+  if (p2p.peers.size >= 3) return addChat("* в игре уже 4 игрока — это максимум");
+  let cam = null;
+  try {
+    p2pShow("<div>Нужен доступ к камере: так телефоны увидят друг друга в сети и прочитают QR-коды.</div>");
+    cam = await openCamera();
+    const link = await p2pOffer(cam);
+    cam.getTracks().forEach(t => t.stop());
+    p2pHide();
+    p2pAddPeer(link);
+  } catch (err) { cam?.getTracks().forEach(t => t.stop()); p2pFail(err); }
 }
 async function p2pJoin() {
   let cam = null, pc = null;
@@ -4310,8 +4342,9 @@ async function p2pJoin() {
     cam = await openCamera();
     const offer = await p2pReadCode("ШАГ 1. Отсканируй код с экрана друга (он нажал «СОЗДАТЬ ИГРУ»).", cam);
     pc = new RTCPeerConnection({ iceServers: [] });
+    let dc = null, fast = null;
     const opened = new Promise((res, rej) => {
-      pc.ondatachannel = e => { e.channel.onopen = () => res(e.channel); };
+      pc.ondatachannel = e => { if (e.channel.label === "fast") fast = e.channel; else { dc = e.channel; dc.onopen = res; } };
       pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") rej(new Error("соединение не удалось: устройства в разных сетях?")); };
     });
     await pc.setRemoteDescription(unpackSignal(offer));
@@ -4321,74 +4354,161 @@ async function p2pJoin() {
     p2pShow("");
     const shown = p2pShowCode("ШАГ 2. Покажи этот код другу — он сканирует его на втором шаге. Потом жди.", packSignal(pc.localDescription), null);
     shown.catch(() => {});
-    const dc = await Promise.race([opened, shown.then(() => opened), new Promise((_, rej) => setTimeout(() => rej(new Error("не дождался друга")), 120000))]);
+    await Promise.race([opened, shown.then(() => opened), new Promise((_, rej) => setTimeout(() => rej(new Error("не дождался друга")), 120000))]);
     cam?.getTracks().forEach(t => t.stop());
     p2pHide();
     isDev = false;
-    p2pConnected(dc, "guest");
+    p2pStart("guest");
+    p2pAddPeer({ pc, dc, fast }, "host");
     px = pz = SIZE / 2 + 3;  // друг появляется рядом, а не в той же точке
   } catch (err) { cam?.getTracks().forEach(t => t.stop()); try { pc?.close(); } catch {} p2pFail(err); }
 }
-// Соединение готово: подключаем игру к каналу связи
-function p2pConnected(dc, role) {
-  const peerId = role === "host" ? "guest" : "host";
-  meId = role;
-  const send = obj => { try { if (dc.readyState === "open") dc.send(JSON.stringify(obj)); } catch {} };
-  const sendList = (type, list) => { for (let i = 0; i < list.length; i += 150) send({ t: type, l: list.slice(i, i + 150) }); };
-  const refreshLabels = () => { for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick; };
-  const applyEdits = list => { for (const e of (Array.isArray(list) ? list : []).slice(0, 200)) try { if (e && typeof e === "object") edit(e.op?.startsWith("un") ? e : e, !String(e.op).startsWith("un")); } catch {} };
-  let started = role === "host";
-  dc.onmessage = ev => {
+
+// ---- Связь между телефонами: хозяин — звезда, гости соединены только с ним, а он пересылает всё остальным.
+// Позы идут по быстрому каналу и только изменившимися полями (раз в 3 с — целиком), блоки копятся 40 мс и уходят пачкой
+const p2p = { role: "", peers: new Map(), mode: "creative" };
+const P2P_RELAY = new Set(["pose", "edits", "chat", "fx", "gone", "announce"]);  // хозяин пересылает их остальным гостям
+const P2P_FROM_GUEST = new Set(["pose", "edits", "chat", "fx", "gone", "hit"]);  // только это принимаем от гостей
+const poseSent = new Map(), poseCache = new Map();
+let editQ = [], editT = 0;
+function p2pSendTo(peer, obj, fast) {
+  const ch = fast && peer.fast?.readyState === "open" ? peer.fast : peer.dc;
+  try { if (ch.readyState === "open") ch.send(JSON.stringify(obj)); } catch {}
+}
+const p2pOut = (obj, fast, except) => { for (const [id, peer] of p2p.peers) if (id !== except) p2pSendTo(peer, obj, fast); };
+// Одному игроку: хозяин — напрямую, гость — через хозяина
+function p2pTo(id, obj) {
+  if (p2p.role === "host") { const peer = p2p.peers.get(id); if (peer) p2pSendTo(peer, obj); }
+  else p2pOut({ ...obj, to: id });
+}
+function p2pPose(id, d) {
+  const c = poseCache.get(id) ?? {};
+  for (const k in d) { if (d[k] === null) delete c[k]; else c[k] = d[k]; }
+  poseCache.set(id, c);
+  if (typeof c.nick === "string" && Number.isFinite(c.x)) try { updateAvatar(id, c); } catch {}
+}
+function poseOut(id, p) {
+  let st = poseSent.get(id);
+  if (!st) poseSent.set(id, st = { p: {}, t: -1e9 });
+  const now = performance.now(), full = now - st.t > 3000, d = {};
+  let changed = full;
+  for (const k in p) if (full || JSON.stringify(p[k]) !== JSON.stringify(st.p[k])) { d[k] = p[k]; changed = true; }
+  for (const k in st.p) if (!(k in p)) { d[k] = null; changed = true; }
+  if (!changed) return;
+  if (full) st.t = now;
+  st.p = p;
+  p2pOut({ t: "pose", id, p: d }, true);
+}
+function p2pStart(role) {
+  p2p.role = role; p2p.peers.clear(); p2p.mode = gameMode;
+  poseSent.clear(); poseCache.clear();
+  meId = role === "host" ? "host" : "guest";
+  const sendList = (peer, type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
+  const flushEdits = () => { editT = 0; const q = editQ; editQ = []; for (let i = 0; i < q.length; i += 150) p2pOut({ t: "edits", l: q.slice(i, i + 150) }); };
+  const guests = () => [...p2p.peers.keys()];
+  const closeAll = () => { for (const peer of p2p.peers.values()) try { peer.dc.close(); } catch {} };
+  online = {
+    p2p: true,
+    poseEvery: 1 / 15,
+    sendEdits: list => { editQ.push(...list); if (!editT) editT = setTimeout(flushEdits, 40); },
+    sendPose: () => poseOut(meId, buildPose()),
+    sendChat: text => p2pOut({ t: "chat", nick, text, dev: isDev, pre: prefixes[meId] || null }),  // своё сообщение уже добавил openChat
+    kick: id => { p2pTo(id, { t: "bye" }); setTimeout(() => p2p.peers.get(id)?.dc.close(), 100); },
+    ban: id => { p2pTo(id, { t: "bye" }); setTimeout(() => p2p.peers.get(id)?.dc.close(), 100); },
+    setPrefix: (id, text) => { prefixes[id] = text || ""; refreshP2pLabels(); p2pTo(id, { t: "prefix", text }); },
+    summon: id => p2pTo(id, { t: "tp", x: px, y: feet, z: pz }),
+    hit: (id, dmg, w, head, who) => { if (gameMode === "survival" && !isNpc(String(id))) p2pTo(id, { t: "hit", dmg: Math.round(Math.min(dmg, 250)), w, h: !!head, nick: who || nick }); },
+    fx: f => p2pOut({ t: "fx", f }),
+    setSize: (id, k) => p2pTo(id, { t: "size", k }),
+    grant: (id, on) => { adminIds = { ...adminIds, [id]: !!on }; p2pTo(id, { t: "admin", on }); },
+    setGod: (id, on) => { godIds = { ...godIds, [id]: !!on }; p2pTo(id, { t: "god", on }); },
+    announce: text => { showAnnouncement(text, nick); p2pOut({ t: "announce", text, by: nick }); },
+    troll: (id, type, text) => p2pTo(id, { t: "troll", type, ...(text ? { text } : {}) }),
+    setHelpers: list => list.forEach((h, i) => poseOut(`vit-${i}`, h)),
+    setBots: list => list.forEach(({ id, p }) => poseOut(id, p)),
+    removeBot: id => { poseSent.delete(id); p2pOut({ t: "gone", id }); },
+    clearHelpers: () => { for (let i = 0; i < 6; i++) poseSent.delete(`vit-${i}`); p2pOut({ t: "clearhelpers" }); },
+    clearWorld: () => p2pOut({ t: "clear" }),
+    cleanGhosts: async () => {},
+  };
+}
+const refreshP2pLabels = () => { for (const [id, a] of others) a.label.textContent = devPrefix(a.dev, prefixes[id]) + a.nick; };
+const p2pApplyEdits = list => { for (const e of (Array.isArray(list) ? list : []).slice(0, 200)) try { if (e && typeof e === "object") edit(e, !String(e.op).startsWith("un")); } catch {} };
+let p2pStarted = false;
+function p2pHandle(m, from) {
+  if (m.t === "hello" && !p2pStarted) {  // хозяин сообщил режим игры и мой номер
+    p2pStarted = true;
+    gameMode = m.mode === "survival" ? "survival" : "creative";
+    if (typeof m.id === "string") meId = m.id.slice(0, 8);
+    startGame("P2P", "Игра без интернета", "guest");
+  }
+  if (m.t === "edits") p2pApplyEdits(m.l);
+  if (m.t === "pose" && typeof m.id === "string" && m.p && typeof m.p === "object") p2pPose(m.id.slice(0, 24), m.p);
+  if (m.t === "needfull") poseSent.clear();
+  if (m.t === "chat") { memeCheck(m.text); addChat(`${devPrefix(m.dev === true, prefixes[from] ?? m.pre)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`); }
+  if (m.t === "fx" && m.f) try { handleFx(m.f); } catch {}
+  if (m.t === "hit" && Number.isFinite(m.dmg)) damage(Math.min(m.dmg, 250), `${String(m.nick).slice(0, 16)} (${String(m.w).slice(0, 10)}${m.h ? ", в голову" : ""})`);
+  if (m.t === "tp" && [m.x, m.y, m.z].every(Number.isFinite)) { px = m.x; feet = m.y; pz = m.z; vy = 0; addChat("* тебя телепортировал хозяин игры"); }
+  if (m.t === "size" && SIZES.includes(m.k)) setSize(m.k);
+  if (m.t === "troll" && typeof m.type === "string") runTroll(m.type, typeof m.text === "string" ? m.text : "");
+  if (m.t === "announce") showAnnouncement(String(m.text).slice(0, 80), String(m.by || "").slice(0, 16));
+  if (m.t === "admin") { const was = isAdmin(); adminGranted = !!m.on; showAdminButton(); addChat(adminGranted ? "* тебе выдали админ-панель" : "* у тебя забрали админ-панель"); if (was && !isAdmin()) { flying = false; setSize(1); if (panel === adminEl) togglePanel(adminEl); } }
+  if (m.t === "god") { godGranted = !!m.on; if (godGranted) hp = MAX_HP; drawHp(); addChat(godGranted ? "* тебе выдали режим бога" : "* режим бога у тебя забрали"); }
+  if (m.t === "prefix") { prefixes[meId] = String(m.text || "").slice(0, 12); refreshP2pLabels(); }
+  if (m.t === "clear") { clearMapLocal(); addChat("* карта очищена"); }
+  if (m.t === "clearhelpers") for (const id of [...others.keys()]) if (id.startsWith("vit-")) removeAvatar(id);
+  if (m.t === "gone" && typeof m.id === "string" && (from === "host" || m.id.startsWith("bot-"))) { poseCache.delete(m.id); removeAvatar(m.id.slice(0, 24)); }
+  if (m.t === "bye") { if (p2p.role === "guest") { addChat("* хозяин закрыл игру"); p2p.peers.get("host")?.dc.close(); } else p2p.peers.get(from)?.dc.close(); }
+}
+// Новое соединение. У хозяина id гостя выдаём мы (g1…g3), у гостя хозяин всегда "host"
+function p2pAddPeer(link, fixedId) {
+  const host = p2p.role === "host";
+  const id = fixedId || ["g1", "g2", "g3"].find(i => !p2p.peers.has(i));
+  const peer = { dc: link.dc, fast: link.fast, pc: link.pc, bots: new Set() };
+  p2p.peers.set(id, peer);
+  const onmsg = ev => {
     let m;
     try { m = JSON.parse(ev.data); } catch { return; }
     if (!m || typeof m.t !== "string") return;
-    if (m.t === "hello" && !started) {  // хозяин сообщил режим игры
-      started = true;
-      gameMode = m.mode === "survival" ? "survival" : "creative";
-      startGame("P2P", "Игра без интернета", "guest");
+    if (host) {
+      if (!P2P_FROM_GUEST.has(m.t)) return;
+      m.from = id;  // от кого — знаем мы, а не отправитель
+      if (m.t === "pose") {
+        if (typeof m.id !== "string") return;
+        if (isNpc(m.id)) peer.bots.add(m.id.slice(0, 24)); else m.id = id;
+      }
+      if (m.to && m.to !== "host") {  // адресное сообщение другому гостю
+        if (m.t === "hit") { const to = p2p.peers.get(m.to); if (to) p2pSendTo(to, m); }
+        return;
+      }
+    } else if (typeof m.from !== "string") m.from = "host";
+    p2pHandle(m, m.from);
+    if (host && P2P_RELAY.has(m.t)) p2pOut(m, m.t === "pose", id);
+  };
+  link.dc.onmessage = onmsg;
+  if (link.fast) link.fast.onmessage = onmsg;
+  else if (link.pc) link.pc.ondatachannel = e => { if (e.channel.label === "fast") { peer.fast = e.channel; e.channel.onmessage = onmsg; } };  // быстрый канал мог прийти позже надёжного
+  const onclose = () => {
+    if (p2p.peers.get(id) !== peer) return;
+    p2p.peers.delete(id);
+    if (host) {
+      addChat("* друг отключился");
+      for (const g of [id, ...peer.bots]) { poseSent.delete(g); poseCache.delete(g); removeAvatar(g); p2pOut({ t: "gone", id: g }); }
+    } else {
+      addChat("* связь с хозяином потеряна");
+      for (const g of [...others.keys()]) removeAvatar(g);
+      online = null;
     }
-    if (m.t === "edits") applyEdits(m.l);
-    if (m.t === "pose" && typeof m.id === "string" && m.p && typeof m.p === "object") try { updateAvatar(m.id.slice(0, 16), m.p); } catch {}
-    if (m.t === "chat") memeCheck(m.text);
-    if (m.t === "chat") addChat(`${devPrefix(m.dev === true, prefixes[peerId] ?? m.pre)}${String(m.nick).slice(0, 16)}: ${String(m.text).slice(0, 100)}`);
-    if (m.t === "fx" && m.f) try { handleFx(m.f); } catch {}
-    if (m.t === "hit" && Number.isFinite(m.dmg)) damage(Math.min(m.dmg, 250), `${String(m.nick).slice(0, 16)} (${String(m.w).slice(0, 10)}${m.h ? ", в голову" : ""})`);
-    if (m.t === "tp" && [m.x, m.y, m.z].every(Number.isFinite)) { px = m.x; feet = m.y; pz = m.z; vy = 0; addChat("* тебя телепортировал хозяин игры"); }
-    if (m.t === "size" && SIZES.includes(m.k)) setSize(m.k);
-    if (m.t === "troll" && typeof m.type === "string") runTroll(m.type, typeof m.text === "string" ? m.text : "");
-    if (m.t === "announce") showAnnouncement(String(m.text).slice(0, 80), String(m.by || "").slice(0, 16));
-    if (m.t === "admin") { const was = isAdmin(); adminGranted = !!m.on; showAdminButton(); addChat(adminGranted ? "* тебе выдали админ-панель" : "* у тебя забрали админ-панель"); if (was && !isAdmin()) { flying = false; setSize(1); if (panel === adminEl) togglePanel(adminEl); } }
-    if (m.t === "god") { godGranted = !!m.on; if (godGranted) hp = MAX_HP; drawHp(); addChat(godGranted ? "* тебе выдали режим бога" : "* режим бога у тебя забрали"); }
-    if (m.t === "prefix") { prefixes[meId] = String(m.text || "").slice(0, 12); refreshLabels(); }
-    if (m.t === "clear") { clearMapLocal(); addChat("* карта очищена"); }
-    if (m.t === "clearhelpers") for (const id of [...others.keys()]) if (id.startsWith("vit-")) removeAvatar(id);
-    if (m.t === "bye") { addChat("* друг вышел из игры"); dc.close(); }
   };
-  dc.onclose = () => { addChat("* друг отключился"); removeAvatar(peerId); for (const id of [...others.keys()]) if (id.startsWith("vit-")) removeAvatar(id); online = null; };
-  online = {
-    sendEdits: list => sendList("edits", list),
-    sendPose: () => { const p = buildPose(), json = JSON.stringify(p); if (json !== lastPose) { lastPose = json; send({ t: "pose", id: role, p }); } },
-    sendChat: text => send({ t: "chat", nick, text, dev: isDev, pre: prefixes[meId] || null }),  // своё сообщение уже добавил openChat
-    kick: () => { send({ t: "bye" }); setTimeout(() => dc.close(), 100); },
-    ban: () => { send({ t: "bye" }); setTimeout(() => dc.close(), 100); },
-    setPrefix: (id, text) => { prefixes[peerId] = text || ""; refreshLabels(); send({ t: "prefix", text }); },
-    summon: () => send({ t: "tp", x: px, y: feet, z: pz }),
-    hit: (id, dmg, w, head) => { if (gameMode === "survival" && !String(id).startsWith("vit-")) send({ t: "hit", dmg: Math.round(Math.min(dmg, 250)), w, h: !!head, nick }); },
-    fx: f => send({ t: "fx", f }),
-    setSize: (id, k) => send({ t: "size", k }),
-    grant: (id, on) => { adminIds = { ...adminIds, [peerId]: !!on }; send({ t: "admin", on }); },
-    setGod: (id, on) => { godIds = { ...godIds, [peerId]: !!on }; send({ t: "god", on }); },
-    announce: text => { showAnnouncement(text, nick); send({ t: "announce", text, by: nick }); },
-    troll: (id, type, text) => send({ t: "troll", type, ...(text ? { text } : {}) }),
-    setHelpers: list => list.forEach((h, i) => send({ t: "pose", id: `vit-${i}`, p: h })),
-    clearHelpers: () => send({ t: "clearhelpers" }),
-    clearWorld: () => send({ t: "clear" }),
-    cleanGhosts: async () => {},
-  };
-  if (role === "host") {
-    send({ t: "hello", mode: gameMode });
+  link.dc.onclose = onclose;
+  if (link.pc) link.pc.onconnectionstatechange = () => { if (["failed", "closed"].includes(link.pc.connectionState)) onclose(); };
+  if (host) {
+    const send = (type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
+    p2pSendTo(peer, { t: "hello", mode: gameMode, id });
     const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e))), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
-    sendList("edits", list);  // мир хозяина — другу
+    send("edits", list);  // мир хозяина — только новому другу
+    poseSent.clear();
+    p2pOut({ t: "needfull" });  // остальные пришлют позы целиком, чтобы новичок увидел всех
   }
 }
 
@@ -4545,6 +4665,7 @@ function drawGameMenu() {
     row("[ экспорт мира ]", "export"),
     ...(!online || isDev ? [row("[ импорт мира ]", "import")] : []),
     ...(online && lobbyCode !== "P2P" ? [row("[ ссылка-приглашение ]", "invite")] : []),
+    ...(online && lobbyCode === "P2P" && p2p.role === "host" && p2p.peers.size < 3 ? [row("[ добавить друга ]", "addfriend")] : []),
     ...(online && isDev && lobbyCode !== "P2P" ? [row("[ переименовать лобби ]", "renlobby"), row(`[ доступ: ${ACCESS_NAME[lobbyAccess]} ]`, "acclobby")] : []),
     row("[ выйти в главное меню ]", "exit"),
     "╟" + title("", "─") + "╢",
@@ -4644,6 +4765,7 @@ gameEl.addEventListener("click", e => {
   if (a === "export") exportWorld();
   if (a === "import") worldFileEl.click();
   if (a === "exit") leave("");
+  if (a === "addfriend") p2pAddGuest();
   if (a === "invite" && lobbyCode) {
     const url = `${location.origin}${location.pathname}?lobby=${lobbyCode}`;
     navigator.clipboard?.writeText(url).then(() => addChat("* ссылка скопирована"), () => addChat("* не удалось скопировать — возьми ссылку из чата"));
@@ -4896,7 +5018,7 @@ function meleeHit(n, W) {
   const { target } = rayTarget(camera.position.clone(), camDir(), W.range);
   const an = rayAnimal(camera.position.clone(), camDir(), Math.min(W.range, target ? target.dist : Infinity));
   if (an) return hurtAnimal(an.m, W.dmg);
-  if (target) { online?.hit(target.id, W.dmg, n, false); addImpact(target.point); }
+  if (target) { hitPlayer(target.id, W.dmg, n, false); addImpact(target.point); }
 }
 
 function fireGun(n, W) {
@@ -4920,7 +5042,7 @@ function fireGun(n, W) {
       addImpact(target.point);
     } else if (wallDist < W.range) addImpact(end);
   }
-  for (const [id, h] of dmgById) online?.hit(id, h.dmg, n, h.head);
+  for (const [id, h] of dmgById) hitPlayer(id, h.dmg, n, h.head);
   online?.fx({ t: "shot", o: from.toArray().map(v => +v.toFixed(2)), ps: ends.slice(0, 4).map(e => e.toArray().map(v => +v.toFixed(2))) });
   // Отдача: ствол подбрасывает вверх и чуть в сторону
   pitch = Math.min(Math.PI / 2 - 0.01, pitch + W.kick);
@@ -5083,8 +5205,171 @@ function rocketBoom(pos, own, W) {
   if (me < W.radius) damage(hurt(me) * 0.6, W.kind === "grenade" ? "своей гранаты" : "своей ракеты");
   for (const [id, a] of others) {
     const d = a.group.position.clone().add(new THREE.Vector3(0, 0.9, 0)).distanceTo(pos);
-    if (a.group.visible && d < W.radius) online?.hit(id, Math.round(hurt(d)), W.kind === "grenade" ? "Граната" : "Базука", false);
+    if (a.group.visible && d < W.radius) hitPlayer(id, Math.round(hurt(d)), W.kind === "grenade" ? "Граната" : "Базука", false);
   }
+}
+
+// --- Боты: ходят, строят и (боевые) стреляют, как живые игроки. Считает их тот, кто поставил; остальные видят ботов как обычных игроков (id bot-N)
+const bots = new Map();
+const BOT_MAX = 6, BOT_NAMES = ["Саня", "Вован", "Макс", "Жека", "Лёха", "Дима", "Гоша", "Тёма"];
+const BOT_MATS = [undefined, "stone", "wood", "concrete", "tiles", "marble", "clay", "glass", "metal"];
+const botName = () => `Бот ${BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]}`;
+let botN = 0, botSync = 0;
+function spawnBot(pos, role) {
+  if (online && !isDev && !online.p2p) return addChat("* ботов в сети ставит только разработчик");
+  if (bots.size >= BOT_MAX) return addChat(`* ботов уже ${BOT_MAX}, это максимум`);
+  const id = `bot-${myId.slice(0, 4)}${botN++}`;
+  const b = { id, role, x: pos.x, f: pos.y, z: pos.z, yaw: Math.random() * 6.28, vy: 0, ground: false, hp: 100, nick: botName(), c: 1 + Math.floor(Math.random() * (COLORS.length - 1)),
+    mx: 0, mz: 0, plan: null, placed: 0, done: false, pause: 0, place: 0, fire: 1, burst: 0, look: 0, see: false, flee: 0, from: null, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 0, stuck: 0, wander: 0, head: 0 };
+  bots.set(id, b);
+  updateAvatar(id, botPose(b));
+  addChat(`* ${b.nick} (${role === "fight" ? "боевой" : "строитель"}) появился`);
+}
+const botPose = b => ({ x: +b.x.toFixed(2), f: +b.f.toFixed(2), z: +b.z.toFixed(2), yaw: +b.yaw.toFixed(2), c: b.c, nick: b.nick, cr: false, dev: false, s: 1, dd: 0, ...(b.role === "fight" ? { w: "АК" } : {}) });
+function removeBot(b) {
+  bots.delete(b.id);
+  removeAvatar(b.id);
+  online?.removeBot?.(b.id);
+}
+function hurtBot(b, dmg) {
+  if (!bots.has(b.id)) return;
+  b.hp -= dmg;
+  // откуда прилетело — ближайший к боту игрок
+  const near = botFoes().sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
+  if (near) { b.from = near; if (b.role === "build") b.flee = 3; }
+  if (b.hp <= 0) {
+    addImpact(new THREE.Vector3(b.x, b.f + 1, b.z));
+    removeBot(b);
+    const text = `☠ ${b.nick} убит`;
+    addChat(text);
+    online?.sendChat(text);
+  }
+}
+// Куда попали по id: бота считает его хозяин. Если бот чужой, шлём хозяину сообщение
+function hitPlayer(id, dmg, w, head, who) {
+  if (id.startsWith("bot-")) {
+    const b = bots.get(id);
+    if (b) hurtBot(b, dmg); else online?.fx({ t: "bothit", id, dmg: Math.round(Math.min(dmg, 250)) });
+    return;
+  }
+  online?.hit(id, dmg, w, head, who);
+}
+const botFoes = () => {
+  const l = [];
+  if (!dead && !isGod() && !asInvis) l.push({ id: null, x: px, f: feet, z: pz });
+  for (const [id, a] of others) if (!isNpc(id) && a.group.visible) l.push({ id, x: a.group.position.x, f: a.group.position.y, z: a.group.position.z });
+  return l;
+};
+function botSees(b, foe) {
+  const o = new THREE.Vector3(b.x, b.f + 1.4, b.z), d = new THREE.Vector3(foe.x, foe.f + 1.2, foe.z).sub(o), len = d.length();
+  shotRay.set(o, d.normalize());
+  shotRay.far = len;
+  return !shotRay.intersectObjects(solids, false).length;
+}
+function botShoot(b, foe, dist) {
+  const from = new THREE.Vector3(b.x, b.f + 1.4, b.z), aim = new THREE.Vector3(foe.x, foe.f + 1.2, foe.z);
+  const hit = Math.random() < Math.max(0.1, 0.5 - dist / 70);
+  const end = hit ? aim : aim.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 3));
+  spawnTracer(from, end);
+  online?.fx({ t: "shot", o: from.toArray().map(v => +v.toFixed(2)), ps: [end.toArray().map(v => +v.toFixed(2))] });
+  if (!hit) return;
+  const head = Math.random() < 0.08, dmg = head ? 14 : 7;
+  if (foe.id === null) damage(dmg, `${b.nick} (АК${head ? ", в голову" : ""})`);
+  else hitPlayer(foe.id, dmg, "АК", head, b.nick);
+}
+// План стройки: домик, стена или башня из случайного материала
+function botPlan(b) {
+  const x0 = Math.floor(b.x) + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.floor(Math.random() * 4)), z0 = Math.floor(b.z) + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.floor(Math.random() * 4));
+  const y0 = Math.round(groundHeight(x0 + 0.5, b.f + 0.5, z0 + 0.5));
+  const mat = BOT_MATS[Math.floor(Math.random() * BOT_MATS.length)], c = mat ? 0 : 1 + Math.floor(Math.random() * (COLORS.length - 1));
+  const list = [], add = (dx, dy, dz) => list.push([x0 + dx, y0 + dy, z0 + dz]), type = Math.floor(Math.random() * 3);
+  if (type === 0) {
+    for (let y = 0; y < 3; y++) for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { if (i && i < 4 && j && j < 4) continue; if (j === 0 && i === 2 && y < 2) continue; add(i, y, j); }
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) add(i, 3, j);
+  } else if (type === 1) {
+    for (let y = 0; y < 3; y++) for (let i = 0; i < 8; i++) add(i, y, 0);
+  } else {
+    for (let y = 0; y < 6; y++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { if (i === 1 && j === 1) continue; if (i === 1 && j === 0 && y < 2) continue; add(i, y, j); }
+  }
+  return { list, mat, c };
+}
+function botPlace(b) {
+  const q = b.plan.list.shift();
+  if (blocks.has(key(q[0], q[1], q[2]))) return;
+  // не ставим блок внутрь кого-то
+  const bodies = [{ x: px, f: feet, z: pz }, ...[...others.values()].map(a => ({ x: a.group.position.x, f: a.group.position.y, z: a.group.position.z }))];
+  if (bodies.some(o => Math.abs(q[0] + 0.5 - o.x) < 0.85 && Math.abs(q[2] + 0.5 - o.z) < 0.85 && q[1] + 1 > o.f && q[1] < o.f + 1.9)) { b.plan.list.push(q); return; }
+  const e = { op: "block", x: q[0], y: q[1], z: q[2], c: b.plan.c };
+  if (b.plan.mat) e.k = b.plan.mat;
+  share(e);
+  b.placed++;
+  if (b.placed >= 150) { b.done = true; b.plan = null; }
+}
+function botThink(b, dt, foes) {
+  b.fire -= dt; b.look -= dt; b.place -= dt; b.pause -= dt; b.strafeT -= dt; b.flee = Math.max(0, b.flee - dt);
+  let foe = null, fd = 1e9;
+  for (const q of foes) { const d = Math.hypot(q.x - b.x, q.z - b.z); if (d < fd) { fd = d; foe = q; } }
+  let speed = 0, head = b.yaw, side = 0;
+  if (b.flee > 0 && b.from) {  // строителя ударили — убегает
+    head = Math.atan2(-(b.x - b.from.x), -(b.z - b.from.z)); speed = 5.2;
+  } else if (b.role === "fight" && foe && fd < 32) {
+    if (b.look <= 0) { b.look = 0.3; b.see = botSees(b, foe); }
+    head = Math.atan2(-(foe.x - b.x), -(foe.z - b.z));
+    if (!b.see || fd > 14) speed = 3.8;
+    else if (fd < 6) speed = -3;
+    else { side = b.strafe; speed = 0.1; }
+    if (b.strafeT <= 0) { b.strafeT = 1.5 + Math.random() * 1.5; b.strafe = -b.strafe; }
+    if (b.see && fd < 30 && b.fire <= 0) {
+      if (b.burst <= 0) { b.burst = 3 + Math.floor(Math.random() * 3); b.fire = 0.5 + Math.random() * 0.9; }
+      else { b.burst--; b.fire = 0.14; botShoot(b, foe, fd); }
+    }
+  } else if (b.done || b.pause > 0) {  // бродит
+    if (b.wander <= 0) { b.wander = 1.5 + Math.random() * 3; b.head = Math.random() * 6.28; b.walk = Math.random() < 0.6; }
+    b.wander -= dt;
+    head = b.head; speed = b.walk ? 1.6 : 0;
+  } else {
+    if (!b.plan) b.plan = botPlan(b);
+    const q = b.plan.list[0];
+    if (!q) { b.plan = null; b.pause = 2 + Math.random() * 3; }
+    else {
+      const dx = q[0] + 0.5 - b.x, dz = q[2] + 0.5 - b.z, d = Math.hypot(dx, dz);
+      head = Math.atan2(-dx, -dz);
+      if (d > 3.8 || q[1] - b.f > 3.5) speed = 3.2;
+      else if (d < 1.6) speed = -1.5;
+      else if (b.place <= 0) { b.place = 0.35 + Math.random() * 0.3; botPlace(b); }
+    }
+  }
+  b.yaw += Math.atan2(Math.sin(head - b.yaw), Math.cos(head - b.yaw)) * Math.min(1, dt * 10);
+  const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
+  b.mx = fx * speed + -fz * side * 3; b.mz = fz * speed + fx * side * 3;
+}
+function botPhysics(b, dt) {
+  if (b.mx || b.mz) {
+    const nx = b.x + b.mx * dt, nz = b.z + b.mz * dt;
+    let blocked = false;
+    if (!hitsBlock(nx, b.f, b.z, 1.8)) b.x = nx; else blocked = true;
+    if (!hitsBlock(b.x, b.f, nz, 1.8)) b.z = nz; else blocked = true;
+    if (blocked) { b.stuck += dt; if (b.ground) b.vy = 8.5; } else b.stuck = 0;
+    if (b.stuck > 1.5) { b.stuck = 0; b.plan = null; b.wander = 0; b.pause = 1; }
+  }
+  const g = groundHeight(b.x, b.f, b.z);
+  b.vy -= GRAVITY * dt;
+  b.f += b.vy * dt;
+  if (b.f <= g) { b.f = g; b.vy = 0; b.ground = true; } else b.ground = false;
+}
+function updateBots(dt) {
+  if (!bots.size) return;
+  dt = Math.min(dt, 0.05);
+  botSync -= dt;
+  const sync = botSync <= 0, foes = botFoes(), list = [];
+  if (sync) botSync = 0.125;
+  for (const b of [...bots.values()]) {
+    botThink(b, dt, foes);
+    botPhysics(b, dt);
+    if (b.f < -DEPTH) { removeBot(b); continue; }
+    if (sync) { const p = botPose(b); updateAvatar(b.id, p); list.push({ id: b.id, p }); }
+  }
+  if (sync && list.length) online?.setBots?.(list);
 }
 
 // --- Помощники «Вкусно и точка»: ракета зовёт главного, он зовёт ещё пятерых, все строят мир из файла и исчезают.
@@ -5206,6 +5491,7 @@ function handleFx(f) {
   if (f.t === "rocket" && v3(f.o) && v3(f.d)) spawnRocket(v3(f.o), v3(f.d), false, f.tank ? TANK_SHELL : WEAPONS[f.vit ? "Базука и точка" : "Базука"]);
   if (f.t === "tnts" && Array.isArray(f.l)) for (const b of f.l.slice(0, 8)) if (Array.isArray(b) && b.length === 6 && b.every(Number.isFinite)) startPrimed(b[0], b[1], b[2], 8, false, [b[3], b[4], b[5]], true);
   if (f.t === "tnt" && [f.x, f.y, f.z].every(Number.isFinite)) startPrimed(f.x, f.y, f.z, Math.min(5, +f.f || 3), false, Array.isArray(f.v) && f.v.length === 3 && f.v.every(Number.isFinite) ? f.v : null, !!f.imp);
+  if (f.t === "bothit" && typeof f.id === "string" && bots.has(f.id) && Number.isFinite(f.dmg)) hurtBot(bots.get(f.id), Math.min(250, Math.max(0, f.dmg)));
   if (f.t === "grenade" && v3(f.o) && v3(f.v)) spawnGrenade(v3(f.o), v3(f.v), false, WEAPONS["Граната"]);
 }
 
@@ -5270,6 +5556,7 @@ function updateWeapons(dt) {
   updatePrimed(dt);
   updateBalls(dt);
   updateAnimals(dt);
+  updateBots(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
