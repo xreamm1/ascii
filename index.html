@@ -43,7 +43,7 @@
     left: 16px;
     bottom: 16px;
   }
-  #hp { left: 16px; bottom: 96px; color: #f55; pointer-events: none; display: none; }
+  #hp { left: 16px; bottom: 110px; color: #f55; pointer-events: none; display: none; }
   #ammo { left: 16px; bottom: 150px; color: #ffd84a; pointer-events: none; display: none; }
   #scope {
     position: fixed; inset: 0; pointer-events: none; display: none;
@@ -55,7 +55,7 @@
   #flash { position: fixed; inset: 0; background: #f00; opacity: 0; pointer-events: none; transition: opacity 0.4s; }
   #death {
     left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; color: #f55;
-    background: #000; display: none; pointer-events: none; font-size: 22px;
+    background: rgba(14, 14, 20, 0.9); border: 1px solid #aa4444; border-radius: 12px; padding: 14px 26px; display: none; pointer-events: none; font-size: 20px; white-space: normal;
   }
   #hotbar, #inv { white-space: normal; font-size: 14px; }
   .hbs { display: flex; gap: 2px; margin-top: 3px; }
@@ -87,37 +87,62 @@
   #schem .sact:hover { background: #333; }
   #inv .invname { margin: 8px 0 4px; min-height: 1.2em; }
   #inv .invhint { margin-top: 6px; color: #888; font-size: 12px; }
-  #palette .option { cursor: pointer; }
-  #palette .option:hover { background: #333; }
 
-  /* Окошко ввода (ник, чат, текст) в ASCII-рамке */
+  /* Общий вид окон: тёмные панели с закруглениями и кнопками */
+  #menu, #game, #admin, #palette, #inv, #schem {
+    white-space: normal; background: rgba(14, 14, 20, 0.96); border: 1px solid #3c3c4a; border-radius: 14px;
+    box-shadow: 0 12px 44px rgba(0, 0, 0, 0.65); padding: 16px 18px; color: #eee; font-size: 15px; line-height: 1.35; box-sizing: border-box;
+    max-height: 94vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #menu { width: min(92vw, 380px); } #game { width: min(92vw, 360px); } #admin { width: min(94vw, 400px); } #palette { width: min(92vw, 320px); }
+  .gt { font-size: 18px; font-weight: 700; letter-spacing: 0.08em; margin: 0 0 12px; text-align: center; }
+  .gt.big { font-size: 22px; margin-bottom: 16px; }
+  .gl { color: #a8a8b4; margin: 6px 0; }
+  .gl.note { color: #ffd84a; }
+  .gs { border-top: 1px solid #3c3c4a; margin: 12px 0 6px; padding-top: 4px; color: #8a8a98; font-size: 12px; letter-spacing: 0.1em; }
+  .gb { display: block; padding: 9px 14px; margin: 5px 0; background: #20202b; border: 1px solid #4a4a5a; border-radius: 9px; cursor: pointer; text-align: center; color: #fff; transition: background 0.1s; }
+  .gb:hover { background: #30303f; border-color: #8c8ca4; }
+  .gb:active { background: #3c3c50; }
+  .gb.small { display: inline-block; padding: 4px 10px; margin: 2px; font-size: 13px; }
+  .gb.big { padding: 13px 14px; font-size: 17px; margin: 8px 0; }
+  .gb.on { background: #24402a; border-color: #5cae66; }
+  .gb.warn { border-color: #b8584a; }
+  .gg { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; }
+  .gg .gl { margin: 0 6px 0 0; }
+  .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .gx { color: #7c7c8a; font-size: 12px; text-align: center; margin-top: 12px; }
+  .lobbyrow { display: flex; gap: 4px; align-items: center; }
+  .lobbyrow .gb:first-child { flex: 1; text-align: left; }
+  #palette .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 4px 0 8px; }
+  #palette .option { aspect-ratio: 1; border-radius: 8px; border: 2px solid #2a2a36; cursor: pointer; }
+  #palette .option:hover { border-color: #aaa; }
+  #palette .option.sel { border-color: #fff; box-shadow: 0 0 0 2px #000 inset; }
+  #palette .cname { text-align: center; min-height: 1.3em; color: #ccc; }
+  #inv, #schem { border: 1px solid #3c3c4a; }
+  .slot, .cell { border-radius: 7px; }
+  .ann { background: rgba(14, 14, 20, 0.96); border: 1px solid #ffd84a; border-radius: 12px; padding: 12px 22px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+  .ann b { display: block; font-size: 13px; letter-spacing: 0.1em; color: #ffd84a; margin-bottom: 4px; }
+  .hpb { width: 150px; height: 14px; border: 1px solid #aa4444; border-radius: 7px; background: rgba(0,0,0,0.6); overflow: hidden; margin-top: 4px; }
+  .hpb i { display: block; height: 100%; background: linear-gradient(#ff6b6b, #c93030); }
+  .hpb.god i { background: linear-gradient(#ffe066, #d9a400); }
+  #stick { width: 120px; height: 120px; border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; background: rgba(255,255,255,0.08); font-size: 0; }
+  #knob { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.6); font-size: 0; }
+
+  /* Окошко ввода (ник, чат, текст) */
   #ask {
-    position: absolute;
-    left: 50%;
-    top: 30%;
-    transform: translate(-50%, -50%);
-    background: #000;
-    color: #fff;
-    font: 16px/1 "JetBrains Mono", Consolas, "Courier New", monospace;
-    display: none;
+    position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%);
+    background: rgba(14, 14, 20, 0.97); border: 1px solid #3c3c4a; border-radius: 14px; box-shadow: 0 12px 44px rgba(0,0,0,0.65);
+    color: #fff; font: 16px/1.3 "JetBrains Mono", Consolas, "Courier New", monospace; padding: 16px 18px; width: min(92vw, 360px); box-sizing: border-box; display: none;
   }
-  #ask pre { position: static; font: inherit; }
-  #ask .row { display: flex; }
+  #askTop { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 10px; text-align: center; }
   #ask input {
-    width: 30ch;
-    padding: 0;
-    font: inherit;
-    color: inherit;
-    background: #000;
-    border: none;
-    outline: none;
+    width: 100%; box-sizing: border-box; padding: 9px 11px; font: inherit; color: #fff; background: #0c0c12; border: 1px solid #5a5a6c; border-radius: 8px; outline: none;
     /* Без этого Safari на iPhone не даёт печатать: у страницы выделение текста выключено */
-    -webkit-user-select: text;
-    user-select: text;
-    touch-action: auto;
+    -webkit-user-select: text; user-select: text; touch-action: auto;
   }
-  #ask .btn { cursor: pointer; }
-  #ask .btn:hover { background: #fff; color: #000; }
+  #ask input:focus { border-color: #fff; }
+  #ask .askbtns { display: flex; gap: 8px; margin-top: 12px; }
+  #ask .askbtns .gb { flex: 1; margin: 0; }
 
   #chat {
     left: 16px;
@@ -125,6 +150,9 @@
     max-width: 60ch;
     white-space: pre-wrap;
     pointer-events: none;
+    background: rgba(14, 14, 20, 0.5);
+    border-radius: 8px;
+    padding: 4px 10px;
   }
   .nick {
     transform: translate(-50%, -100%);
@@ -139,9 +167,8 @@
     transform: translate(-50%, -50%);
     background: #000;
   }
-  #menu .item { cursor: pointer; }
-  #menu .item:hover { background: #fff; color: #000; }
-  #lobby { left: 16px; top: 16px; pointer-events: none; }
+  #lobby { left: 16px; top: 16px; pointer-events: none; background: rgba(14, 14, 20, 0.65); border-radius: 8px; padding: 4px 10px; }
+  #lobby:empty, #chat:empty { display: none; }
   #admin {
     left: 50%;
     top: 50%;
@@ -152,24 +179,26 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
-  #admin .act { cursor: pointer; }
-  #admin .act:hover { background: #fff; color: #000; }
   #hint {
     left: 50%;
     top: 60%;
     transform: translate(-50%, -50%);
     pointer-events: none;
     display: none;
+    background: rgba(14, 14, 20, 0.75);
+    border-radius: 10px;
+    padding: 8px 16px;
   }
   #announce {
     left: 50%;
     top: 18%;
     transform: translate(-50%, -50%);
-    background: #000;
-    color: #ffd84a;
+    color: #fff;
     font-size: 20px;
     pointer-events: none;
     display: none;
+    white-space: normal;
+    max-width: 90vw;
   }
   .nick.dev { color: #ffd84a !important; }
   #game {
@@ -179,8 +208,6 @@
     background: #000;
     display: none;
   }
-  #game .act { cursor: pointer; }
-  #game .act:hover { background: #fff; color: #000; }
   /* Пока открыто меню, игровой интерфейс прячем */
   body.in-menu #hotbar, body.in-menu #hp, body.in-menu #ammo, body.in-menu #touch, body.in-menu #crosshair, body.in-menu #chat { display: none; }
 
@@ -200,9 +227,11 @@
   @media (orientation: portrait) { #touch .row.bottom { bottom: 90px; } }
   #touch .button {
     position: static;
-    padding: 8px 10px;
-    border: 2px solid #fff;
-    background: rgba(0, 0, 0, 0.6);
+    padding: 9px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 12px;
+    background: rgba(14, 14, 20, 0.62);
+    font-size: 13px;
   }
   #touch .button.big { padding: 14px 18px; }
   #touch .button.active { color: #000; background: #fff; }
@@ -213,7 +242,7 @@
     pointer-events: none;
   }
   @media (pointer: coarse) {
-    pre, #ask { font-size: 13px; }
+    pre, #ask { font-size: 14px; }
     #touch { display: block; }
   }
 </style>
@@ -248,11 +277,9 @@
 <div id="labels"></div>
 <pre id="menu"></pre>
 <div id="ask">
-  <pre id="askTop"></pre>
-  <div class="row"><pre>║ </pre><input id="askInput" enterkeyhint="done" autocomplete="off"><pre> ║</pre></div>
-  <pre>╟────────────────────────────────╢
-║ <span class="btn" data-a="ok">[ ГОТОВО ]</span>          <span class="btn" data-a="cancel">[ ОТМЕНА ]</span> ║
-╚════════════════════════════════╝</pre>
+  <div id="askTop"></div>
+  <input id="askInput" enterkeyhint="done" autocomplete="off">
+  <div class="askbtns"><span class="gb btn" data-a="ok">Готово</span><span class="gb btn" data-a="cancel">Отмена</span></div>
 </div>
 <div id="touch">
   <div class="row top">
@@ -273,12 +300,8 @@
     <pre class="button big" data-action="crouch">СЕСТЬ</pre>
     <pre class="button big" data-action="jump">ПРЫЖОК</pre>
   </div>
-  <pre id="stick">  .---.
- /     \
-|       |
- \     /
-  '---'</pre>
-  <pre id="knob">@</pre>
+  <pre id="stick"></pre>
+  <pre id="knob"></pre>
 </div>
 <!-- Библиотеки для связи без интернета: qrcode-generator (MIT, Kazuhiko Arase) рисует QR, jsQR (Apache-2.0, Cosmo Wolfe) читает QR с камеры -->
 <script>
@@ -1685,8 +1708,8 @@ function drawHp() {
   const show = gameMode === "survival" && inGame;
   hpEl.style.display = show ? "block" : "none";
   if (!show) return;
-  const t = isGod() ? "♥ БОГ\n" + "█".repeat(10) : `♥ ${Math.max(0, Math.ceil(hp))}\n` + (isGod() ? "" : "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10)));
-  if (t !== lastHpText) { lastHpText = t; hpEl.textContent = t; }
+  const god = isGod(), v = Math.max(0, Math.ceil(hp)), t = god ? "god" : v;
+  if (t !== lastHpText) { lastHpText = t; hpEl.innerHTML = `<span>♥ ${god ? "БОГ" : v}</span><div class="hpb${god ? " god" : ""}"><i style="width:${god ? 100 : Math.min(100, v / MAX_HP * 100)}%"></i></div>`; }
 }
 
 // Урон: в творческом режиме его нет. by — кто виноват (для сообщения о гибели)
@@ -2247,7 +2270,7 @@ function update(dt) {
     camera.rotation.set(0.9, yaw, 0.3);
     const left = Math.ceil((respawnAt - performance.now()) / 1000);
     deathEl.style.display = "block";
-    deathEl.textContent = `ТЫ ПОГИБ\nвозрождение через ${Math.max(left, 0)}`;
+    deathEl.innerHTML = `<b>ТЫ ПОГИБ</b><br>возрождение через ${Math.max(left, 0)}`;
     if (left <= 0) respawn();
     return;
   }
@@ -2986,19 +3009,10 @@ function drawInventory() {
 }
 
 function drawPalette() {
-  const W = 22;  // ширина внутри рамки
-  let html = "╔" + "═".repeat(W) + "╗\n";
-  html += "║" + "ПАЛИТРА".padStart(14).padEnd(W) + "║\n";
-  html += "╟" + "─".repeat(W) + "╢\n";
-  COLORS.forEach((c, i) => {
-    const text = ` ${i === color ? "►" : " "} ${c.name}`.padEnd(W - 4);
-    html += `║ <span class="option" data-color="${i}"><span style="color:${rgb(i)}">██</span>${text}</span> ║\n`;
-  });
-  html += "╟" + "─".repeat(W) + "╢\n";
-  html += "║" + (TOUCH ? " ЦВЕТ — закрыть" : " F — закрыть").padEnd(W) + "║\n";
-  html += "╚" + "═".repeat(W) + "╝";
-  palette.innerHTML = html;
+  palette.innerHTML = `${gtitle("ПАЛИТРА")}<div class="swatches">${COLORS.map((c, i) => `<div class="option${i === color ? " sel" : ""}" data-color="${i}" title="${c.name}" style="background:${rgb(i)}"></div>`).join("")}</div>
+<div class="cname" id="cname">${COLORS[color].name}</div><div class="gx">${TOUCH ? "ЦВЕТ — закрыть" : "F — закрыть"}</div>`;
 }
+palette.addEventListener("mouseover", e => { const o = e.target.closest(".option"), el = document.getElementById("cname"); if (o && el) el.textContent = COLORS[Number(o.dataset.color)].name; });
 
 // Палитра и админ-меню открываются одинаково: мышь освобождается, игра ждёт
 let panel = null;  // какая панель открыта
@@ -3056,8 +3070,7 @@ function ask(title, value = "", maxLength = 40, secret = false) {
   typing = true;
   for (const k in keys) keys[k] = false;  // чтобы игрок не продолжил идти сам
   if (document.pointerLockElement) document.exitPointerLock();  // лишний вызов вызывает ложное событие
-  const t = ` ${title} `;
-  askTop.textContent = "╔" + t.padStart(17 + t.length / 2, "═").padEnd(32, "═") + "╗";
+  askTop.textContent = title;
   askInput.value = value;
   askInput.maxLength = maxLength;
   askInput.type = secret ? "password" : "text";
@@ -3811,12 +3824,7 @@ function leave(note) {
 const announceEl = document.getElementById("announce");
 let announceTimer = 0;
 function showAnnouncement(text, by) {
-  const t = by ? ` ОБЪЯВЛЕНИЕ от ${by} ` : " ОБЪЯВЛЕНИЕ ";
-  const w = Math.max(24, text.length + 2, t.length + 2);
-  announceEl.textContent =
-    "╔" + t.padStart(w / 2 + t.length / 2, "═").padEnd(w, "═") + "╗\n" +
-    "║ " + text.padEnd(w - 2) + " ║\n" +
-    "╚" + "═".repeat(w) + "╝";
+  announceEl.innerHTML = `<div class="ann"><b>ОБЪЯВЛЕНИЕ${by ? " ОТ " + esc(by.toUpperCase()) : ""}</b>${esc(text)}</div>`;
   announceEl.style.display = "block";
   addChat(`[Объявление${by ? " от " + by : ""}] ${text}`);
   clearTimeout(announceTimer);
@@ -4011,16 +4019,10 @@ function clearMapLocal() {
 let clearArmed = 0;  // до какого момента (мс) кнопка очистки ждёт второго нажатия
 let trollPage = false, trollTarget = "all", trollNo = 0;  // trollNo — страница списка шуток  // цель шуток: "all", "me" или id игрока
 function drawTroll() {
-  const W = 34;
-  const row = (text, act) => {
-    const t = text.slice(0, W - 2);
-    return "║ " + (act ? `<span class="act" data-a="${esc(act)}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
-  };
-  const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
   const who = trollTarget === "all" ? "все" : trollTarget === "me" ? "я (проверка)" : others.get(trollTarget)?.nick || "?";
-  adminEl.innerHTML = ["╔" + title("ТРОЛЛЬ", "═") + "╗", row(`[ цель: ${who} ]`, "trtarget"), "╟" + title("", "─") + "╢",
-    ...TROLLS.slice(trollNo * 12, trollNo * 12 + 12).map(([id, name]) => row(`[ ${name} ]`, "tr:" + id)),
-    "╟" + title("", "─") + "╢", row(`[ страница ${trollNo + 1}/${Math.ceil(TROLLS.length / 12)} — дальше ]`, "trnext"), row("[ назад ]", "trback"), "╚" + title("", "═") + "╝"].join("\n");
+  adminEl.innerHTML = gtitle("ТРОЛЛЬ") + gbtn(`цель: ${who}`, "trtarget", "on") + gsep() +
+    `<div class="gcols">${TROLLS.slice(trollNo * 12, trollNo * 12 + 12).map(([id, name]) => gbtn(name, "tr:" + id)).join("")}</div>` +
+    gsep() + gbtn(`страница ${trollNo + 1}/${Math.ceil(TROLLS.length / 12)} — дальше`, "trnext") + gbtn("назад", "trback");
 }
 function sendTroll(type, text) {
   if (!TROLLS.some(t => t[0] === type)) return;
@@ -4037,38 +4039,36 @@ const adminEl = document.getElementById("admin");
 
 function drawAdmin() {
   if (trollPage && isDev) return drawTroll();
-  const W = 34;
-  const row = (text, act) => {
-    const t = text.slice(0, W - 2);
-    return "║ " + (act ? `<span class="act" data-a="${esc(act)}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
-  };
-  const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
+  const row = (text, act) => act ? gbtn(text, act, /ВКЛ/.test(text) ? "on" : /ЗАПРЕЩЕНО|ТОЧНО/.test(text) ? "warn" : "") : glabel(text);
+  const two = list => `<div class="gcols">${list.join("")}</div>`;
   const views = { first: "от 1-го лица", third: "от 3-го лица", free: "свободная камера", drone: "FPV дрон" };
-  const rows = ["╔" + title("АДМИН", "═") + "╗",
-    row(`[ полёт: ${flying ? "ВКЛ" : "выкл"} ]`, "fly"),
-    row(`[ вид от 3-го лица: ${camMode === "third" ? "ВКЛ" : "выкл"} ]`, "third"),
-    row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"),
-    row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone"),
-    "║ " + `размер x${size}`.padEnd(14) + `<span class="act" data-a="smaller">[ - ]</span> <span class="act" data-a="bigger">[ + ]</span>` + " ".repeat(W - 1 - 25) + "║",
-    row(`сейчас: ${views[camMode]}`),
-    row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis"),
-    row("[ телепорт по координатам ]", "tpxyz"),
-    ...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))];
+  const rows = [gtitle("АДМИН"), gsep("ПЕРСОНАЖ"),
+    two([row(`[ полёт: ${flying ? "ВКЛ" : "выкл"} ]`, "fly"), row(`[ невидимость: ${asInvis ? "ВКЛ" : "выкл"} ]`, "invis")]),
+    `<div class="gg"><span class="gl">размер x${size}</span>${gbtn("−", "smaller", "small")}${gbtn("+", "bigger", "small")}</div>`,
+    two(Object.entries(BALL_TYPES).map(([t, b]) => row(`[ стать ${b.name}: ${asBall === t ? "ВКЛ" : "выкл"} ]`, "ball:" + t))),
+    row("[ телепорт по координатам ]", "tpxyz"), gsep("КАМЕРА"),
+    two([row(`[ вид от 3-го лица: ${camMode === "third" ? "ВКЛ" : "выкл"} ]`, "third"), row(`[ свободная камера: ${camMode === "free" ? "ВКЛ" : "выкл"} ]`, "free"), row(`[ FPV drone: ${camMode === "drone" ? "ВКЛ" : "выкл"} ]`, "drone")]),
+    glabel(`сейчас: ${views[camMode]}`)];
   if (online) {
-    rows.push(row("[ объявление ]", "announce"));
-    if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row("[ схематика (M) ]", "schem"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), ...BAN_TABS.map(t => row(`[ ${t.toLowerCase()}: ${banned.has(t) ? "ЗАПРЕЩЕНО" : "можно"} ]`, "ban:" + t)), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
+    rows.push(gsep("ЛОББИ"), row("[ объявление ]", "announce"));
+    if (isDev) {
+      rows.push(...Object.entries(BALL_TYPES).map(([t, b]) => row(`[ удалить половину ${b.name} ]`, "half:" + t)),
+        two([row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"),
+          row("[ ботов по всей карте ]", "scatterbots"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), row("[ схематика (M) ]", "schem"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu")]),
+        gsep("ЗАПРЕТЫ ДЛЯ ИГРОКОВ"), two(BAN_TABS.map(t => row(`[ ${t.toLowerCase()}: ${banned.has(t) ? "ЗАПРЕЩЕНО" : "можно"} ]`, "ban:" + t))),
+        ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), gsep("ИГРОКИ"));
+    }
     const people = [...others].filter(([id]) => !isNpc(id));
-    if (isDev && !people.length) rows.push(row("в лобби больше никого"));
+    if (isDev && !people.length) rows.push(glabel("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
-      const adm = adminIds[id] ? "[-адм]" : "[+адм]";
-      rows.push(row(`${a.nick}${prefixes[id] ? ` [${prefixes[id]}]` : ""}${adminIds[id] ? " *" : ""} x${a.size || 1}`),
-        "║ " + `<span class="act" data-a="kick:${esc(id)}">[кик]</span> <span class="act" data-a="ban:${esc(id)}">[бан]</span> <span class="act" data-a="adm:${esc(id)}">${adm}</span> <span class="act" data-a="pre:${esc(id)}">[преф]</span>` + " ".repeat(W - 1 - 25) + "║",
-        "║ " + `<span class="act" data-a="tpto:${esc(id)}">[к нему]</span> <span class="act" data-a="tpme:${esc(id)}">[ко мне]</span> <span class="act" data-a="sz-:${esc(id)}">[-]</span><span class="act" data-a="sz+:${esc(id)}">[+]</span> <span class="act" data-a="god:${esc(id)}">${godIds[id] ? "[-бог]" : "[+бог]"}</span>` + " ".repeat(W - 1 - 31) + "║");
+      const i = esc(id);
+      rows.push(`<div class="gl"><b>${esc(a.nick)}</b>${prefixes[id] ? ` [${esc(prefixes[id])}]` : ""}${adminIds[id] ? " · админ" : ""} · x${a.size || 1}</div>`,
+        `<div class="gg">${gbtn("кик", "kick:" + id, "small warn")}${gbtn("бан", "ban:" + id, "small warn")}${gbtn(adminIds[id] ? "− адм" : "+ адм", "adm:" + id, "small")}${gbtn("преф", "pre:" + id, "small")}</div>`,
+        `<div class="gg">${gbtn("к нему", "tpto:" + id, "small")}${gbtn("ко мне", "tpme:" + id, "small")}${gbtn("−", "sz-:" + id, "small")}${gbtn("+", "sz+:" + id, "small")}${gbtn(godIds[id] ? "− бог" : "+ бог", "god:" + id, "small")}</div>`);
     }
   }
-  rows.push("╟" + title("", "─") + "╢", row(TOUCH ? "АДМИН — закрыть" : "P — закрыть"), "╚" + title("", "═") + "╝");
-  adminEl.innerHTML = rows.join("\n");
+  rows.push(`<div class="gx">${TOUCH ? "АДМИН — закрыть" : "P — закрыть"}</div>`);
+  adminEl.innerHTML = rows.join("");
 }
 
 adminEl.addEventListener("click", e => {
@@ -4238,63 +4238,40 @@ let menuNote = "";         // подсказка внизу: "загрузка�
 // Всё, что пришло из сети (названия лобби), экранируем, прежде чем вставить в HTML меню
 const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
-const MW = 40;  // ширина меню внутри рамки
-function line(text = "", act) {
-  const t = text.slice(0, MW - 2);
-  const body = act ? `<span class="item" data-act="${esc(act)}">${esc(t)}</span>` : esc(t);
-  return "║ " + body + " ".repeat(MW - 1 - t.length) + "║";
-}
-function title(t, l = "═") {
-  const s = t ? ` ${t} ` : "";
-  return s.padStart(MW / 2 + s.length / 2, l).padEnd(MW, l);
-}
-
-// Подсказка может быть длинной — режем её на строки по ширине меню
-const noteLines = () => menuNote.match(new RegExp(`.{1,${MW - 2}}`, "g")).map(t => line(t));
+// Кнопки и строки окон. Текст вида «[ готово ]» показываем без скобок
+const unbracket = t => String(t).replace(/^\[\s*|\s*\]$/g, "");
+const gbtn = (text, act, cls = "", attr = "data-a") => `<span class="gb ${cls}" ${attr}="${esc(act)}">${esc(unbracket(text))}</span>`;
+const mbtn = (text, act, cls = "") => gbtn(text, act, "item " + cls, "data-act");
+const glabel = t => `<div class="gl">${esc(t)}</div>`;
+const gsep = (t = "") => `<div class="gs">${esc(t)}</div>`;
+const gtitle = (t, cls = "") => `<div class="gt ${cls}">${esc(t)}</div>`;
 
 function drawMenu() {
-  const rows = [];
+  let h = "";
+  const note = menuNote ? `<div class="gl note">${esc(menuNote)}</div>` : "";
   if (menuScreen === "main") {
-    rows.push("╔" + title("ASCII BASEPLATE") + "╗", line(),
-      line("[ ОДИНОЧНАЯ ИГРА ]", "single"), line(),
-      line("[ СЕТЕВАЯ ИГРА ]", "online"), line(),
-      line("[ ИГРА БЕЗ ИНТЕРНЕТА ]", "p2p"), line(),
-      line(`[ ГРАФИКА: ${gfxName()} ]`, "gfx"), line());
-    if (requestFullscreen) rows.push(line("[ ПОЛНЫЙ ЭКРАН ]", "fullscreen"), line());
-    if (menuNote) rows.push(...noteLines(), line());
-    rows.push("╚" + title("") + "╝");
+    h = gtitle("ASCII BASEPLATE", "big") + mbtn("ОДИНОЧНАЯ ИГРА", "single", "big") + mbtn("СЕТЕВАЯ ИГРА", "online", "big") + mbtn("ИГРА БЕЗ ИНТЕРНЕТА", "p2p", "big") +
+      mbtn(`ГРАФИКА: ${gfxName()}`, "gfx") + (requestFullscreen ? mbtn("ПОЛНЫЙ ЭКРАН", "fullscreen") : "") + note;
   } else if (menuScreen === "p2p") {
-    rows.push("╔" + title("БЕЗ ИНТЕРНЕТА") + "╗", line(),
-      line("Игра вдвоём напрямую, интернет не"), line("нужен (можно в самолёте)."), line(),
-      line("[ СОЗДАТЬ ИГРУ ]", "p2phost"), line("[ ПОДКЛЮЧИТЬСЯ К ДРУГУ ]", "p2pjoin"), line(),
-      line("Нужна общая сеть: хотспот одного"), line("телефона ИЛИ его Bluetooth-модем."), line("Подробнее — в README."), line());
-    if (menuNote) rows.push(...noteLines(), line());
-    rows.push("╟" + title("", "─") + "╢", line("[ НАЗАД ]", "back"), "╚" + title("") + "╝");
+    h = gtitle("БЕЗ ИНТЕРНЕТА") + glabel("Игра вдвоём и больше напрямую, интернет не нужен (можно в самолёте).") + mbtn("СОЗДАТЬ ИГРУ", "p2phost", "big") + mbtn("ПОДКЛЮЧИТЬСЯ К ДРУГУ", "p2pjoin", "big") +
+      glabel("Нужна общая сеть: хотспот одного телефона или его Bluetooth-модем. Подробнее в README.") + note + mbtn("НАЗАД", "back");
   } else if (menuScreen === "mode") {
-    rows.push("╔" + title("РЕЖИМ ИГРЫ") + "╗", line(),
-      line("[ ТВОРЧЕСКИЙ ]", "mode:creative"), line("строй и летай, урона нет"), line(),
-      line("[ ОБЫЧНЫЙ ]", "mode:survival"), line("есть HP, можно погибнуть"), line(),
-      "╟" + title("", "─") + "╢", line("[ НАЗАД ]", "backmode"), "╚" + title("") + "╝");
+    h = gtitle("РЕЖИМ ИГРЫ") + mbtn("ТВОРЧЕСКИЙ", "mode:creative", "big") + glabel("строй и летай, урона нет") + mbtn("ОБЫЧНЫЙ", "mode:survival", "big") + glabel("есть HP, можно погибнуть") + mbtn("НАЗАД", "backmode");
   } else {
-    rows.push("╔" + title("СЕТЕВАЯ ИГРА") + "╗", line(),
-      line(`Ник: ${nick}`), line("[ сменить ник ]", "nick"), line());
-    if (!FIREBASE_CONFIG) {
-      rows.push(line("Сетевая игра ещё не настроена:"), line("нужны настройки Firebase."));
-    } else {
-      rows.push(...(isDev ? [line("[ СОЗДАТЬ ЛОББИ ]", "create")] : []), line("[ ВОЙТИ ПО КОДУ ]", "code"), "╟" + title("ЛОББИ", "─") + "╢");
-      if (!lobbyList.length) rows.push(line("пока пусто — создай своё лобби"));
+    h = gtitle("СЕТЕВАЯ ИГРА") + `<div class="gg"><span class="gl">Ник: ${esc(nick)}</span>${mbtn("сменить", "nick", "small")}</div>`;
+    if (!FIREBASE_CONFIG) h += glabel("Сетевая игра ещё не настроена: нужны настройки Firebase.");
+    else {
+      h += (isDev ? mbtn("СОЗДАТЬ ЛОББИ", "create", "big") : "") + mbtn("ВОЙТИ ПО КОДУ", "code") + gsep("ЛОББИ");
+      if (!lobbyList.length) h += glabel("пока пусто — создай своё лобби");
       const canDelete = isDev;  // кнопки только у вошедшего по паролю; сервер всё равно проверит
       for (const l of lobbyList) {
-        const text = `${l.code} ${l.name.slice(0, canDelete ? 8 : 16).padEnd(canDelete ? 8 : 16)} ${String(l.players).padStart(2)}ч ${ACCESS_NAME[l.access].slice(0, 3).padEnd(3)}`;
-        if (!canDelete) { rows.push(line(text, "join:" + l.code)); continue; }
-        rows.push("║ " + `<span class="item" data-act="join:${esc(l.code)}">${esc(text)}</span> ` +
-          `<span class="item" data-act="ren:${esc(l.code)}">[имя]</span><span class="item" data-act="acc:${esc(l.code)}">[дост]</span><span class="item" data-act="del:${esc(l.code)}">[x]</span>` + " ".repeat(MW - 16 - text.length) + "║");
+        const text = `${l.code}  ${l.name.slice(0, 16)}  ${l.players} чел.  ${ACCESS_NAME[l.access]}`;
+        h += `<div class="lobbyrow">${mbtn(text, "join:" + l.code)}${canDelete ? mbtn("имя", "ren:" + l.code, "small") + mbtn("доступ", "acc:" + l.code, "small") + mbtn("×", "del:" + l.code, "small warn") : ""}</div>`;
       }
     }
-    if (menuNote) rows.push(line(), ...noteLines());
-    rows.push("╟" + title("", "─") + "╢", line("[ НАЗАД ]", "back"), "╚" + title("") + "╝");
+    h += note + mbtn("НАЗАД", "back");
   }
-  menuEl.innerHTML = rows.join("\n");
+  menuEl.innerHTML = h;
 }
 
 menuEl.addEventListener("click", e => {
@@ -4501,7 +4478,7 @@ p2pEl.id = "p2p";
 document.head.append(Object.assign(document.createElement("style"), { textContent: "#p2p > * { flex-shrink: 0; } #p2p > :first-child { margin-top: auto; } #p2p > :last-child { margin-bottom: auto; }" }));
 p2pEl.style.cssText = "position:fixed;inset:0;z-index:80;display:none;flex-direction:column;align-items:center;gap:10px;background:#000;color:#fff;text-align:center;padding:12px;overflow:auto;font-size:14px;line-height:1.3";
 document.body.append(p2pEl);
-const p2pBtn = (act, text) => `<button data-p2p="${act}" style="font:inherit;color:#fff;background:#222;border:1px solid #fff;padding:8px 14px;margin:2px;cursor:pointer">${text}</button>`;
+const p2pBtn = (act, text) => `<button data-p2p="${act}" class="gb" style="display:inline-block;font:inherit;margin:3px">${unbracket(text)}</button>`;
 function p2pShow(html) { p2pEl.innerHTML = html; p2pEl.style.display = "flex"; }
 function p2pHide() { p2pEl.style.display = "none"; p2pEl.innerHTML = ""; }
 // Ждём нажатия кнопки внутри оверлея; возвращает { act, text } (text — содержимое поля ввода, если есть)
@@ -4950,24 +4927,12 @@ function updateWorld(dt) {
 const gameEl = document.getElementById("game");
 
 function drawGameMenu() {
-  const W = 34;
-  const row = (text, act) => {
-    const t = text.slice(0, W - 2);
-    return "║ " + (act ? `<span class="act" data-a="${act}">${esc(t)}</span>` : esc(t)) + " ".repeat(W - 1 - t.length) + "║";
-  };
-  const title = (t, l) => (t ? ` ${t} ` : "").padStart(W / 2 + (t ? t.length + 2 : 0) / 2, l).padEnd(W, l);
-  gameEl.innerHTML = ["╔" + title("ПАУЗА", "═") + "╗",
-    row("[ продолжить ]", "resume"),
-    row(`[ графика: ${gfxName()} ]`, "gfx"),
-    row("[ экспорт мира ]", "export"),
-    ...(!online || isDev ? [row("[ импорт мира ]", "import")] : []),
-    ...(online && lobbyCode !== "P2P" ? [row("[ ссылка-приглашение ]", "invite")] : []),
-    ...(online && lobbyCode === "P2P" && p2p.role === "host" && p2p.peers.size < 3 ? [row("[ добавить друга ]", "addfriend")] : []),
-    ...(online && isDev && lobbyCode !== "P2P" ? [row("[ переименовать лобби ]", "renlobby"), row(`[ доступ: ${ACCESS_NAME[lobbyAccess]} ]`, "acclobby")] : []),
-    row("[ выйти в главное меню ]", "exit"),
-    "╟" + title("", "─") + "╢",
-    row(TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"),
-    "╚" + title("", "═") + "╝"].join("\n");
+  gameEl.innerHTML = gtitle("ПАУЗА") + gbtn("продолжить", "resume", "big") + gbtn(`графика: ${gfxName()}`, "gfx") + gbtn("экспорт мира", "export") +
+    (!online || isDev ? gbtn("импорт мира", "import") : "") +
+    (online && lobbyCode !== "P2P" ? gbtn("ссылка-приглашение", "invite") : "") +
+    (online && lobbyCode === "P2P" && p2p.role === "host" && p2p.peers.size < 3 ? gbtn("добавить друга", "addfriend") : "") +
+    (online && isDev && lobbyCode !== "P2P" ? gbtn("переименовать лобби", "renlobby") + gbtn(`доступ: ${ACCESS_NAME[lobbyAccess]}`, "acclobby") : "") +
+    gbtn("выйти в главное меню", "exit", "warn") + `<div class="gx">${TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"}</div>`;
 }
 // ---------- Экспорт и импорт мира: файл .baseAscii (обычный JSON со списком предметов) ----------
 
