@@ -3528,7 +3528,13 @@ async function joinLobby(code, me) {
     ban: id => Promise.all([set(ref(db, `bans/${code}/${id}`), { nick: others.get(id)?.nick || "", t: Date.now() }), remove(ref(db, `players/${code}/${id}`)), remove(ref(db, `lobbyInfo/${code}/online/${id}`))])
       .catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
     // Убирает тех, кто числится в игре, но не в сети (вкладку закрыли, а запись осталась)
-    clearWorld: () => remove(ref(db, `world/${code}`)).catch(() => addChat("* не вышло: обнови правила базы в Firebase")),
+    // Сначала пробуем убрать весь раздел разом; если база не берёт (слишком много данных) — стираем по частям
+    clearWorld: async keys => {
+      try { await remove(ref(db, `world/${code}`)); return; } catch {}
+      try {
+        for (let i = 0; i < keys.length; i += 500) await update(ref(db, `world/${code}`), Object.fromEntries(keys.slice(i, i + 500).map(k => [k, null])));
+      } catch (err) { addChat(`* очистка не вышла: ${err.code || err.message}`); }
+    },
     cleanGhosts: async () => {
       const [players, onSnap] = await Promise.all([get(ref(db, `players/${code}`)), get(ref(db, `lobbyInfo/${code}/online`))]);
       const on = onSnap.val() || {};
@@ -3875,8 +3881,9 @@ adminEl.addEventListener("click", e => {
   if (a === "clearmap") {
     if (clearArmed > performance.now()) {
       clearArmed = 0;
+      const keys = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e)))].map(worldKey).concat([...dug].map(k => "d" + k.split(",").join("_")));
       clearMapLocal();
-      online?.clearWorld();
+      online?.clearWorld(keys);
       addChat("* карта очищена");
     } else { clearArmed = performance.now() + 5000; setTimeout(() => { if (panel === adminEl) drawAdmin(); }, 5100); }
   }
