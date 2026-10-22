@@ -782,7 +782,7 @@ function edit(e, replace = false) {
   if (e.op === "animal" && ANIMALS[e.t]) {
     const m = animals.get(e.id);
     if (!m) {
-      const mesh = new THREE.Mesh(ANIMALS[e.t].geo, vmaterial(plainTex, 0));
+      const mesh = new THREE.Mesh(ANIMALS[e.t].geo, animalMat);
       mesh.position.set(e.x, e.y, e.z);
       mesh.rotation.y = e.yaw || 0;
       mesh.userData.sim = { owned: e.o === myId, timer: 0, heading: e.yaw || 0, walk: 0, vy: 0, send: 0, moving: false, bob: Math.random() * 6 };
@@ -1233,6 +1233,32 @@ const ANIMALS = {
 };
 const ANIMAL_BY_ITEM = Object.fromEntries(Object.entries(ANIMALS).map(([k, a]) => [a.name, k]));
 const animals = new Map();
+const animalMat = new THREE.MeshLambertMaterial({ vertexColors: true });  // все части покрашены сами; без своего шейдера, чтобы шло на любом телефоне
+const ANIMAL_HP = { pig: 12, cow: 16, sheep: 10, chicken: 4, dog: 12 };
+const rayBox = new THREE.Box3(), rayPt = new THREE.Vector3();
+// Какое животное задел луч (ближе maxDist): { m, dist, point } или null. Коробка с запасом: животные маленькие
+function rayAnimal(origin, dir, maxDist) {
+  let best = null;
+  const ray = new THREE.Ray(origin, dir);
+  for (const m of animals.values()) {
+    const h = ANIMALS[m.userData.edit.t].h;
+    rayBox.setFromCenterAndSize(new THREE.Vector3(m.position.x, m.position.y + h / 2, m.position.z), new THREE.Vector3(1.0, h + 0.2, 1.0));
+    const pt = ray.intersectBox(rayBox, rayPt);
+    if (!pt) continue;
+    const d = origin.distanceTo(pt);
+    if (d < maxDist && (!best || d < best.dist)) best = { m, dist: d, point: pt.clone() };
+  }
+  return best;
+}
+// Урон животному от оружия: у каждого есть запас здоровья, при нуле оно исчезает у всех
+function hurtAnimal(m, dmg) {
+  const s = m.userData.sim, e = m.userData.edit;
+  s.hp ??= ANIMAL_HP[e.t] || 10;
+  s.hp -= dmg;
+  addImpact(m.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+  s.timer = 0;
+  if (s.hp <= 0) { share(undo(e)); addChat(`* ${ANIMALS[e.t].name} убита`); }
+}
 // Самолёт: смотрит в -z, начало координат — центр фюзеляжа
 const planeGeo = mergeParts([...P(0xf2f2f2, box(0.9, 0.9, 5.2, 0, 0, 0.2), box(8, 0.14, 1.5, 0, 0.05, 0.2), box(2.6, 0.1, 0.8, 0, 0.25, 2.55)),
   ...P(0xcc2a2a, box(0.76, 0.76, 0.7, 0, 0, -2.5), box(0.14, 1.2, 0.9, 0, 0.8, 2.45), box(0.7, 0.16, 1.5, -3.65, 0.06, 0.2), box(0.7, 0.16, 1.5, 3.65, 0.06, 0.2)),
@@ -4852,6 +4878,8 @@ function tryFire() {
 
 function meleeHit(n, W) {
   const { target } = rayTarget(camera.position.clone(), camDir(), W.range);
+  const an = rayAnimal(camera.position.clone(), camDir(), Math.min(W.range, target ? target.dist : Infinity));
+  if (an) return hurtAnimal(an.m, W.dmg);
   if (target) { online?.hit(target.id, W.dmg, n, false); addImpact(target.point); }
 }
 
@@ -4865,9 +4893,11 @@ function fireGun(n, W) {
     dir.x += (Math.random() - 0.5) * spread * 2; dir.y += (Math.random() - 0.5) * spread * 2; dir.z += (Math.random() - 0.5) * spread * 2;
     dir.normalize();
     const { target, wallDist } = rayTarget(o, dir, W.range);
-    const end = o.clone().addScaledVector(dir, target ? target.dist : Math.min(wallDist, W.range));
+    const an = rayAnimal(o, dir, Math.min(wallDist, target ? target.dist : Infinity, W.range));
+    const end = o.clone().addScaledVector(dir, an ? an.dist : target ? target.dist : Math.min(wallDist, W.range));
     ends.push(end);
     spawnTracer(from, end);
+    if (an) { hurtAnimal(an.m, W.dmg); continue; }
     if (target) {
       const d = target.head ? W.dmg * 2 : W.dmg, prev = dmgById.get(target.id);
       dmgById.set(target.id, { dmg: (prev?.dmg || 0) + d, head: prev?.head || target.head });
