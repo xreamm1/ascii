@@ -66,6 +66,10 @@
     background: #000;
     display: none;
   }
+  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; }
+  #inv .tab, #inv .cell, #inv .slot { cursor: pointer; }
+  #inv .tab.on { background: #fff; color: #000; }
+  #inv .cell:hover, #inv .tab:hover { background: #333; }
   #palette .option { cursor: pointer; }
   #palette .option:hover { background: #333; }
 
@@ -216,6 +220,7 @@
 <div id="flash"></div>
 <pre id="death"></pre>
 <pre id="palette"></pre>
+<pre id="inv"></pre>
 <pre id="chat"></pre>
 <pre id="lobby"></pre>
 <pre id="admin"></pre>
@@ -239,6 +244,7 @@
     <pre class="button" data-action="car">МАШИНА</pre>
     <pre class="button" data-action="chat">ЧАТ</pre>
     <pre class="button" data-action="color">ЦВЕТ</pre>
+    <pre class="button" data-action="inv">ИНВ</pre>
   </div>
   <div class="row bottom">
     <pre class="button big" data-weapon data-action="fire" style="display: none">ОГОНЬ</pre>
@@ -302,8 +308,8 @@ const COLORS = [
   { name: "Небесный",   rgb: [140, 200, 255] },
 ];
 
-// Панель предметов: блок, доска, текст, остальные слоты пустые
-const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
+// Все предметы игры. Хотбар (9 слотов) собирается из них в инвентаре (E)
+const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
   "Верити", "Жирити",
@@ -312,7 +318,15 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Огниво", "ТНТ", "Трамплин", "Танк",
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
-  "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
+  "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"].filter(Boolean);
+const BAR_SIZE = 9;
+const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
+const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("bar")); } catch {}
+  return Array.from({ length: BAR_SIZE }, (_, i) => Array.isArray(saved) ? (ITEMS.includes(saved[i]) ? saved[i] : null) : DEFAULT_BAR[i]);
+})();
+const saveBar = () => { try { localStorage.setItem("bar", JSON.stringify(HOTBAR)); } catch {} };
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 // Слабые телефоны: определяем по видеочипу (его имя отдаёт браузер) и по модели. Данные из характеристик:
@@ -2496,34 +2510,7 @@ function use(action, screen) {
 
 // ---------- Управление с клавиатуры и мыши ----------
 
-// В панели 5 слотов, остальные предметы — на следующей странице (Tab или нажатие на «стр»)
-const PAGE = 5, PAGES = Math.ceil(HOTBAR.length / PAGE);
-const SECRET = PAGES - 1;  // последняя страница — прочные блоки: открывается удержанием Tab
-let page = 0;
-function togglePage() {
-  page = page === SECRET ? 0 : (page + 1) % SECRET;
-  selectSlot(page * PAGE + slot % PAGE);
-}
-function holdPage() {
-  page = page === SECRET ? 0 : SECRET;
-  selectSlot(page * PAGE + slot % PAGE);
-}
-
-// Нажатие на кнопку страниц: короткое листает, долгое (полсекунды) открывает скрытую страницу
-const HOLD_PAGE = 500;
-let pageTimer = 0, pageHeld = false;
-function pageDown() {
-  pageHeld = false;
-  clearTimeout(pageTimer);
-  pageTimer = setTimeout(() => { pageHeld = true; holdPage(); }, HOLD_PAGE);
-}
-function pageUp() {
-  if (!pageTimer) return;
-  clearTimeout(pageTimer);
-  pageTimer = 0;
-  if (!pageHeld) togglePage();
-}
-
+const HOLD_PAGE = 500;  // сколько держать, чтобы считалось долгим нажатием (мс)
 // Блок: обычный — с текстурой кирпича, а если зажать слот 1 (клавишу 1 или палец на слоте), ставится гладкий, просто выбранного цвета. Зажать ещё раз — обратно
 let flatBlock = false, flatTimer = 0;
 function flatDown() {
@@ -2549,11 +2536,13 @@ addEventListener("keydown", e => {
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
-    if (n >= 0 && n < PAGE) selectSlot(page * PAGE + n);
-    if (n === 0 && !e.repeat) flatDown();
+    if (n >= 0 && n < BAR_SIZE) { selectSlot(n); if (!e.repeat) flatDown(); }
   }
-  if (e.code === "Tab") { e.preventDefault(); if (!e.repeat) pageDown(); }
-  if (e.code === "KeyE" && !e.repeat && !menuOpen) toggleCar();
+  if (e.code === "Tab") e.preventDefault();
+  if (e.code === "KeyE" && !e.repeat) {  // E: сесть в машину, если рядом есть; иначе инвентарь
+    if (panel === inv) toggleInventory();
+    else if (!menuOpen) { if (drivingCar || drivingPlane || drivingTank || (camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) toggleCar(); else toggleInventory(); }
+  }
   if (e.code === "KeyT" && !e.repeat && !menuOpen && !typing && (isAdmin() || !online)) { e.preventDefault(); askTeleport(); }
   if (e.code === "KeyR" && !e.repeat) startReload();
   if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
@@ -2569,8 +2558,7 @@ addEventListener("keydown", e => {
 });
 addEventListener("keyup", e => {
   keys[e.code] = false;
-  if (e.code === "Tab") pageUp();
-  if (e.code === "Digit1") flatUp();
+  if (e.code.startsWith("Digit")) flatUp();
 });
 
 // Захват клавиатуры: в полноэкранном режиме Chrome и Edge отдают игре даже Ctrl+W,
@@ -2724,6 +2712,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "crouch") keys.ControlLeft = true;
     if (action === "nitro") keys.ShiftLeft = true;
     if (action === "color") togglePalette();
+    if (action === "inv") toggleInventory();
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
     if (action === "admin") toggleAdmin();
@@ -2762,31 +2751,89 @@ function rgb(c) {
   return `rgb(${COLORS[c].rgb.join(",")})`;
 }
 
+const slotHtml = (i, withNum = true) => {
+  const item = HOTBAR[i];
+  const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
+  const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
+  const style = i === slot ? "" : ' style="color:#666"';
+  return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${i + 1}${h}${h}${br}</span>`;
+};
 function drawHotbar() {
-  const slots = Array.from({ length: PAGE }, (_, j) => HOTBAR[page * PAGE + j]).map((item, j) => {
-    const i = page * PAGE + j;
-    const [tl, h, tr, v, bl, br] = i === slot ? "╔═╗║╚╝" : "┌─┐│└┘";
-    const icon = item ? `<span style="color:${rgb(color)}">${ICONS[item]}</span>` : "    ";
-    const style = i === slot ? "" : ' style="color:#666"';
-    return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${j + 1}${h}${h}${br}</span>`;
-  });
   let label = (HOTBAR[slot] || "—") + (HOTBAR[slot] === "Блок" && flatBlock ? " (без текстуры)" : "");
   if (plankStart) label += " — выбери вторую точку";
-  hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "" : "Tab "}${page === SECRET ? "прочные, держи — назад" : `стр ${page + 1}/${SECRET}`}]</span>` + "\n" + slots.join("");
+  hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "ИНВЕНТАРЬ" : "E — инвентарь"}]</span>` + "\n" + HOTBAR.map((_, i) => slotHtml(i)).join("");
+  if (panel === inv) drawInventory();
 }
+// Хотбар и инвентарь из 9 слотов по 6 знаков должны помещаться в ширину экрана
+function fitBars() {
+  const px = Math.max(8, Math.min(16, Math.floor((innerWidth - 24) / (60 * 0.6))));
+  hotbar.style.fontSize = inv.style.fontSize = px + "px";
+}
+addEventListener("resize", fitBars);
 
 hotbar.addEventListener("pointerdown", e => {
-  if (e.target.closest(".page")) pageDown();
   const s = e.target.closest(".slot");
   if (s && HOTBAR[Number(s.dataset.slot)] === "Блок") { slot = Number(s.dataset.slot); flatDown(); }
 });
-hotbar.addEventListener("pointerup", () => { pageUp(); flatUp(); });
-hotbar.addEventListener("pointerleave", () => { clearTimeout(pageTimer); pageTimer = 0; flatUp(); });
+hotbar.addEventListener("pointerup", flatUp);
+hotbar.addEventListener("pointerleave", flatUp);
 hotbar.addEventListener("click", e => {
+  if (e.target.closest(".page")) return toggleInventory();
   const s = e.target.closest(".slot");
   if (s) selectSlot(Number(s.dataset.slot));
 });
+// Колесо мыши листает слоты (с зажатой C оно меняет зум)
+addEventListener("wheel", e => {
+  if (keys.KeyC || typing || !inGame || menuOpen || !e.deltaY) return;
+  selectSlot((slot + (e.deltaY > 0 ? 1 : BAR_SIZE - 1)) % BAR_SIZE);
+});
 
+// ---------- Инвентарь: все предметы по вкладкам, клик кладёт предмет в выбранный слот хотбара ----------
+const INV_TABS = {
+  "Блоки": ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Ступеньки", "Шлагбаум", "Решётка", "Окно", "Лампа", "Вывеска", "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота", "Адский камень", "Светокамень", "Трамплин"],
+  "Мебель": ["Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
+  "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
+  "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
+  "Транспорт": ["Машина", "Танк", "Самолёт"],
+  "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"],
+};
+const REDSTONE_ITEMS = [];  // сюда ниже попадают предметы редстоуна
+let invTab = "Блоки", invHover = "";
+const inv = document.getElementById("inv");
+fitBars();
+const invTabs = () => {
+  const tabs = { ...INV_TABS, ...(REDSTONE_ITEMS.length ? { "Редстоун": REDSTONE_ITEMS } : {}) };
+  const listed = new Set(Object.values(tabs).flat());
+  tabs["Блоки"] = [...tabs["Блоки"], ...ITEMS.filter(i => !listed.has(i))];  // всё, что не попало во вкладки
+  return tabs;
+};
+function drawInventory() {
+  const W = 56, tabs = invTabs();
+  if (!tabs[invTab]) invTab = "Блоки";
+  const list = tabs[invTab];
+  const pad = (t, n) => t + " ".repeat(Math.max(0, n - t.length));
+  let html = "╔" + "═".repeat(W) + "╗\n║" + pad(" ИНВЕНТАРЬ", W) + "║\n║ ";
+  let used = 1;
+  for (const name of Object.keys(tabs)) {
+    if (used + name.length + 2 > W) { html += " ".repeat(W - used) + "║\n║ "; used = 1; }
+    html += `<span class="tab${name === invTab ? " on" : ""}" data-tab="${name}">${name}</span>  `;
+    used += name.length + 2;
+  }
+  html += " ".repeat(Math.max(0, W - used)) + "║\n╟" + "─".repeat(W) + "╢\n";
+  for (let r = 0; r < Math.ceil(list.length / 9); r++) {
+    html += "║ ";
+    for (let c = 0; c < 9; c++) {
+      const name = list[r * 9 + c];
+      html += name ? `<span class="cell" data-item="${name}" style="color:${rgb(color)}"> ${ICONS[name] ?? "????"} </span>` : "      ";
+    }
+    html += " ║\n";
+  }
+  html += "╟" + "─".repeat(W) + "╢\n║ <span id=\"invname\">" + pad(invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот"), W - 2) + "</span> ║\n╟" + "─".repeat(W) + "╢\n";
+  const line = i => `<span class="slot" data-slot="${i}" style="color:${i === slot ? "#fff" : "#777"}">${i === slot ? "║" : "│"}${HOTBAR[i] ? `<span style="color:${rgb(color)}">${ICONS[HOTBAR[i]]}</span>` : "    "}${i === slot ? "║" : "│"}</span>`;
+  html += "║ " + HOTBAR.map((_, i) => line(i)).join("") + " ║\n";
+  html += "╟" + "─".repeat(W) + "╢\n║" + pad(TOUCH ? " ИНВЕНТАРЬ — закрыть" : " E — закрыть", W) + "║\n╚" + "═".repeat(W) + "╝";
+  inv.innerHTML = html;
+}
 function drawPalette() {
   const W = 22;  // ширина внутри рамки
   let html = "╔" + "═".repeat(W) + "╗\n";
@@ -2817,6 +2864,23 @@ function togglePanel(el, draw) {
   }
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
+function toggleInventory() { togglePanel(inv, drawInventory); }
+inv.addEventListener("click", e => {
+  const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
+  if (tab) { invTab = tab.dataset.tab; drawInventory(); }
+  else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
+  else if (sl) selectSlot(Number(sl.dataset.slot));
+});
+inv.addEventListener("contextmenu", e => {  // правая кнопка по слоту — очистить его
+  const sl = e.target.closest(".slot");
+  if (!sl) return;
+  e.preventDefault();
+  HOTBAR[Number(sl.dataset.slot)] = null; saveBar(); drawHotbar();
+});
+inv.addEventListener("mouseover", e => {
+  const cell = e.target.closest(".cell"), el = document.getElementById("invname");
+  if (cell && el) { invHover = cell.dataset.item; el.textContent = invHover.padEnd(54).slice(0, 54); }
+});
 function toggleAdmin() { if (isAdmin()) togglePanel(adminEl, drawAdmin); }
 
 palette.addEventListener("click", e => {
@@ -5650,13 +5714,10 @@ function toggleScope() {
   if (n && WEAPONS[n].scope && !reloadEnd) scoped = !scoped;
 }
 function toggleWeaponPage() {
-  const first = HOTBAR.indexOf("Нож"), wp = Math.floor(first / PAGE);
-  if (page === wp) { page = lastPage; selectSlot(page * PAGE + slot % PAGE); return; }
-  lastPage = page;
-  page = wp;
-  selectSlot(first);
+  for (let k = 1; k <= BAR_SIZE; k++) { const i = (slot + k) % BAR_SIZE; if (HOTBAR[i] && HOTBAR[i] in WEAPONS) return selectSlot(i); }
+  invTab = "Оружие";  // в хотбаре нет оружия — открываем вкладку с ним
+  toggleInventory();
 }
-let lastPage = 0;
 
 function updateWeapons(dt) {
   const n = camMode === "first" && !dead && inGame ? currentWeapon() : null;
