@@ -290,7 +290,9 @@ const COLORS = [
 const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Стул", "Стол", "Ступеньки", "Бургер", "Пицца", "Крылышки", "Шлагбаум", "Лампа",
   "Машина", "Решётка", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна",
   "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Окно", "Телевизор", "Раковина",
-  "Верити", "Жирити", "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
+  "Верити", "Жирити",
+  "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота",  // материалы (страницы 9–12)
+  "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   "Огниво", "ТНТ", "Трамплин", "Танк",
   "Самолёт", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
@@ -518,6 +520,44 @@ plate.material.onBeforeCompile = sh => {
 };
 
 // Блок: кирпичи с тёмной рамкой по краю, чтобы были видны грани
+// Материалы: маленькие картинки 16×16, нарисованные кодом. Цвет из палитры красит их (белый — родной цвет)
+function pixelTex(draw) {
+  const t = canvasTexture(16, 16, ctx => draw((x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); }, ctx));
+  t.magFilter = THREE.NearestFilter;
+  return t;
+}
+let seedN = 1;
+const rnd = () => (seedN = (seedN * 16807) % 2147483647) / 2147483647;
+const noisy = (p, base, cols, n = 70) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, base); for (let i = 0; i < n; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), cols[Math.floor(rnd() * cols.length)]); };
+const BLOCK_TEX = {
+  stone: pixelTex(p => noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f", "#757575"], 90)),
+  wood: pixelTex(p => { noisy(p, "#a0733f", ["#94683a", "#ad7f48"], 40); for (let x = 0; x < 16; x++) for (const y of [3, 7, 11, 15]) p(x, y, "#6e4c25"); for (const [x, y] of [[4, 0], [11, 4], [2, 8], [9, 12]]) for (let k = 0; k < 3; k++) p(x, y + k, "#6e4c25"); }),
+  grass: pixelTex(p => noisy(p, "#5aa03a", ["#4a8a2e", "#6cb84a", "#3f7a28"], 110)),
+  sand: pixelTex(p => noisy(p, "#e0d18a", ["#cfbf75", "#ede2a0", "#d8c880"], 80)),
+  ice: pixelTex(p => { noisy(p, "#a8dcf0", ["#8fcbe6", "#c4ecf8"], 40); for (let i = 0; i < 9; i++) { p(2 + i, 12 - i, "#e6f8fd"); p(3 + i, 12 - i, "#d8f2fb"); } }),
+  lava: pixelTex(p => { noisy(p, "#d84a0a", ["#ff8c00", "#ffb000", "#a82800", "#8a1a00"], 120); for (let i = 0; i < 12; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), "#ffe060"); }),
+  metal: pixelTex(p => { noisy(p, "#9aa3ab", ["#8e979f", "#a6aeb5"], 30); for (let i = 0; i < 16; i++) { p(i, 0, "#6d757c"); p(i, 15, "#6d757c"); p(0, i, "#6d757c"); p(15, i, "#6d757c"); } for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) p(x, y, "#d4dce2"); }),
+  concrete: pixelTex(p => noisy(p, "#8a8a85", ["#7d7d78", "#979792", "#838380"], 130)),
+  leaves: pixelTex(p => noisy(p, "#2f7a2a", ["#1f5a1c", "#4aa03e", "#256b22", "#173f14"], 140)),
+  gold: pixelTex(p => { noisy(p, "#f2c230", ["#e8b520", "#f7d24f"], 30); for (let i = 0; i < 16; i++) { p(i, 0, "#fff1a0"); p(0, i, "#fff1a0"); p(i, 15, "#b58a10"); p(15, i, "#b58a10"); } for (const [x, y] of [[4, 4], [5, 4], [10, 9], [11, 9], [7, 12]]) p(x, y, "#fff6c0"); }),
+  diamond: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (const [x, y] of [[3, 3], [4, 3], [3, 4], [10, 5], [11, 5], [11, 6], [6, 11], [7, 11], [7, 12], [12, 12]]) p(x, y, "#4be0e0"); for (const [x, y] of [[3, 3], [10, 5], [6, 11]]) p(x, y, "#c8ffff"); }),
+  neon: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, x < 2 || y < 2 || x > 13 || y > 13 ? "#d0d0d0" : "#ffffff"); }),
+  slime: pixelTex(p => { noisy(p, "#6ee05a", ["#8cf078", "#5ac848"], 50); for (let i = 0; i < 16; i++) { p(i, 0, "#43b035"); p(i, 15, "#43b035"); p(0, i, "#43b035"); p(15, i, "#43b035"); } for (const [x, y] of [[4, 4], [5, 4], [4, 5]]) p(x, y, "#d8ffd0"); }),
+  tiles: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, x % 8 === 0 || y % 8 === 0 ? "#bdbdbd" : (x + y) % 11 === 0 ? "#f8f8f8" : "#eeeeee"); }),
+  snow: pixelTex(p => noisy(p, "#f4f8ff", ["#dfe8f5", "#ffffff", "#e8f0fb"], 60)),
+  obsidian: pixelTex(p => { noisy(p, "#1c1033", ["#2a1750", "#3a1f66", "#140a26"], 80); for (const [x, y] of [[3, 2], [9, 7], [12, 12], [5, 11]]) p(x, y, "#7a45d0"); }),
+  marble: pixelTex(p => { noisy(p, "#e8e6e0", ["#f2f0ea", "#dedcd4"], 50); for (let i = 0; i < 16; i++) { p(i, (i * 7 + 3) % 16, "#b0aca0"); p((i + 1) % 16, (i * 7 + 3) % 16, "#c4c0b4"); } }),
+  dirt: pixelTex(p => noisy(p, "#7a5230", ["#5e3c20", "#8c6238", "#6a4526"], 120)),
+  wool: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, (x + y) % 4 === 0 ? "#dcdcdc" : (x * 3 + y) % 5 === 0 ? "#ffffff" : "#efefef"); }),
+  clay: pixelTex(p => { noisy(p, "#b5654a", ["#a45a42", "#c4725a"], 60); for (let x = 0; x < 16; x++) { p(x, 5, "#9a5039"); p(x, 11, "#9a5039"); } }),
+};
+for (const k in BLOCK_TEX) BLOCK_TEX[k].userData.kind = k;
+const EMISSIVE = new Set(["lava", "neon"]);  // светятся: без теней и затемнения
+const blockMats = {};
+const blockMaterial = (kind, c) => blockMats[kind + c] ??= (() => {
+  const [r, g, b] = COLORS[c].rgb, col = new THREE.Color(r / 255, g / 255, b / 255);
+  return EMISSIVE.has(kind) ? new THREE.MeshBasicMaterial({ map: BLOCK_TEX[kind], color: col }) : new THREE.MeshLambertMaterial({ map: BLOCK_TEX[kind], color: col });
+})();
 const brickTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "#e0e0e0"; ctx.fillRect(0, 0, 64, 64);
   ctx.fillStyle = "#808080";
@@ -734,7 +774,7 @@ function share(e, replace = false) {
 // Склейка: обычные блоки рисуются кусками 8×8×8 (по цвету), а не тысячами отдельных вызовов отрисовки — так игра намного легче.
 // Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
 const shadedMats = {};
-const shadedMaterial = c => shadedMats[c] ??= (() => { const m = material(brickTex, c).clone(); m.vertexColors = true; return m; })();
+const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex ? material(brickTex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return m; })();
 const CH = 8;
 const chunks = new Map();
 const dirtyChunks = new Set();
@@ -758,7 +798,7 @@ function rebuildChunks(limit = 24) {
     dirtyChunks.delete(c);
     const byColor = new Map();
     for (const m of c.blocks) {
-      const col = m.userData.edit.c;
+      const col = m.userData.chunkKey ?? "b|" + m.userData.edit.c;
       if (!byColor.has(col)) byColor.set(col, []);
       byColor.get(col).push(m);
       m.visible = false;
@@ -786,7 +826,7 @@ function rebuildChunks(limit = 24) {
       g.computeBoundingSphere();
       let mesh = c.meshes.get(col);
       if (!mesh) {
-        mesh = new THREE.Mesh(g, shadedMaterial(col));
+        mesh = new THREE.Mesh(g, shadedMaterial(list[0].userData.tex ?? brickTex, list[0].userData.edit.c));
         mesh.matrixAutoUpdate = false;
         scene.add(mesh);
         c.meshes.set(col, mesh);
@@ -1279,6 +1319,12 @@ function blockMesh(e) {
     const m = new THREE.Mesh(doorGeo, vmaterial(doorTex, e.c));
     m.position.set(e.x + 0.5 - 0.5 * Math.cos(a), e.y, e.z + 0.5 + 0.5 * Math.sin(a));
     m.rotation.y = a + (e.open ? Math.PI / 2 : 0);
+    return m;
+  }
+  if (e.k in BLOCK_TEX) {  // материалы: камень, лава, слизь и другие
+    const m = new THREE.Mesh(boxGeo, blockMaterial(e.k, e.c));
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    if (!EMISSIVE.has(e.k)) { m.userData.mergeable = true; m.userData.tex = BLOCK_TEX[e.k]; m.userData.chunkKey = e.k + "|" + e.c; }
     return m;
   }
   if (e.k === "shield") {  // защитный блок: фиолетово-чёрная шахматка
@@ -2010,6 +2056,9 @@ function update(dt) {
     // Трамплин подбрасывает и игрока
     const jp = onGround ? blocks.get(key(Math.floor(px), Math.floor(feet + 0.2), Math.floor(pz))) : null;
     if (jp?.userData.edit.k === "jump" && feet - jp.userData.edit.y > 0.5) { vy = JUMP_SPEED * 1.5; onGround = false; feet = ground + 0.01; }
+    const under = onGround ? blocks.get(key(Math.floor(px), Math.floor(ground - 0.05), Math.floor(pz)))?.userData.edit.k : null;
+    if (under === "slime" && vy < -2) { vy = Math.min(16, -vy * 0.85); onGround = false; feet = ground + 0.01; }  // слизь подбрасывает
+    if (under === "lava") damage(30 * dt, "лавы");  // лава жжёт
     if (onGround) {
       if (vy < -FALL_SAFE) damage((-vy - FALL_SAFE) * 6);  // удар о землю: чем быстрее падал, тем больнее
       feet = ground; vy = 0;
@@ -2109,7 +2158,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
+  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -2455,7 +2504,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
