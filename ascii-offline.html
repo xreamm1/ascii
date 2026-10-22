@@ -5652,36 +5652,71 @@ const rsFace = (m, f) => {  // модель смотрит в +x; поворач
   if (f === 2 || f === 3) { m.rotation.set(0, 0, f === 2 ? Math.PI / 2 : -Math.PI / 2); return; }
   m.rotation.set(0, { 0: 0, 1: Math.PI, 4: -Math.PI / 2, 5: Math.PI / 2 }[f] ?? 0, 0);
 };
+const rsShade = (hex, f) => { const c = v => Math.min(255, Math.round(v * f)); return (c(hex >> 16 & 255) << 16) | (c(hex >> 8 & 255) << 8) | c(hex & 255); };
+// Ящик для плоских (без освещения) материалов: бока темнее, верх светлее — получается объём
+const sbox = (w, h, d, x, y, z, hex) => [...P(rsShade(hex, 0.7), box(w, h, d, x, y, z)), ...P(rsShade(hex, 1.1), box(w * 0.96, 0.012, d * 0.96, x, y + h / 2 + 0.0005, z))];
+// Шесть накладных панелей на грани куба (s — размер, t — на сколько выступают)
+const rsPanels = (hex, s, t = 0.012, skip = []) => [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].filter((_, i) => !skip.includes(i)).flatMap(([x, y, z]) =>
+  P(hex, box(x ? t : s, y ? t : s, z ? t : s, x * (0.495 + t / 2), y * (0.495 + t / 2), z * (0.495 + t / 2))));
+const rsCube = (edge, panel, inner, extra = [], skip = []) => [...P(edge, box(0.99, 0.99, 0.99, 0, 0, 0)), ...rsPanels(panel, 0.84, 0.012, skip), ...(inner ? rsPanels(inner, 0.5, 0.012 * 2, skip) : []), ...extra];
+
 const rsDustGeo = conn => rsGeo("dust" + conn.join(""), () => {
-  const y = -0.48, parts = [box(0.3, 0.03, 0.3, 0, y, 0)];
-  const arms = [[0, 1, 0], [1, -1, 0], [2, 0, 1], [3, 0, -1]];  // направление в conn → смещение
-  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const n = conn.filter(Boolean).length;
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]], n = conn.filter(Boolean).length;
+  const outline = [box(0.36, 0.008, 0.36, 0, -0.496, 0)], core = [box(0.26, 0.012, 0.26, 0, -0.49, 0)], spark = [box(0.1, 0.014, 0.1, 0, -0.487, 0)];
   conn.forEach((c, i) => {
-    const link = c || (n === 1 && conn[i ^ 1] ? 1 : 0);
-    if (!link) return;
+    if (!(c || (n === 1 && conn[i ^ 1]))) return;
     const [dx, dz] = dirs[i];
-    parts.push(box(dx ? 0.5 : 0.2, 0.03, dz ? 0.5 : 0.2, dx * 0.25, y, dz * 0.25));
-    if (c === 2) parts.push(box(dx ? 0.03 : 0.2, 1, dz ? 0.03 : 0.2, dx * 0.49, 0, dz * 0.49));  // по стене вверх
+    outline.push(box(dx ? 0.5 : 0.28, 0.008, dz ? 0.5 : 0.28, dx * 0.25, -0.496, dz * 0.25));
+    core.push(box(dx ? 0.5 : 0.18, 0.012, dz ? 0.5 : 0.18, dx * 0.25, -0.49, dz * 0.25));
+    if (c === 2) { outline.push(box(dx ? 0.012 : 0.28, 1, dz ? 0.012 : 0.28, dx * 0.497, 0, dz * 0.497)); core.push(box(dx ? 0.016 : 0.18, 1, dz ? 0.016 : 0.18, dx * 0.495, 0, dz * 0.495)); }  // по стене вверх
   });
-  return mergeParts(P(0xffffff, ...parts));
+  return mergeParts([...P(0x303030, ...outline), ...P(0xffffff, ...core), ...P(0xffffff, ...spark)]);
 });
 const rsTorchGeo = (lit, a) => rsGeo(`torch${lit}${a}`, () => {
-  const off = a === 3 ? [0, 0] : [RSD[a][0] * 0.28, RSD[a][2] * 0.28];
-  return mergeParts([...P(0x6b3f1a, box(0.12, 0.55, 0.12, off[0], a === 3 ? -0.22 : -0.12, off[1])), ...P(lit ? 0xff3a1a : 0x4a2018, box(0.17, 0.17, 0.17, off[0], a === 3 ? 0.12 : 0.2, off[1]))]);
+  const [ox, oz] = a === 3 ? [0, 0] : [RSD[a][0] * 0.28, RSD[a][2] * 0.28], wall = a !== 3, sy = wall ? -0.12 : -0.2, hy = wall ? 0.2 : 0.14;
+  return mergeParts([
+    ...sbox(0.12, 0.6, 0.12, ox, sy, oz, 0x7a4a1c), ...P(0x4a2a10, box(0.14, 0.05, 0.14, ox, sy - 0.27, oz), box(0.14, 0.03, 0.14, ox, sy + 0.18, oz)),
+    ...(wall ? P(0x555555, box(0.08, 0.08, 0.08, ox + RSD[a][0] * 0.08, sy - 0.2, oz + RSD[a][2] * 0.08)) : []),
+    ...sbox(0.2, 0.2, 0.2, ox, hy, oz, lit ? 0xff3a1a : 0x5a2418), ...P(lit ? 0xffd070 : 0x3a1610, box(0.1, 0.23, 0.1, ox, hy, oz)),
+    ...(lit ? P(0xfff0a0, box(0.05, 0.1, 0.05, ox, hy + 0.14, oz)).concat(P(0xffa040, box(0.16, 0.025, 0.025, ox, hy + 0.1, oz), box(0.025, 0.025, 0.16, ox, hy + 0.1, oz))) : [])]);
 });
-const rsLeverGeo = (on, a) => rsGeo(`lever${on}${a}`, () => toAttach(mergeParts([...P(0x8a8a8a, box(0.4, 0.14, 0.3, 0, -0.43, 0)),
-  ...P(on ? 0xff5a3a : 0x6b3f1a, [new THREE.BoxGeometry(0.07, 0.45, 0.07).rotateZ(on ? -0.6 : 0.6), on ? 0.1 : -0.1, -0.2, 0])]), a));
-const rsButtonGeo = (on, a) => rsGeo(`btn${on}${a}`, () => toAttach(mergeParts(P(0x8a8a8a, box(0.34, on ? 0.04 : 0.1, 0.22, 0, on ? -0.48 : -0.45, 0))), a));
-const rsPlateGeo = on => rsGeo("plate" + on, () => mergeParts(P(0x9a9a9a, box(0.86, on ? 0.03 : 0.06, 0.86, 0, on ? -0.485 : -0.47, 0))));
-const rsRepeaterGeo = (d, lit) => rsGeo(`rep${d}${lit}`, () => mergeParts([...P(0x9a9a9a, box(1, 0.125, 1, 0, -0.4375, 0)), ...P(0x4a1a1a, box(0.1, 0.22, 0.1, -0.3, -0.28, 0)),
-  ...P(lit ? 0xff3a1a : 0x4a1a1a, box(0.1, 0.22, 0.1, 0.35 - d * 0.1, -0.28, 0)), ...P(0xff3a1a, box(0.3, 0.02, 0.06, 0.3 - d * 0.1, -0.37, 0))]));
-const rsComparatorGeo = (m, lit) => rsGeo(`cmp${m}${lit}`, () => mergeParts([...P(0x9a9a9a, box(1, 0.125, 1, 0, -0.4375, 0)), ...P(0x4a1a1a, box(0.1, 0.2, 0.1, -0.3, -0.28, 0.25), box(0.1, 0.2, 0.1, -0.3, -0.28, -0.25)),
-  ...P(lit || m ? 0xff3a1a : 0x4a1a1a, box(0.1, 0.2, 0.1, 0.3, -0.28, 0))]));
-const rsCubeGeo = (id, hex, extra = []) => rsGeo("cube" + id, () => mergeParts([...P(hex, box(0.98, 0.98, 0.98, 0, 0, 0)), ...extra]));
-const rsPistonGeo = (sticky, ext) => rsGeo(`pis${sticky}${ext}`, () => mergeParts([...P(0x8a8a8a, box(0.75, 0.98, 0.98, -0.125, 0, 0)), ...(ext ? [] : P(sticky ? 0x6ab04f : 0xb98e4e, box(0.25, 0.98, 0.98, 0.375, 0, 0)))]));
-const rsHeadGeo = sticky => rsGeo("head" + sticky, () => mergeParts([...P(sticky ? 0x6ab04f : 0xb98e4e, box(0.25, 0.98, 0.98, 0.375, 0, 0)), ...P(0x6b4a22, box(0.75, 0.25, 0.25, -0.125, 0, 0))]));
-const rsObserverGeo = on => rsGeo("obs" + on, () => mergeParts([...P(0x6b6b6b, box(0.98, 0.98, 0.98, 0, 0, 0)), ...P(0x222222, box(0.02, 0.35, 0.5, 0.5, 0.1, 0)), ...P(on ? 0xff3a1a : 0x333333, box(0.04, 0.2, 0.2, -0.5, 0, 0))]));
+const rsLeverGeo = (on, a) => rsGeo(`lever${on}${a}`, () => {
+  const ang = on ? -0.55 : 0.55, rot = (g, y) => g.translate(0, y, 0).rotateZ(ang).translate(0, -0.37, 0);
+  return toAttach(mergeParts([
+    ...sbox(0.46, 0.12, 0.34, 0, -0.44, 0, 0x888888), ...sbox(0.34, 0.03, 0.24, 0, -0.395, 0, 0xa4a4a4), ...P(0x6a6a6a, box(0.05, 0.015, 0.05, -0.12, -0.375, 0.08), box(0.05, 0.015, 0.05, 0.12, -0.375, -0.08)),
+    ...P(on ? 0xff3a1a : 0x552222, box(0.06, 0.016, 0.06, 0.14, -0.373, 0.09)),
+    ...P(0x6b3f1a, [rot(new THREE.BoxGeometry(0.07, 0.46, 0.07), 0.23), 0, 0, 0]), ...P(on ? 0xff6a3a : 0xa8672a, [rot(new THREE.BoxGeometry(0.14, 0.12, 0.14), 0.5), 0, 0, 0])]), a);
+});
+const rsButtonGeo = (on, a) => rsGeo(`btn${on}${a}`, () => toAttach(mergeParts([
+  ...sbox(0.4, on ? 0.07 : 0.13, 0.28, 0, on ? -0.465 : -0.435, 0, 0x808080), ...sbox(0.3, on ? 0.075 : 0.14, 0.18, 0, on ? -0.462 : -0.43, 0, 0xa6a6a6), ...P(0x5a5a5a, box(0.08, 0.012, 0.012, 0, on ? -0.424 : -0.358, 0))]), a));
+const rsPlateGeo = on => rsGeo("plate" + on, () => mergeParts([...sbox(0.9, on ? 0.03 : 0.07, 0.9, 0, on ? -0.485 : -0.465, 0, 0x7a7a7a), ...sbox(0.74, on ? 0.034 : 0.078, 0.74, 0, on ? -0.483 : -0.461, 0, 0xa4a4a4),
+  ...P(0x808080, box(0.06, 0.012, 0.06, -0.2, on ? -0.466 : -0.421, 0.2), box(0.06, 0.012, 0.06, 0.2, on ? -0.466 : -0.421, -0.2))]));
+// Основа повторителя и компаратора: плита с жёлобом
+const rsDiodeBase = () => [...sbox(1, 0.125, 1, 0, -0.4375, 0, 0x888888), ...sbox(0.92, 0.13, 0.92, 0, -0.435, 0, 0xa2a2a2), ...P(0xcc3030, box(0.1, 0.012, 0.3, 0.42, -0.371, 0)), ...P(0x3e3e3e, box(0.66, 0.012, 0.16, 0, -0.372, 0))];
+const rsTorchMini = (x, z, lit, big) => [...P(0x4a2a2a, box(0.16, 0.014, 0.16, x, -0.371, z)), ...sbox(0.09, big ? 0.28 : 0.2, 0.09, x, big ? -0.23 : -0.27, z, 0x6b3f1a),
+  ...sbox(0.15, 0.13, 0.15, x, big ? -0.07 : -0.13, z, lit ? 0xff3a1a : 0x4a1a1a), ...P(lit ? 0xffd070 : 0x2a1010, box(0.08, 0.15, 0.08, x, big ? -0.07 : -0.13, z))];
+const rsRepeaterGeo = (d, lit) => rsGeo(`rep${d}${lit}`, () => mergeParts([...rsDiodeBase(), ...rsTorchMini(-0.3, 0, lit), ...rsTorchMini(0.35 - d * 0.1, 0, lit)]));
+const rsComparatorGeo = (m, lit) => rsGeo(`cmp${m}${lit}`, () => mergeParts([...rsDiodeBase(), ...rsTorchMini(-0.3, 0.26, lit), ...rsTorchMini(-0.3, -0.26, lit), ...rsTorchMini(0.28, 0, lit || !!m, true)]));
+const rsBlockGeo = () => rsGeo("rsblock", () => mergeParts(rsCube(0x7a0e0e, 0xc41c1c, 0xff4a3a)));
+const rsLampGeo = on => rsGeo("lamp" + on, () => {
+  const bar = hex => [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].flatMap(([x, y, z]) => P(hex, box(x ? 0.012 : 0.84, y ? 0.012 : 0.04, z ? 0.012 : 0.04, x * 0.503, y * 0.503, z * 0.503), box(x ? 0.012 : 0.04, y ? 0.012 : 0.84, z ? 0.012 : 0.84, x * 0.503, y * 0.503, z * 0.503)));
+  return mergeParts(on ? rsCube(0xd9a52a, 0xfff1a8, 0xffffff, bar(0xe8b84a)) : rsCube(0x5c4a28, 0xa68a50, 0x8a7040, bar(0x5c4a28)));
+});
+const rsPistonBody = ext => [...P(0x6f6f6f, box(0.75, 0.99, 0.99, -0.125, 0, 0)), ...P(0x8d8d8d, box(0.7, 0.012, 0.84, -0.14, 0.5, 0), box(0.7, 0.012, 0.84, -0.14, -0.5, 0), box(0.7, 0.84, 0.012, -0.14, 0, 0.5), box(0.7, 0.84, 0.012, -0.14, 0, -0.5), box(0.012, 0.84, 0.84, -0.5, 0, 0)),
+  ...P(0x575757, box(0.1, 0.02, 0.1, -0.35, 0.5, 0.36), box(0.1, 0.02, 0.1, -0.35, 0.5, -0.36), box(0.1, 0.02, 0.1, 0.0, 0.5, 0.36), box(0.1, 0.02, 0.1, 0.0, 0.5, -0.36)),
+  ...(ext ? P(0x2b2b2b, box(0.02, 0.62, 0.62, 0.251, 0, 0)).concat(P(0x0e0e0e, box(0.03, 0.26, 0.26, 0.252, 0, 0))) : [])];
+const rsPlate = sticky => sticky ? [...P(0x4e8f38, box(0.25, 0.99, 0.99, 0.375, 0, 0)), ...P(0x7ccd5c, box(0.262, 0.8, 0.8, 0.375, 0, 0)), ...P(0xa8ee8a, box(0.27, 0.22, 0.22, 0.375, 0.2, 0.2), box(0.27, 0.12, 0.12, 0.375, -0.2, -0.22))]
+  : [...P(0x8b6a35, box(0.25, 0.99, 0.99, 0.375, 0, 0)), ...P(0xc8a05a, box(0.262, 0.8, 0.8, 0.375, 0, 0)), ...P(0xa88040, box(0.27, 0.8, 0.03, 0.375, 0, 0.27), box(0.27, 0.8, 0.03, 0.375, 0, 0), box(0.27, 0.8, 0.03, 0.375, 0, -0.27))];
+const rsPistonGeo = (sticky, ext) => rsGeo(`pis${sticky}${ext}`, () => mergeParts([...rsPistonBody(ext), ...(ext ? [] : rsPlate(sticky))]));
+const rsHeadGeo = sticky => rsGeo("head" + sticky, () => mergeParts([...rsPlate(sticky), ...P(0x6b4a22, box(0.75, 0.22, 0.22, -0.125, 0, 0)), ...P(0x3e2a12, box(0.08, 0.3, 0.3, -0.38, 0, 0), box(0.08, 0.3, 0.3, 0.02, 0, 0))]));
+const rsObserverGeo = on => rsGeo("obs" + on, () => mergeParts([...P(0x626262, box(0.99, 0.99, 0.99, 0, 0, 0)), ...rsPanels(0x808080, 0.84, 0.012, [0, 1]),
+  ...P(0x484848, box(0.012, 0.84, 0.84, 0.501, 0, 0)), ...P(0x111111, box(0.02, 0.14, 0.22, 0.508, 0.16, 0.2), box(0.02, 0.14, 0.22, 0.508, 0.16, -0.2), box(0.02, 0.1, 0.4, 0.508, -0.2, 0)),
+  ...P(0x303030, box(0.012, 0.56, 0.56, -0.501, 0, 0)), ...P(on ? 0xff3a1a : 0x7a7a7a, box(0.03, 0.2, 0.2, -0.51, 0, 0))]));
+const rsDispenserGeo = () => rsGeo("disp", () => mergeParts([...P(0x707070, box(0.99, 0.99, 0.99, 0, 0, 0)), ...rsPanels(0x8d8d8d, 0.84, 0.012, [0]), ...P(0x555555, box(0.012, 0.84, 0.84, 0.501, 0, 0)),
+  ...P(0x2e2e2e, box(0.02, 0.54, 0.54, 0.508, 0, 0)), ...P(0x0e0e0e, box(0.03, 0.36, 0.36, 0.512, 0, 0)), ...P(0x6a6a6a, box(0.03, 0.06, 0.06, 0.512, 0.26, 0.26), box(0.03, 0.06, 0.06, 0.512, -0.26, -0.26))]));
+const rsNoteGeo = () => rsGeo("note", () => mergeParts([...P(0x7d4e24, box(0.99, 0.99, 0.99, 0, 0, 0)), ...rsPanels(0xa56f38, 0.86, 0.012),
+  ...P(0x6a4018, box(0.86, 0.016, 0.03, 0, 0.507, 0.2), box(0.86, 0.016, 0.03, 0, 0.507, -0.2), box(0.86, 0.016, 0.03, 0, 0.507, 0.0)),
+  ...P(0x1a1a1a, [new THREE.CylinderGeometry(0.11, 0.11, 0.016, 14), -0.12, 0.512, 0.14], box(0.035, 0.016, 0.32, -0.04, 0.512, -0.02), box(0.14, 0.016, 0.045, 0.02, 0.512, -0.17))]));
 
 function rsBuild(e) {
   const k = e.k;
@@ -5690,16 +5725,16 @@ function rsBuild(e) {
   else if (k === "rs_torch") geo = rsTorchGeo(true, e.a ?? 3);
   else if (k === "rs_lever") geo = rsLeverGeo(!!e.on, e.a ?? 3);
   else if (k === "rs_button") geo = rsButtonGeo(false, e.a ?? 3);
-  else if (k === "rs_plate") { geo = rsPlateGeo(false); mat = rsDull(); }
+  else if (k === "rs_plate") geo = rsPlateGeo(false);
   else if (k === "rs_repeater") geo = rsRepeaterGeo(e.d || 1, false);
   else if (k === "rs_comparator") geo = rsComparatorGeo(e.m || 0, false);
-  else if (k === "rs_block") { geo = rsCubeGeo("block", 0xb01414, P(0xd23a3a, box(0.5, 0.5, 1.0, 0, 0, 0))); mat = rsDull(); }
-  else if (k === "rs_lamp") { geo = rsCubeGeo("lampoff", 0x6b5a2a); mat = rsDull(); }
+  else if (k === "rs_block") { geo = rsBlockGeo(); mat = rsDull(); }
+  else if (k === "rs_lamp") { geo = rsLampGeo(false); mat = rsDull(); }
   else if (k === "rs_piston" || k === "rs_sticky") { geo = rsPistonGeo(k === "rs_sticky", false); mat = rsDull(); }
   else if (k === "rs_head") { geo = rsHeadGeo(!!e.s); mat = rsDull(); }
   else if (k === "rs_observer") { geo = rsObserverGeo(false); mat = rsDull(); }
-  else if (k === "rs_dispenser") { geo = rsCubeGeo("disp", 0x7a7a7a, P(0x1a1a1a, box(0.02, 0.4, 0.4, 0.5, 0, 0))); mat = rsDull(); }
-  else { geo = rsCubeGeo("note", 0x8a5a2c, P(0x4a2a10, box(0.3, 0.02, 0.3, 0, 0.5, 0))); mat = rsDull(); }  // нотный блок
+  else if (k === "rs_dispenser") { geo = rsDispenserGeo(); mat = rsDull(); }
+  else { geo = rsNoteGeo(); mat = rsDull(); }  // нотный блок
   const m = new THREE.Mesh(geo, mat);
   m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
   if (e.f !== undefined) rsFace(m, e.f);
@@ -5825,7 +5860,7 @@ function rsPaint(r, force) {
   if (!force && s.sig === sig) return;
   s.sig = sig;
   if (r.k === "rs_dust") { m.geometry = rsDustGeo(s.conn); m.material = rsDustMats[s.lvl]; }
-  else if (r.k === "rs_lamp") { const on = s.lit && s.out; m.geometry = rsCubeGeo(on ? "lampon" : "lampoff", on ? 0xfff2b0 : 0x6b5a2a); m.material = on ? rsLit : rsDull(); }
+  else if (r.k === "rs_lamp") { const on = s.lit && s.out; m.geometry = rsLampGeo(on); m.material = on ? rsLit : rsDull(); }
   else if (r.k === "rs_torch") m.geometry = rsTorchGeo(s.lit, e.a ?? 3);
   else if (r.k === "rs_lever") m.geometry = rsLeverGeo(!!e.on, e.a ?? 3);
   else if (r.k === "rs_button") m.geometry = rsButtonGeo(rsTickN < s.until, e.a ?? 3);
