@@ -1601,9 +1601,18 @@ function drawHp() {
 function damage(n, by) {
   if (gameMode !== "survival" || dead || isGod() || performance.now() < invulnUntil || n <= 0) return;
   hp -= n;
+  lastHurt = performance.now();
   flashEl.style.transition = "none"; flashEl.style.opacity = 0.35;
   requestAnimationFrame(() => { flashEl.style.transition = "opacity 0.4s"; flashEl.style.opacity = 0; });
   if (hp <= 0) die(by);
+  drawHp();
+}
+
+// Здоровье понемногу восстанавливается, если несколько секунд никто не бил
+let lastHurt = 0;
+function updateRegen(dt) {
+  if (gameMode !== "survival" || dead || hp >= MAX_HP || performance.now() - lastHurt < 5000) return;
+  hp = Math.min(MAX_HP, hp + 4 * dt);
   drawHp();
 }
 
@@ -5565,6 +5574,7 @@ function updateWeapons(dt) {
   updateBalls(dt);
   updateAnimals(dt);
   updateBots(dt);
+  updateRegen(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
   const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
