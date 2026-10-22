@@ -518,6 +518,7 @@ scene.add(plate);
 // остальное не нужно: внутрь не попасть. Выкопанное рассылается всем как { op: "dig", x, y, z }
 const DEPTH = 100;
 const dug = new Set();
+const isTerr = e => e?.op === "block" && !!e.t;  // блок земли или ада (у животных и шариков поле t — это вид, не земля)
 const HOLE_N = 2048, HOLE_ORIGIN = -1000;  // карта дыр в плите: копать можно в квадрате x, z от -1000 до 1048
 const holeData = new Uint8Array(HOLE_N * HOLE_N);
 const holeTex = new THREE.DataTexture(holeData, HOLE_N, HOLE_N, THREE.RedFormat);
@@ -1639,7 +1640,7 @@ function explode(pos, radius = BOOM_RADIUS) {
   const r2 = radius * radius, batch = [];
   for (const m of solids) {
     const e = m.userData.edit;
-    if (e && !e.t && !(e.p && online && !isDev) && m.position.distanceToSquared(pos) < r2) batch.push(undo(e));
+    if (e && !isTerr(e) && !(e.p && online && !isDev) && m.position.distanceToSquared(pos) < r2) batch.push(undo(e));
   }
   for (const e of batch) edit(e);
   if (batch.length) online?.sendEdits(batch);  // всё, что сломал взрыв, — одним запросом
@@ -2240,10 +2241,20 @@ const playing = () => inGame && !menuOpen && !typing && (TOUCH || !!document.poi
 
 // Что под точкой экрана (по умолчанию — под прицелом в центре): точка, нормаль поверхности и объект.
 // screen — координаты от -1 до 1, как у WebGL
+const animalBox = new THREE.Box3();
 function aim(screen = new THREE.Vector2(0, 0)) {
   aimRay.setFromCamera(screen, camera);
   // Плита над ямой — «призрак»: луч идёт сквозь неё
   const hit = aimRay.intersectObjects(solids).find(h => h.object !== plate || (px <= HELL_BORDER && !topDug(Math.floor(h.point.x), Math.floor(h.point.z))));
+  // Животные маленькие и двигаются: целимся по их коробке с запасом, иначе вместо курицы выкапывается пол
+  let best = null, bestD = hit ? hit.distance : REACH;
+  for (const m of animals.values()) {
+    const h = ANIMALS[m.userData.edit.t].h;
+    animalBox.setFromCenterAndSize(new THREE.Vector3(m.position.x, m.position.y + h / 2, m.position.z), new THREE.Vector3(1.1, h + 0.3, 1.1));
+    const pt = aimRay.ray.intersectBox(animalBox, new THREE.Vector3());
+    if (pt && pt.distanceTo(aimRay.ray.origin) < bestD) { bestD = pt.distanceTo(aimRay.ray.origin); best = { point: pt, normal: new THREE.Vector3(0, 1, 0), object: m }; }
+  }
+  if (best) return best;
   if (!hit) return null;
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
   return { point: hit.point, normal, object: hit.object };
@@ -2324,7 +2335,7 @@ function use(action, screen) {
       else share({ op: "dig", x: dx, y: -1, z: dz });
     } else if (hit) {
       const t = hit.object.userData.edit;
-      if (t.t) {  // земля: ломаем — значит копаем
+      if (isTerr(t)) {  // земля: ломаем — значит копаем
         if (t.t === 2) addChat("* дальше бедрок, его не сломать");
         else if (t.t === 3) addChat("* в аду это не сломать");
         else share({ op: "dig", x: t.x, y: t.y, z: t.z });
@@ -3680,9 +3691,9 @@ function applyTrollCam() {
 }
 function clearMapLocal() {
   if (helpers) helpers.queue.length = 0;
-  for (const m of [...solids]) { const e = m.userData.edit; if (e && !e.t) removeSolid(m); }
+  for (const m of [...solids]) { const e = m.userData.edit; if (e && !isTerr(e)) removeSolid(m); }
   for (const k of [...dug]) { const [x, y, z] = k.split(",").map(Number); edit({ op: "undig", x, y, z }); }
-  for (const m of [...solids]) if (m.userData.edit?.t) removeSolid(m);
+  for (const m of [...solids]) if (isTerr(m.userData.edit)) removeSolid(m);
 }
 let clearArmed = 0;  // до какого момента (мс) кнопка очистки ждёт второго нажатия
 let trollPage = false, trollTarget = "all", trollNo = 0;  // trollNo — страница списка шуток  // цель шуток: "all", "me" или id игрока
@@ -4350,7 +4361,7 @@ function p2pConnected(dc, role) {
   };
   if (role === "host") {
     send({ t: "hello", mode: gameMode });
-    const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !e.t)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+    const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e))), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
     sendList("edits", list);  // мир хозяина — другу
   }
 }
@@ -4523,7 +4534,7 @@ document.body.append(worldFileEl);
 
 function exportWorld() {
   // Каждый предмет мира хранит запись, из которой он создан (userData.edit)
-  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !e.t)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e))), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
   const blob = new Blob([JSON.stringify({ format: "baseAscii", version: 1, edits })], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "world" + WORLD_EXT });
   a.click();
