@@ -3763,7 +3763,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !isNpc(id));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -3809,6 +3809,7 @@ adminEl.addEventListener("click", e => {
       addChat("* карта очищена");
     } else { clearArmed = performance.now() + 5000; setTimeout(() => { if (panel === adminEl) drawAdmin(); }, 5100); }
   }
+  if (a === "delbots") { const n = bots.size; for (const b of [...bots.values()]) removeBot(b); addChat(`* ботов удалено: ${n}`); }
   if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
   if (a.startsWith("god:")) {
     const id = a.slice(4), on = !godIds[id];
@@ -5195,13 +5196,12 @@ function rocketBoom(pos, own, W) {
 
 // --- Боты: ходят, строят и (боевые) стреляют, как живые игроки. Считает их тот, кто поставил; остальные видят ботов как обычных игроков (id bot-N)
 const bots = new Map();
-const BOT_MAX = 6, BOT_NAMES = ["Саня", "Вован", "Макс", "Жека", "Лёха", "Дима", "Гоша", "Тёма"];
-const BOT_MATS = [undefined, "stone", "wood", "concrete", "tiles", "marble", "clay", "glass", "metal"];
+const BOT_NAMES = ["Саня", "Вован", "Макс", "Жека", "Лёха", "Дима", "Гоша", "Тёма"];
+const BOT_MATS = [undefined, "stone", "wood", "concrete", "tiles", "marble", "clay", "metal", "wool", "snow"];
 const botName = () => `Бот ${BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]}`;
 let botN = 0, botSync = 0;
 function spawnBot(pos, role) {
   if (online && !isDev && !online.p2p) return addChat("* ботов в сети ставит только разработчик");
-  if (bots.size >= BOT_MAX) return addChat(`* ботов уже ${BOT_MAX}, это максимум`);
   const id = `bot-${myId.slice(0, 4)}${botN++}`;
   const b = { id, role, x: pos.x, f: pos.y, z: pos.z, yaw: Math.random() * 6.28, vy: 0, ground: false, hp: 100, nick: botName(), c: 1 + Math.floor(Math.random() * (COLORS.length - 1)),
     mx: 0, mz: 0, plan: null, placed: 0, done: false, pause: 0, place: 0, fire: 1, burst: 0, look: 0, see: false, flee: 0, from: null, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 0, stuck: 0, wander: 0, head: 0 };
@@ -5261,30 +5261,53 @@ function botShoot(b, foe, dist) {
   if (foe.id === null) damage(dmg, `${b.nick} (АК${head ? ", в голову" : ""})`);
   else hitPlayer(foe.id, dmg, "АК", head, b.nick);
 }
-// План стройки: домик, стена или башня из случайного материала
+// План стройки: домик, стена, башня или помост из случайных материалов; в них окна, двери, ступеньки, доски и палки. Каждый шаг — готовое изменение мира
 function botPlan(b) {
   const x0 = Math.floor(b.x) + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.floor(Math.random() * 4)), z0 = Math.floor(b.z) + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.floor(Math.random() * 4));
   const y0 = Math.round(groundHeight(x0 + 0.5, b.f + 0.5, z0 + 0.5));
-  const mat = BOT_MATS[Math.floor(Math.random() * BOT_MATS.length)], c = mat ? 0 : 1 + Math.floor(Math.random() * (COLORS.length - 1));
-  const list = [], add = (dx, dy, dz) => list.push([x0 + dx, y0 + dy, z0 + dz]), type = Math.floor(Math.random() * 3);
-  if (type === 0) {
-    for (let y = 0; y < 3; y++) for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) { if (i && i < 4 && j && j < 4) continue; if (j === 0 && i === 2 && y < 2) continue; add(i, y, j); }
-    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) add(i, 3, j);
-  } else if (type === 1) {
-    for (let y = 0; y < 3; y++) for (let i = 0; i < 8; i++) add(i, y, 0);
-  } else {
-    for (let y = 0; y < 6; y++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { if (i === 1 && j === 1) continue; if (i === 1 && j === 0 && y < 2) continue; add(i, y, j); }
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const mat = pick(BOT_MATS), c = mat ? 0 : 1 + Math.floor(Math.random() * (COLORS.length - 1)), glass = pick(["glass", "window"]), roofC = 1 + Math.floor(Math.random() * (COLORS.length - 1));
+  const list = [], at = (dx, dy, dz) => [x0 + dx, y0 + dy, z0 + dz];
+  const wall = (dx, dy, dz, k) => { const p = at(dx, dy, dz); list.push({ at: p, e: { op: "block", x: p[0], y: p[1], z: p[2], c: k ? 0 : c, ...((k || mat) ? { k: k || mat } : {}) } }); };
+  const turn = (dx, dy, dz, k, r, extra) => { const p = at(dx, dy, dz); list.push({ at: p, e: { op: "block", x: p[0], y: p[1], z: p[2], c: 0, k, r, ...extra } }); };
+  const plank = (dx, dy, dz, ex, ez) => { const a = at(dx + 0.5, dy, dz), p = at(dx, dy, dz); list.push({ at: p, e: { op: "plank", ends: [a[0], a[1], a[2], a[0] + ex, a[1], a[2] + ez], c: roofC } }); };
+  const type = Math.floor(Math.random() * 4);
+  if (type === 0) {  // домик 5×5: окна по бокам, дверь, ступеньки у входа, крыша из досок или блоков
+    for (let y = 0; y < 3; y++) for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+      if (i && i < 4 && j && j < 4) continue;
+      if (j === 0 && i === 2 && y < 2) continue;
+      wall(i, y, j, y === 1 && (i === 0 || i === 4) && j === 2 ? glass : undefined);
+    }
+    turn(2, 0, 0, "door", 0, { open: false });
+    turn(2, 0, -1, "stairs", 2);
+    if (Math.random() < 0.5) for (let i = 0; i < 5; i++) plank(i, 3, 0, 0, 5);
+    else for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) wall(i, 3, j);
+  } else if (type === 1) {  // стена с окошками
+    for (let y = 0; y < 3; y++) for (let i = 0; i < 8; i++) wall(i, y, 0, y === 1 && i % 3 === 1 ? glass : undefined);
+  } else if (type === 2) {  // башня с дверью и стеклянными щелями
+    for (let y = 0; y < 6; y++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      if (i === 1 && j === 1) continue;
+      if (i === 1 && j === 0 && y < 2) continue;
+      wall(i, y, j, y === 3 && (i === 1 || j === 1) ? glass : undefined);
+    }
+    turn(1, 0, 0, "door", 0, { open: false });
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) turn(i, 6, j, "stairs", (i + j) % 4);
+  } else {  // помост из досок с палками-перилами
+    for (let i = 0; i < 4; i++) plank(i, 1, 0, 0, 4);
+    for (const [i, j] of [[0, 0], [3, 0], [0, 3], [3, 3]]) { turn(i, 0, j, "stick", 0); turn(i, 1, j, "stick", 0); }
+    turn(1, 0, -1, "stairs", 2);
   }
-  return { list, mat, c };
+  return { list };
 }
 function botPlace(b) {
-  const q = b.plan.list.shift();
-  if (blocks.has(key(q[0], q[1], q[2]))) return;
-  // не ставим блок внутрь кого-то
-  const bodies = [{ x: px, f: feet, z: pz }, ...[...others.values()].map(a => ({ x: a.group.position.x, f: a.group.position.y, z: a.group.position.z }))];
-  if (bodies.some(o => Math.abs(q[0] + 0.5 - o.x) < 0.85 && Math.abs(q[2] + 0.5 - o.z) < 0.85 && q[1] + 1 > o.f && q[1] < o.f + 1.9)) { b.plan.list.push(q); return; }
-  const e = { op: "block", x: q[0], y: q[1], z: q[2], c: b.plan.c };
-  if (b.plan.mat) e.k = b.plan.mat;
+  const q = b.plan.list.shift(), e = q.e;
+  if (e.op === "block") {
+    const cells = [[e.x, e.y, e.z], ...(e.k === "door" ? [[e.x, e.y + 1, e.z]] : [])];
+    if (cells.some(k => blocks.has(key(...k)))) return;
+    // не ставим блок внутрь кого-то
+    const bodies = [{ x: px, f: feet, z: pz }, ...[...others.values()].map(a => ({ x: a.group.position.x, f: a.group.position.y, z: a.group.position.z }))];
+    if (bodies.some(o => Math.abs(e.x + 0.5 - o.x) < 0.85 && Math.abs(e.z + 0.5 - o.z) < 0.85 && e.y + 1 > o.f && e.y < o.f + 1.9)) { b.plan.list.push(q); return; }
+  } else e.id = `${b.id}-${b.placed}`;
   share(e);
   b.placed++;
   if (b.placed >= 150) { b.done = true; b.plan = null; }
@@ -5316,14 +5339,15 @@ function botThink(b, dt, foes) {
     const q = b.plan.list[0];
     if (!q) { b.plan = null; b.pause = 2 + Math.random() * 3; }
     else {
-      const dx = q[0] + 0.5 - b.x, dz = q[2] + 0.5 - b.z, d = Math.hypot(dx, dz);
-      head = Math.atan2(-dx, -dz);
-      if (d > 3.8 || q[1] - b.f > 3.5) speed = 3.2;
+      const dx = q.at[0] + 0.5 - b.x, dz = q.at[2] + 0.5 - b.z, d = Math.hypot(dx, dz);
+      if (d > 0.5) head = Math.atan2(-dx, -dz);  // прямо под ногами направление скачет — тогда не крутимся
+      if (d <= 0.5) speed = 2;
+      else if (d > 3.8 || q.at[1] - b.f > 3.5) speed = 3.2;
       else if (d < 1.6) speed = -1.5;
       else if (b.place <= 0) { b.place = 0.35 + Math.random() * 0.3; botPlace(b); }
     }
   }
-  b.yaw += Math.atan2(Math.sin(head - b.yaw), Math.cos(head - b.yaw)) * Math.min(1, dt * 10);
+  b.yaw += Math.atan2(Math.sin(head - b.yaw), Math.cos(head - b.yaw)) * Math.min(1, dt * (b.role === "fight" && foe && fd < 32 ? 10 : 4));
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   b.mx = fx * speed + -fz * side * 3; b.mz = fz * speed + fx * side * 3;
 }
