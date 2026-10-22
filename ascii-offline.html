@@ -3772,7 +3772,7 @@ function drawAdmin() {
   if (online) {
     rows.push(row("[ объявление ]", "announce"));
     if (isDev) for (const [t, b] of Object.entries(BALL_TYPES)) rows.push(row(`[ удалить половину ${b.name} ]`, "half:" + t));
-    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
+    if (isDev) rows.push(row(`[ режим бога: ${godSelf ? "ВКЛ" : "выкл"} ]`, "godself"), row(clearArmed > performance.now() ? "[ ТОЧНО? нажми ещё раз ]" : "[ очистить карту ]", "clearmap"), row("[ ботов по всей карте ]", "scatterbots"), row(`[ удалить ботов (${bots.size}) ]`, "delbots"), row("[ ТРОЛЛЬ-МЕНЮ ]", "trollmenu"), ...(lobbyCode === "P2P" ? [] : [row("[ убрать застрявших игроков ]", "ghosts"), row("[ удалить это лобби ]", "dellobby")]), "╟" + title("ИГРОКИ", "─") + "╢");
     const people = [...others].filter(([id]) => !isNpc(id));
     if (isDev && !people.length) rows.push(row("в лобби больше никого"));
     for (const [id, a] of isDev ? people : []) {
@@ -3818,6 +3818,13 @@ adminEl.addEventListener("click", e => {
       addChat("* карта очищена");
     } else { clearArmed = performance.now() + 5000; setTimeout(() => { if (panel === adminEl) drawAdmin(); }, 5100); }
   }
+  if (a === "scatterbots") ask("СКОЛЬКО БОТОВ", "10", 3).then(t => {
+    const n = Math.min(100, Math.floor(+t));
+    for (let i = 0; i < n; i++) {
+      const x = SIZE / 2 + (Math.random() - 0.5) * 160, z = SIZE / 2 + (Math.random() - 0.5) * 160;  // пол бесконечный, берём область вокруг старта
+      spawnBot(new THREE.Vector3(x, groundHeight(x, 40, z), z), i % 2 ? "fight" : "build");
+    }
+  });
   if (a === "delbots") { const n = bots.size; for (const b of [...bots.values()]) removeBot(b); addChat(`* ботов удалено: ${n}`); }
   if (a === "godself") { godSelf = !godSelf; if (godSelf) hp = MAX_HP; drawHp(); }
   if (a.startsWith("god:")) {
