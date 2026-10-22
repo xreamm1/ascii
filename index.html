@@ -5339,7 +5339,7 @@ const WEAPONS = {
   "Базука":   { kind: "rocket", dmg: 95, cd: 1, mag: 1, reload: 3, radius: 5, speed: 26 },
   "Базука и точка": { kind: "rocket", vit: true, dev: true, dmg: 0, cd: 1, mag: 1, reload: 4, radius: 2, speed: 30 },  // ракета зовёт помощников, а не взрывает
   "Граната":  { kind: "grenade", dmg: 85, cd: 1, mag: 3, reload: 4, radius: 5, fuse: 2.2, speed: 14 },
-  "Шарик-закопатель": { kind: "grenade", fill: true, geo: "Шарик-закопатель", dev: true, dmg: 0, cd: 0.5, mag: 6, reload: 1.5, radius: 6, fuse: 1.4, speed: 15 },  // зарывает ямы вокруг места, куда упал
+  "Шарик-закопатель": { kind: "grenade", fill: true, geo: "Шарик-закопатель", dev: true, inf: true, dmg: 0, cd: 0, mag: 1, reload: 0, radius: 6, fuse: 1.4, speed: 15 },  // зарывает ямы вокруг места, куда упал
 };
 const SCOPE_FOV = 12;
 const ammo = {};
@@ -5448,13 +5448,13 @@ function tryFire() {
   if (W.dev && online && !isDev) return addChat("* это оружие только у разработчика");
   if (itemBanned(n)) return;
   if (now < nextShot || reloadEnd) return;
-  if (W.kind !== "melee" && ammo[n] <= 0) return startReload();
+  if (W.kind !== "melee" && ammo[n] <= 0 && !W.inf) return startReload();
   nextShot = now + W.cd;
   if (W.kind === "melee") { swing = 1; meleeHit(n, W); return; }
-  ammo[n]--;
+  if (!W.inf) ammo[n]--;  // у некоторых предметов патроны бесконечные
   kick = 1;
   if (W.kind === "gun") fireGun(n, W); else if (W.kind === "rocket") fireRocket(n, W); else throwGrenade(n, W);
-  if (ammo[n] <= 0) startReload();
+  if (ammo[n] <= 0 && !W.inf) startReload();
 }
 
 function meleeHit(n, W) {
@@ -6520,7 +6520,7 @@ function updateWeapons(dt) {
       m.position.y -= s * 0.12; m.rotation.x += s * 0.5; m.rotation.z += Math.sin(left * 18) * 0.05 * s;
     }
   }
-  const text = !n ? "" : W.kind === "melee" ? n : `${n}  ${reloadEnd ? "перезарядка…" : `${ammo[n]}/${W.mag}`}`;
+  const text = !n ? "" : W.kind === "melee" ? n : `${n}  ${reloadEnd ? "перезарядка…" : W.inf ? "∞" : `${ammo[n]}/${W.mag}`}`;
   if (text !== lastAmmoText) { lastAmmoText = text; ammoEl.textContent = text; ammoEl.style.display = text ? "block" : "none"; }
   scopeEl.style.display = scoped ? "block" : "none";
   // Кнопки оружия на телефоне — только когда оружие в руке
