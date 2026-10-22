@@ -75,7 +75,10 @@
   #inv .tabs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
   #inv .tab { cursor: pointer; padding: 0 3px; }
   #inv .tab.on { background: #fff; color: #000; }
-  #inv .grid { display: grid; grid-template-columns: repeat(9, var(--slot, 44px)); gap: 2px; }
+  #inv .grid { display: grid; grid-template-columns: repeat(9, var(--slot, 44px)); gap: 2px; max-height: 46vh; overflow-y: auto; align-content: start; }
+  #inv .none { grid-column: 1 / -1; color: #888; padding: 6px 0; }
+  #inv .invq { width: 100%; box-sizing: border-box; background: #111; color: #fff; border: 1px solid #666; padding: 5px 7px; font: inherit; margin-bottom: 8px; outline: none; }
+  #inv .invq:focus { border-color: #fff; }
   #inv .cell:hover, #inv .tab:hover { background: #333; }
   #schem { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; border: 2px solid #fff; padding: 10px; white-space: normal; font-size: 14px; max-width: 96vw; box-sizing: border-box; line-height: 1.5; }
   #schem .sact { cursor: pointer; }
@@ -2914,7 +2917,7 @@ const INV_TABS = {
   "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"],
 };
 const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"];
-let invTab = "Блоки", invHover = "";
+let invTab = "Блоки", invHover = "", invQuery = "";
 // Что разработчик запретил ставить обычным игрокам: названия вкладок инвентаря
 const BAN_TABS = ["Блоки", "Мебель", "Оружие", "Живое", "Транспорт", "Редстоун"];
 let banned = new Set(), banNoteAt = 0;
@@ -2932,19 +2935,38 @@ const invTabs = () => {
   const tabs = { ...INV_TABS, ...(REDSTONE_ITEMS.length ? { "Редстоун": REDSTONE_ITEMS } : {}) };
   const listed = new Set(Object.values(tabs).flat());
   tabs["Блоки"] = [...tabs["Блоки"], ...ITEMS.filter(i => !listed.has(i))];  // всё, что не попало во вкладки
-  return tabs;
+  return { "Все": [...new Set(Object.values(tabs).flat())], ...tabs };
 };
+// Что показывать в сетке: при поиске — всё подходящее по названию из всех вкладок, иначе текущая вкладка
+function invList() {
+  const q = invQuery.trim().toLowerCase();
+  if (!q) return invTabs()[invTab] ?? [];
+  return invTabs()["Все"].filter(n => `${n} ${KINDS[n] ?? RS_ITEMS[n]?.k ?? ""}`.toLowerCase().includes(q));
+}
+const invGridHtml = list => list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("") || `<span class="none">ничего не найдено</span>`;
 function drawInventory() {
-  const tabs = invTabs();
+  const tabs = invTabs(), q = invQuery.trim();
   if (!tabs[invTab]) invTab = "Блоки";
-  const list = tabs[invTab];
+  const list = invList(), focused = document.activeElement?.id === "invq", caret = focused ? document.activeElement.selectionStart : 0;
   wantIcons(list);
   inv.innerHTML = `<div class="invt">ИНВЕНТАРЬ</div>
-<div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
-<div class="grid">${list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("")}</div>
+<input id="invq" class="invq" placeholder="поиск по названию…" autocomplete="off" spellcheck="false" value="${invQuery.replace(/"/g, "&quot;")}">
+<div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${!q && n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
+<div class="grid">${invGridHtml(list)}</div>
 <div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
 <div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
 <div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div>`;
+  const input = inv.querySelector("#invq");
+  input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") input.blur(); });  // буквы идут в поиск, а не в игру
+  input.addEventListener("keyup", e => e.stopPropagation());
+  input.addEventListener("input", () => {
+    invQuery = input.value;
+    const grid = inv.querySelector(".grid"), l = invList();
+    wantIcons(l);
+    grid.innerHTML = invGridHtml(l);
+    for (const t of inv.querySelectorAll(".tab")) t.classList.toggle("on", !invQuery.trim() && t.dataset.tab === invTab);
+  });
+  if (focused) { input.focus(); input.setSelectionRange(caret, caret); }
 }
 
 function drawPalette() {
@@ -2980,7 +3002,7 @@ function togglePalette() { togglePanel(palette, drawPalette); }
 function toggleInventory() { togglePanel(inv, drawInventory); }
 inv.addEventListener("click", e => {
   const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
-  if (tab) { invTab = tab.dataset.tab; drawInventory(); }
+  if (tab) { invTab = tab.dataset.tab; invQuery = ""; drawInventory(); }
   else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
   else if (sl) selectSlot(Number(sl.dataset.slot));
 });
