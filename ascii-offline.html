@@ -818,12 +818,20 @@ function share(e, replace = false) {
 // Склейка: обычные блоки рисуются кусками 8×8×8 (по цвету), а не тысячами отдельных вызовов отрисовки — так игра намного легче.
 // Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
 const shadedMats = {};
-const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex ? material(brickTex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return m; })();
+const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex || tex === plainTex ? material(tex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return m; })();
 const CH = 8;
 const chunks = new Map();
 const dirtyChunks = new Set();
+const FACE_DIR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];  // порядок граней BoxGeometry
+// Грань закрыта, если вплотную стоит такой же склеенный блок (стекло и лёд не считаем: через них видно)
+const faceHidden = (e, f) => { const d = FACE_DIR[f], nb = blocks.get(key(e.x + d[0], e.y + d[1], e.z + d[2])); return !!nb && nb.userData.mergeable && nb.userData.edit.k !== "ice" && nb.userData.edit.k !== "slime"; };
+// Поставили или убрали блок — у соседей в других кусках меняются видимые грани
+function dirtyNeighbors(e) {
+  for (const d of FACE_DIR) { const c = chunks.get(`${Math.floor((e.x + d[0]) / CH)},${Math.floor((e.y + d[1]) / CH)},${Math.floor((e.z + d[2]) / CH)}`); if (c) dirtyChunks.add(c); }
+}
 function chunkAdd(mesh) {
   const e = mesh.userData.edit, k = `${Math.floor(e.x / CH)},${Math.floor(e.y / CH)},${Math.floor(e.z / CH)}`;
+  dirtyNeighbors(e);
   let c = chunks.get(k);
   if (!c) chunks.set(k, c = { blocks: new Set(), meshes: new Map() });
   c.blocks.add(mesh);
@@ -835,6 +843,7 @@ function chunkRemove(mesh) {
   if (!c) return;
   c.blocks.delete(mesh);
   dirtyChunks.add(c);
+  dirtyNeighbors(mesh.userData.edit);
 }
 function rebuildChunks(limit = 24) {
   for (const c of dirtyChunks) {
@@ -848,18 +857,28 @@ function rebuildChunks(limit = 24) {
       m.visible = false;
     }
     for (const [col, list] of byColor) {
-      const n = list.length, pos = new Float32Array(n * 72), nor = new Float32Array(n * 72), uv = new Float32Array(n * 48), idx = new Uint16Array(n * 36), colr = new Float32Array(n * 72);
+      // Для каждого блока берём только видимые грани
+      const faces = list.map(m => { const f = []; for (let k = 0; k < 6; k++) if (!faceHidden(m.userData.edit, k)) f.push(k); return f; });
+      const n = faces.reduce((a, f) => a + f.length, 0);
+      if (!n) { const ex = c.meshes.get(col); if (ex) { scene.remove(ex); ex.geometry.dispose(); c.meshes.delete(col); } continue; }
+      const pos = new Float32Array(n * 12), nor = new Float32Array(n * 12), uv = new Float32Array(n * 8), idx = new Uint16Array(n * 6), colr = new Float32Array(n * 12);
       const bp = boxGeo.attributes.position.array, bn = boxGeo.attributes.normal.array, bu = boxGeo.attributes.uv.array, bi = boxGeo.index.array;
+      let q = 0;
       list.forEach((m, i) => {
         const { x, y, z } = m.position;
-        for (let v = 0; v < 24; v++) {
-          pos[i * 72 + v * 3] = bp[v * 3] + x; pos[i * 72 + v * 3 + 1] = bp[v * 3 + 1] + y; pos[i * 72 + v * 3 + 2] = bp[v * 3 + 2] + z;
-          // Дешёвая «глубина»: низ стенок и дно чуть темнее — блоки не сливаются в одну массу
-          const shade = bn[v * 3 + 1] > 0.5 ? 1 : bn[v * 3 + 1] < -0.5 ? 0.7 : bp[v * 3 + 1] < 0 ? 0.84 : 1;
-          colr[i * 72 + v * 3] = colr[i * 72 + v * 3 + 1] = colr[i * 72 + v * 3 + 2] = shade;
+        for (const f of faces[i]) {
+          for (let v = f * 4; v < f * 4 + 4; v++) {
+            const o = q * 12 + (v - f * 4) * 3;
+            pos[o] = bp[v * 3] + x; pos[o + 1] = bp[v * 3 + 1] + y; pos[o + 2] = bp[v * 3 + 2] + z;
+            // Дешёвая «глубина»: низ стенок и дно чуть темнее — блоки не сливаются в одну массу
+            const shade = bn[v * 3 + 1] > 0.5 ? 1 : bn[v * 3 + 1] < -0.5 ? 0.7 : bp[v * 3 + 1] < 0 ? 0.84 : 1;
+            colr[o] = colr[o + 1] = colr[o + 2] = shade;
+            nor[o] = bn[v * 3]; nor[o + 1] = bn[v * 3 + 1]; nor[o + 2] = bn[v * 3 + 2];
+            uv[q * 8 + (v - f * 4) * 2] = bu[v * 2]; uv[q * 8 + (v - f * 4) * 2 + 1] = bu[v * 2 + 1];
+          }
+          for (let k = 0; k < 6; k++) idx[q * 6 + k] = bi[f * 6 + k] - f * 4 + q * 4;
+          q++;
         }
-        nor.set(bn, i * 72); uv.set(bu, i * 48);
-        for (let k = 0; k < 36; k++) idx[i * 36 + k] = bi[k] + i * 24;
       });
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -883,8 +902,13 @@ function addSolid(mesh, e) {
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.userData.edit = e;  // чем предмет был создан: нужно, чтобы его убрать и чтобы отправить новичкам
   solids.push(mesh);
-  scene.add(mesh);
-  if (mesh.userData.mergeable) chunkAdd(mesh);
+  if (mesh.userData.mergeable) {  // рисуется куском: в сцене не нужен (так сцена лёгкая), для прицела хватает матрицы
+    mesh.visible = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.updateMatrix();
+    mesh.matrixWorld.copy(mesh.matrix);
+    chunkAdd(mesh);
+  } else scene.add(mesh);
 }
 
 function removeSolid(mesh) {
@@ -1433,9 +1457,11 @@ function blockMesh(e) {
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
     return m;
   }
-  const m = new THREE.Mesh(boxGeo, material(brickTex, e.c));
+  const flat = e.k === "flat";  // «Блок» без текстуры: просто выбранный цвет, как у ТНТ
+  const m = new THREE.Mesh(boxGeo, material(flat ? plainTex : brickTex, e.c));
   m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
   m.userData.mergeable = true;  // рисуется склейкой, см. rebuildChunks
+  if (flat) { m.userData.tex = plainTex; m.userData.chunkKey = "flat|" + e.c; }
   return m;
 }
 
@@ -2334,7 +2360,7 @@ function updateGhosts() {
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
-const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
+const KINDS = { "Блок": "flat", "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
@@ -5212,7 +5238,7 @@ function rocketBoom(pos, own, W) {
 
 // --- Отсечение, как мод Entity Culling: игроков, ботов, животных и машины, закрытых стенами, не рисуем.
 // Луч идёт по клеткам от камеры к телу (по таблице блоков, без обхода всех мешей). Скрытому объекту ставим слой 1, камера видит только слой 0
-const CULL_OPAQUE = e => e && e.op === "block" && (!e.k || e.k === "door" || (e.k in BLOCK_TEX && e.k !== "ice" && e.k !== "slime"));
+const CULL_OPAQUE = e => e && e.op === "block" && (!e.k || e.k === "flat" || e.k === "door" || (e.k in BLOCK_TEX && e.k !== "ice" && e.k !== "slime"));
 function cullBlocked(from, to) {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
   if (Math.hypot(dx, dy, dz) < 3) return false;
