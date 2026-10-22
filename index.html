@@ -32,6 +32,7 @@
     margin: 0;
     color: #fff;
     font: 16px/1 "JetBrains Mono", Consolas, "Courier New", monospace;
+    font-size: var(--fs, 16px);
   }
   #crosshair {
     left: 50%;
@@ -57,7 +58,7 @@
     left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center; color: #f55;
     background: #000; border: 4px double #f55; padding: 10px 24px; display: none; pointer-events: none; font-size: 22px; white-space: normal;
   }
-  #hotbar, #inv { white-space: normal; font-size: 14px; }
+  #hotbar, #inv { white-space: normal; font-size: var(--fs, 14px); }
   .hbs { display: flex; gap: 2px; margin-top: 3px; }
   .slot, .cell { width: var(--slot, 44px); height: var(--slot, 44px); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; position: relative; cursor: pointer; border: 1px solid #555; background: rgba(0,0,0,0.55); }
   .slot.sel { border: 2px solid #fff; background: rgba(60,60,60,0.8); }
@@ -72,7 +73,7 @@
     background: #000;
     display: none;
   }
-  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; border: 2px solid #fff; padding: 10px; width: calc(var(--slot, 44px) * 9 + 36px); box-sizing: border-box; }
+  #inv { left: 50%; top: 50%; transform: translate(-50%, -50%); background: #000; display: none; max-height: 96vh; overflow: auto; border: 2px solid #fff; padding: 10px; width: calc(var(--slot, 44px) * 9 + 56px); box-sizing: border-box; }
   #inv .invt { margin-bottom: 6px; }
   #inv .tabs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
   #inv .tab { cursor: pointer; padding: 0 3px; }
@@ -91,15 +92,29 @@
   /* Общий вид окон — как раньше в ASCII: чёрный фон, двойная белая рамка, кнопки в скобках, моноширинный шрифт */
   #menu, #game, #admin, #palette, #inv, #schem {
     white-space: normal; background: #000; border: 4px double #fff; border-radius: 0; box-shadow: none;
-    padding: 10px 14px; color: #fff; font-size: 16px; line-height: 1.35; box-sizing: border-box;
+    padding: 10px 14px; color: #fff; font-size: var(--fs, 16px); line-height: 1.35; box-sizing: border-box;
     max-height: 94vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   #menu { width: min(94vw, 420px); } #game { width: min(94vw, 400px); } #admin { width: min(96vw, 440px); } #palette { width: min(94vw, 340px); }
+  .xbtn { display: none; position: absolute; top: 2px; right: 8px; cursor: pointer; padding: 2px 8px; z-index: 2; border: 1px solid #fff; background: #000; }
+  @media (pointer: coarse) { .xbtn { display: block; } }
+  body.panel-open #touch, body.panel-open #lobby, body.panel-open #coords, body.panel-open #hotbar, body.panel-open #hp, body.panel-open #ammo, body.panel-open #chat { display: none !important; }
+  /* Низкий экран (телефон лёжа): окна сжимаем, лишние подписи убираем */
+  @media (max-height: 520px) {
+    #menu, #game, #admin, #palette, #inv, #schem, #ask { padding: 6px 10px; border-width: 3px; }
+    #inv .invt, #inv .invhint, .gx { display: none; }
+    #inv .grid { max-height: 36vh; }
+    #inv .invq { margin-bottom: 4px; padding: 2px 6px; }
+    #inv .tabs { margin-bottom: 4px; gap: 2px 8px; }
+    #inv .invname { margin: 3px 0; }
+    .gt { margin-bottom: 4px; }
+    .gb { margin: 1px 0; }
+  }
   .gt { margin: 0 0 8px; text-align: center; }
   .gt::before { content: "═══ "; } .gt::after { content: " ═══"; }
   .gl { color: #fff; margin: 3px 0; }
   .gl.note { color: #ffd84a; }
-  .gs { border-top: 1px solid #fff; margin: 8px 0 4px; padding-top: 2px; font-size: 13px; }
+  .gs { border-top: 1px solid #fff; margin: 8px 0 4px; padding-top: 2px; font-size: 0.85em; }
   .gb { display: block; padding: 0 4px; margin: 2px 0; background: none; border: none; border-radius: 0; cursor: pointer; text-align: left; color: #fff; }
   .gb::before { content: "[ "; } .gb::after { content: " ]"; }
   .gb:hover { background: #fff; color: #000; }
@@ -109,7 +124,7 @@
   .gg { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center; margin: 2px 0; }
   .gg .gl { margin: 0 8px 0 0; }
   .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
-  .gx { margin-top: 8px; border-top: 1px solid #fff; padding-top: 2px; font-size: 13px; }
+  .gx { margin-top: 8px; border-top: 1px solid #fff; padding-top: 2px; font-size: 0.85em; }
   .lobbyrow { display: flex; gap: 4px; align-items: center; }
   .lobbyrow .gb:first-child { flex: 1; text-align: left; }
   #palette .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 4px 0 8px; }
@@ -130,7 +145,7 @@
   #ask {
     position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%);
     background: #000; border: 4px double #fff; color: #fff;
-    font: 16px/1.35 "JetBrains Mono", Consolas, "Courier New", monospace; padding: 10px 14px; width: min(94vw, 380px); box-sizing: border-box; display: none;
+    font: 16px/1.35 "JetBrains Mono", Consolas, "Courier New", monospace; font-size: var(--fs, 16px); padding: 10px 14px; width: min(94vw, 380px); box-sizing: border-box; display: none;
   }
   #askTop { margin-bottom: 8px; text-align: center; }
   #askTop::before { content: "═══ "; } #askTop::after { content: " ═══"; }
@@ -223,12 +238,13 @@
   @media (orientation: portrait) { #touch .row.bottom { bottom: 90px; } }
   #touch .button {
     position: static;
-    padding: 8px 10px;
+    padding: 0.5em 0.7em;
     border: 2px solid #fff;
     border-radius: 0;
     background: rgba(0, 0, 0, 0.6);
+    font-size: var(--fs, 14px);
   }
-  #touch .button.big { padding: 14px 18px; }
+  #touch .button.big { padding: 0.9em 1.1em; }
   #touch .button.active { color: #000; background: #fff; }
   #lobby { max-width: 40vw; white-space: pre-wrap; }
   #stick, #knob {
@@ -237,7 +253,6 @@
     pointer-events: none;
   }
   @media (pointer: coarse) {
-    pre, #ask { font-size: 14px; }
     #touch { display: block; }
   }
 </style>
@@ -2949,7 +2964,10 @@ function drawHotbar() {
 }
 // Хотбар и инвентарь из 9 клеток должны помещаться в ширину экрана
 function fitBars() {
-  document.documentElement.style.setProperty("--slot", Math.max(26, Math.min(54, Math.floor((innerWidth - 40) / 9))) + "px");
+  const root = document.documentElement.style;
+  // Шрифт окон и размер клеток подбираем по размеру экрана: на телефоне всё мельче и помещается
+  root.setProperty("--fs", Math.max(11, Math.min(16, Math.round(Math.min(innerHeight / 27, innerWidth / 42)))) + "px");
+  root.setProperty("--slot", Math.max(26, Math.min(54, Math.floor((innerWidth - 40) / 9), Math.floor((innerHeight - 80) / 9))) + "px");
 }
 addEventListener("resize", fitBars);
 
@@ -3018,7 +3036,7 @@ function drawInventory() {
 <div class="grid">${invGridHtml(list)}</div>
 <div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
 <div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
-<div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div>`;
+<div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div><span class="xbtn">✕</span>`;
   const input = inv.querySelector("#invq");
   input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") input.blur(); });  // буквы идут в поиск, а не в игру
   input.addEventListener("keyup", e => e.stopPropagation());
@@ -3034,7 +3052,7 @@ function drawInventory() {
 
 function drawPalette() {
   palette.innerHTML = `${gtitle("ПАЛИТРА")}<div class="swatches">${COLORS.map((c, i) => `<div class="option${i === color ? " sel" : ""}" data-color="${i}" title="${c.name}" style="background:${rgb(i)}"></div>`).join("")}</div>
-<div class="cname" id="cname">${COLORS[color].name}</div><div class="gx">${TOUCH ? "ЦВЕТ — закрыть" : "F — закрыть"}</div>`;
+<div class="cname" id="cname">${COLORS[color].name}</div><div class="gx">${TOUCH ? "ЦВЕТ — закрыть" : "F — закрыть"}</div><span class="xbtn">✕</span>`;
 }
 palette.addEventListener("mouseover", e => { const o = e.target.closest(".option"), el = document.getElementById("cname"); if (o && el) el.textContent = COLORS[Number(o.dataset.color)].name; });
 
@@ -3044,6 +3062,7 @@ function togglePanel(el, draw) {
   if (panel) panel.style.display = "none";
   panel = panel === el ? null : el;
   menuOpen = !!panel;
+  document.body.classList.toggle("panel-open", !!panel);
   if (panel) {
     if (document.pointerLockElement) document.exitPointerLock();  // лишний вызов вызывает ложное событие
     draw();
@@ -3054,6 +3073,7 @@ function togglePanel(el, draw) {
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
 function toggleInventory() { togglePanel(inv, drawInventory); }
+document.addEventListener("click", e => { if (e.target.closest(".xbtn") && panel) togglePanel(panel, () => {}); });  // ✕ в углу окна (на телефоне)
 inv.addEventListener("click", e => {
   const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
   if (tab) { invTab = tab.dataset.tab; invQuery = ""; drawInventory(); }
@@ -4046,7 +4066,7 @@ function drawTroll() {
   const who = trollTarget === "all" ? "все" : trollTarget === "me" ? "я (проверка)" : others.get(trollTarget)?.nick || "?";
   adminEl.innerHTML = gtitle("ТРОЛЛЬ") + gbtn(`цель: ${who}`, "trtarget", "on") + gsep() +
     `<div class="gcols">${TROLLS.slice(trollNo * 12, trollNo * 12 + 12).map(([id, name]) => gbtn(name, "tr:" + id)).join("")}</div>` +
-    gsep() + gbtn(`страница ${trollNo + 1}/${Math.ceil(TROLLS.length / 12)} — дальше`, "trnext") + gbtn("назад", "trback");
+    gsep() + gbtn(`страница ${trollNo + 1}/${Math.ceil(TROLLS.length / 12)} — дальше`, "trnext") + gbtn("назад", "trback") + `<span class="xbtn">✕</span>`;
 }
 function sendTroll(type, text) {
   if (!TROLLS.some(t => t[0] === type)) return;
@@ -4091,7 +4111,7 @@ function drawAdmin() {
         `<div class="gg">${gbtn("к нему", "tpto:" + id, "small")}${gbtn("ко мне", "tpme:" + id, "small")}${gbtn("−", "sz-:" + id, "small")}${gbtn("+", "sz+:" + id, "small")}${gbtn(godIds[id] ? "− бог" : "+ бог", "god:" + id, "small")}</div>`);
     }
   }
-  rows.push(`<div class="gx">${TOUCH ? "АДМИН — закрыть" : "P — закрыть"}</div>`);
+  rows.push(`<div class="gx">${TOUCH ? "АДМИН — закрыть" : "P — закрыть"}</div><span class="xbtn">✕</span>`);
   adminEl.innerHTML = rows.join("");
 }
 
@@ -4956,7 +4976,7 @@ function drawGameMenu() {
     (online && lobbyCode !== "P2P" ? gbtn("ссылка-приглашение", "invite") : "") +
     (online && lobbyCode === "P2P" && p2p.role === "host" && p2p.peers.size < 3 ? gbtn("добавить друга", "addfriend") : "") +
     (online && isDev && lobbyCode !== "P2P" ? gbtn("переименовать лобби", "renlobby") + gbtn(`доступ: ${ACCESS_NAME[lobbyAccess]}`, "acclobby") : "") +
-    gbtn("выйти в главное меню", "exit", "warn") + `<div class="gx">${TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"}</div>`;
+    gbtn("выйти в главное меню", "exit", "warn") + `<div class="gx">${TOUCH ? "МЕНЮ — продолжить" : "Esc — продолжить"}</div><span class="xbtn">✕</span>`;
 }
 // ---------- Экспорт и импорт мира: файл .baseAscii (обычный JSON со списком предметов) ----------
 
@@ -5149,7 +5169,7 @@ function drawSchem() {
 <div>${act("mat", "[ чего не хватает → чат ]")}</div>
 <div>${act("build", "[ достроить недостающее ]")}</div>
 <div>${act("fix", "[ достроить и заменить неправильное ]")}</div>
-<div class="invhint">M — закрыть. Синее — нет блока, красное — стоит не тот</div>`;
+<div class="invhint">M — закрыть. Синее — нет блока, красное — стоит не тот</div><span class="xbtn">✕</span>`;
 }
 function toggleSchem() {
   if (!schemAllowed()) return addChat("* схематика только у разработчика");
