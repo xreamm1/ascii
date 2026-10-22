@@ -2376,7 +2376,7 @@ function updateGhosts() {
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
-const KINDS = { "Блок": "flat", "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
+const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
@@ -2433,6 +2433,7 @@ function use(action, screen) {
     const cell = placeCell(hit, HOTBAR[slot]);
     const e = { op: "block", x: cell?.[0], y: cell?.[1], z: cell?.[2], c: color };
     if (KINDS[HOTBAR[slot]]) e.k = KINDS[HOTBAR[slot]];
+    else if (HOTBAR[slot] === "Блок" && flatBlock) e.k = "flat";
     if (e.k === "jump" && color === 0) e.c = 3;  // трамплин по умолчанию жёлтый
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
@@ -2523,6 +2524,19 @@ function pageUp() {
   if (!pageHeld) togglePage();
 }
 
+// Блок: обычный — с текстурой кирпича, а если зажать слот 1 (клавишу 1 или палец на слоте), ставится гладкий, просто выбранного цвета. Зажать ещё раз — обратно
+let flatBlock = false, flatTimer = 0;
+function flatDown() {
+  clearTimeout(flatTimer);
+  flatTimer = setTimeout(() => {
+    flatTimer = 0;
+    if (HOTBAR[slot] !== "Блок") return;
+    flatBlock = !flatBlock;
+    drawHotbar();
+  }, HOLD_PAGE);
+}
+const flatUp = () => { clearTimeout(flatTimer); flatTimer = 0; };
+
 function selectSlot(n) {
   slot = n;
   plankStart = null;
@@ -2536,6 +2550,7 @@ addEventListener("keydown", e => {
   if (e.code.startsWith("Digit")) {
     const n = Number(e.code.slice(5)) - 1;
     if (n >= 0 && n < PAGE) selectSlot(page * PAGE + n);
+    if (n === 0 && !e.repeat) flatDown();
   }
   if (e.code === "Tab") { e.preventDefault(); if (!e.repeat) pageDown(); }
   if (e.code === "KeyE" && !e.repeat && !menuOpen) toggleCar();
@@ -2555,6 +2570,7 @@ addEventListener("keydown", e => {
 addEventListener("keyup", e => {
   keys[e.code] = false;
   if (e.code === "Tab") pageUp();
+  if (e.code === "Digit1") flatUp();
 });
 
 // Захват клавиатуры: в полноэкранном режиме Chrome и Edge отдают игре даже Ctrl+W,
@@ -2754,14 +2770,18 @@ function drawHotbar() {
     const style = i === slot ? "" : ' style="color:#666"';
     return `<span class="slot" data-slot="${i}"${style}>${tl}${h.repeat(4)}${tr}\n${v}${icon}${v}\n${bl}${h}${j + 1}${h}${h}${br}</span>`;
   });
-  let label = HOTBAR[slot] || "—";
+  let label = (HOTBAR[slot] || "—") + (HOTBAR[slot] === "Блок" && flatBlock ? " (без текстуры)" : "");
   if (plankStart) label += " — выбери вторую точку";
   hotbar.innerHTML = label + ` <span class="page">[${TOUCH ? "" : "Tab "}${page === SECRET ? "прочные, держи — назад" : `стр ${page + 1}/${SECRET}`}]</span>` + "\n" + slots.join("");
 }
 
-hotbar.addEventListener("pointerdown", e => { if (e.target.closest(".page")) pageDown(); });
-hotbar.addEventListener("pointerup", () => pageUp());
-hotbar.addEventListener("pointerleave", () => { clearTimeout(pageTimer); pageTimer = 0; });
+hotbar.addEventListener("pointerdown", e => {
+  if (e.target.closest(".page")) pageDown();
+  const s = e.target.closest(".slot");
+  if (s && HOTBAR[Number(s.dataset.slot)] === "Блок") { slot = Number(s.dataset.slot); flatDown(); }
+});
+hotbar.addEventListener("pointerup", () => { pageUp(); flatUp(); });
+hotbar.addEventListener("pointerleave", () => { clearTimeout(pageTimer); pageTimer = 0; flatUp(); });
 hotbar.addEventListener("click", e => {
   const s = e.target.closest(".slot");
   if (s) selectSlot(Number(s.dataset.slot));
@@ -4733,7 +4753,7 @@ function exportWorld() {
 }
 
 // Проверяем каждую запись из файла: берём только известные поля, id заводим свои, чтобы не пересеклись с чужими
-const KIND_SET = new Set(Object.values(KINDS).filter(Boolean));
+const KIND_SET = new Set([...Object.values(KINDS).filter(Boolean), "flat"]);
 const num = (...v) => v.every(Number.isFinite);
 const newId = () => `${myId}-${idCount++}`;
 function cleanEdit(e) {
