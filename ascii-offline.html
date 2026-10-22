@@ -294,7 +294,7 @@ const HOTBAR = ["Блок", "Доска", "Текст", "Стекло", "Две�
   "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота",  // материалы (страницы 9–12)
   "Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната",  // страницы оружия (Q — быстро открыть)
   "Огниво", "ТНТ", "Трамплин", "Танк",
-  "Самолёт", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
+  "Самолёт", "Вывеска", "Адский камень", "Светокамень", null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит"];
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
@@ -549,10 +549,35 @@ const BLOCK_TEX = {
   marble: pixelTex(p => { noisy(p, "#e8e6e0", ["#f2f0ea", "#dedcd4"], 50); for (let i = 0; i < 16; i++) { p(i, (i * 7 + 3) % 16, "#b0aca0"); p((i + 1) % 16, (i * 7 + 3) % 16, "#c4c0b4"); } }),
   dirt: pixelTex(p => noisy(p, "#7a5230", ["#5e3c20", "#8c6238", "#6a4526"], 120)),
   wool: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, (x + y) % 4 === 0 ? "#dcdcdc" : (x * 3 + y) % 5 === 0 ? "#ffffff" : "#efefef"); }),
+  netherrack: pixelTex(p => noisy(p, "#6e2f2f", ["#8a3b3b", "#4e1f1f", "#7a3333", "#5a2424"], 130)),
+  glowstone: pixelTex(p => { noisy(p, "#e8b850", ["#fff0a0", "#d09030", "#f5d070"], 110); for (const [x, y] of [[3, 3], [10, 6], [6, 11], [12, 12]]) p(x, y, "#ffffd0"); }),
   clay: pixelTex(p => { noisy(p, "#b5654a", ["#a45a42", "#c4725a"], 60); for (let x = 0; x < 16; x++) { p(x, 5, "#9a5039"); p(x, 11, "#9a5039"); } }),
 };
 for (const k in BLOCK_TEX) BLOCK_TEX[k].userData.kind = k;
-const EMISSIVE = new Set(["lava", "neon"]);  // светятся: без теней и затемнения
+// Вывеска «Вкусно — и точка»: зелёная панель 3×1 с жёлто-оранжевым знаком и надписью
+const vitSignTex = (() => {
+  const c = document.createElement("canvas");
+  c.width = 384; c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#0a5a2a"; g.fillRect(0, 0, 384, 128);
+  g.strokeStyle = "#f2c200"; g.lineWidth = 6; g.strokeRect(6, 6, 372, 116);
+  g.fillStyle = "#ff8a00"; g.beginPath(); g.arc(70, 64, 28, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#f2c200";
+  for (const [x, a] of [[22, -0.35], [38, -0.18], [102, 0.18], [118, 0.35]]) { g.save(); g.translate(x + 8, 64); g.rotate(a); g.fillRect(-6, -42, 12, 84); g.restore(); }
+  g.fillStyle = "#f2c200"; g.textBaseline = "middle"; g.font = "bold 40px sans-serif";
+  g.fillText("ВКУСНО", 150, 42); g.fillText("— И ТОЧКА", 150, 86);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+})();
+const portalPlane = new THREE.PlaneGeometry(1, 1);
+const vitSignGeo = new THREE.BoxGeometry(3, 1, 0.18).translate(1, 0, 0);
+const vitSignMats = [0, 1, 2, 3].map(() => new THREE.MeshLambertMaterial({ color: 0x0a5a2a })).concat([new THREE.MeshLambertMaterial({ map: vitSignTex }), new THREE.MeshLambertMaterial({ map: vitSignTex })]);
+// Портал: фиолетовое мерцающее полотно в рамке из обсидиана
+const portalTex = pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, ["#5a14a0", "#7a28d0", "#9a48f0", "#4a0e8a"][Math.floor(rnd() * 4)]); });
+portalTex.wrapS = portalTex.wrapT = THREE.RepeatWrapping;
+const portalMat = new THREE.MeshBasicMaterial({ map: portalTex, color: 0xc080ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
+const EMISSIVE = new Set(["lava", "neon", "glowstone"]);  // светятся: без теней и затемнения
 const blockMats = {};
 const blockMaterial = (kind, c) => blockMats[kind + c] ??= (() => {
   const [r, g, b] = COLORS[c].rgb, col = new THREE.Color(r / 255, g / 255, b / 255);
@@ -977,7 +1002,7 @@ const barrierGeo = angle => mergeParts([...P(0x555a60, box(0.3, 1.2, 0.3, -0.35,
     ...P(0xd8231e, ...[0.6, 1.2, 1.8, 2.4, 3].map(x => box(0.1, 0.17, 0.17, x, 0, 0)))]).rotateZ(angle), -0.4, 0.5, 0]]);
 const barrierGeos = Array.from({ length: BARRIER_STEPS + 1 }, (_, i) => barrierGeo(i / BARRIER_STEPS * 1.4));
 // Длинные предметы занимают ещё клетки: [сколько, вдоль какой оси предмета]
-const EXTRA = { barrier: [BARRIER_ARM, "x"], bed: [1, "z"], sofa: [1, "x"] };
+const EXTRA = { vitsign: [2, "x"], barrier: [BARRIER_ARM, "x"], bed: [1, "z"], sofa: [1, "x"] };
 // Высокие предметы занимают ещё клетки над собой — иначе их можно перепрыгнуть: сколько клеток вверх
 const TALL = { streetlamp: 3, traffic: 2, sign: 1, fridge: 1, terminal: 1 };
 const extraCells = e => {
@@ -1246,6 +1271,7 @@ const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
 const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
+let onIce = false, iceVx = 0, iceVz = 0;  // лёд: игрок скользит
 let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
@@ -1319,6 +1345,18 @@ function blockMesh(e) {
     const m = new THREE.Mesh(doorGeo, vmaterial(doorTex, e.c));
     m.position.set(e.x + 0.5 - 0.5 * Math.cos(a), e.y, e.z + 0.5 + 0.5 * Math.sin(a));
     m.rotation.y = a + (e.open ? Math.PI / 2 : 0);
+    return m;
+  }
+  if (e.k === "vitsign") {
+    const m = new THREE.Mesh(vitSignGeo, vitSignMats);
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
+    return m;
+  }
+  if (e.k === "portal") {
+    const m = new THREE.Mesh(portalPlane, portalMat);
+    m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+    m.rotation.y = (e.r || 0) * Math.PI / 2;
     return m;
   }
   if (e.k in BLOCK_TEX) {  // материалы: камень, лава, слизь и другие
@@ -1409,7 +1447,7 @@ function cellBlocks(cx, cy, cz, x, z) {
   if (!m) return false;
   const e = m.userData.edit;
   if (e.k === "door" || e.k === "barrier") return !e.open;
-  if (e.k === "ramp" || e.k === "stairs" || e.k === "jump" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
+  if (e.k === "ramp" || e.k === "stairs" || e.k === "jump" || e.k === "portal" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
   if (e.k === "stick") return Math.abs(x - cx - 0.5) < RADIUS + STICK_HALF && Math.abs(z - cz - 0.5) < RADIUS + STICK_HALF;
   return true;
 }
@@ -1465,7 +1503,7 @@ function groundHeight(x, f, z) {
   for (let cx = Math.floor(x - RADIUS); cx <= Math.floor(x + RADIUS); cx++)
     for (let cz = Math.floor(z - RADIUS); cz <= Math.floor(z + RADIUS); cz++) {
       const hole = topDug(cx, cz), deep = hole || f + STEP < 0;
-      if (!hole && f + STEP >= 0) g = Math.max(g, 0);  // плита
+      if (!hole && f + STEP >= 0 && cx <= HELL_BORDER) g = Math.max(g, 0);  // плита (в аду её нет)
       for (let cy = Math.floor(f + STEP); cy >= (deep ? -DEPTH - 2 : 0); cy--) {
         // Рампа: встаём на её поверхность, если она не выше, чем можно шагнуть
         const top = lowTop(cx, cy, cz, x, z);
@@ -1891,10 +1929,11 @@ function updateCar(dt) {
   // Скорость остаётся прежней, а нос повернулся: часть скорости оказывается "вбок" — это и есть занос
   let vf = carV.x * f[0] + carV.z * f[1], vl = carV.x * r[0] + carV.z * r[1];
   nitroOn = !!(keys.ShiftLeft || keys.ShiftRight) && throttle > 0;  // нитро на Shift: сильнее разгон и выше потолок скорости
-  vf += throttle * (nitroOn ? 34 : 14) * dt;
-  if (!throttle) vf -= vf * Math.min(1, 1.2 * dt);
+  const iceUnder = blocks.get(key(Math.floor(m.position.x), Math.floor(m.position.y - 0.1), Math.floor(m.position.z)))?.userData.edit.k === "ice";  // лёд: мало сцепления
+  vf += throttle * (nitroOn ? 34 : 14) * (iceUnder ? 0.6 : 1) * dt;
+  if (!throttle) vf -= vf * Math.min(1, (iceUnder ? 0.15 : 1.2) * dt);
   vf = Math.max(-8, Math.min(nitroOn ? 40 : 24, vf));
-  vl *= Math.exp(-(hand ? 1 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
+  vl *= Math.exp(-(hand ? 1 : iceUnder ? 0.5 : 8) * dt);  // обычно колёса держат вбок, с ручником — скользят
   carV = { x: f[0] * vf + r[0] * vl, z: f[1] * vf + r[1] * vl };
 
   // Едем по каждой оси отдельно; в стену — отскок. Машина большая, поэтому проверяем пять точек:
@@ -2033,8 +2072,14 @@ function update(dt) {
   // Присевший не падает с края, как в Майнкрафте: шаг, после которого под ногами
   // не останется опоры (ниже, чем можно просто шагнуть), не делаем
   const safe = (x, z) => !(crouching && onGround) || groundHeight(x, feet, z) >= feet - STEP;
-  if ((stuck || !hitsSolid(px + mx * step, feet, pz)) && safe(px + mx * step, pz)) px += mx * step;
-  if ((stuck || !hitsSolid(px, feet, pz + mz * step)) && safe(px, pz + mz * step)) pz += mz * step;
+  // На льду скорость меняется плавно: разгоняешься и тормозишь не сразу
+  let ex = mx * step, ez = mz * step;
+  if (onIce && !flying && dt > 0) {
+    iceVx += (ex / dt - iceVx) * Math.min(1, 1.2 * dt); iceVz += (ez / dt - iceVz) * Math.min(1, 1.2 * dt);
+    ex = iceVx * dt; ez = iceVz * dt;
+  } else { iceVx = dt > 0 ? ex / dt : 0; iceVz = dt > 0 ? ez / dt : 0; }
+  if ((stuck || !hitsSolid(px + ex, feet, pz)) && safe(px + ex, pz)) px += ex; else iceVx = 0;
+  if ((stuck || !hitsSolid(px, feet, pz + ez)) && safe(px, pz + ez)) pz += ez; else iceVz = 0;
 
   const prevFeet = feet;
   if (flying) {
@@ -2059,6 +2104,7 @@ function update(dt) {
     const under = onGround ? blocks.get(key(Math.floor(px), Math.floor(ground - 0.05), Math.floor(pz)))?.userData.edit.k : null;
     if (under === "slime" && vy < -2) { vy = Math.min(16, -vy * 0.85); onGround = false; feet = ground + 0.01; }  // слизь подбрасывает
     if (under === "lava") damage(30 * dt, "лавы");  // лава жжёт
+    if (onGround) onIce = under === "ice";
     if (onGround) {
       if (vy < -FALL_SAFE) damage((-vy - FALL_SAFE) * 6);  // удар о землю: чем быстрее падал, тем больнее
       feet = ground; vy = 0;
@@ -2093,7 +2139,7 @@ const playing = () => inGame && !menuOpen && !typing && (TOUCH || !!document.poi
 function aim(screen = new THREE.Vector2(0, 0)) {
   aimRay.setFromCamera(screen, camera);
   // Плита над ямой — «призрак»: луч идёт сквозь неё
-  const hit = aimRay.intersectObjects(solids).find(h => h.object !== plate || !topDug(Math.floor(h.point.x), Math.floor(h.point.z)));
+  const hit = aimRay.intersectObjects(solids).find(h => h.object !== plate || (px <= HELL_BORDER && !topDug(Math.floor(h.point.x), Math.floor(h.point.z))));
   if (!hit) return null;
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
   return { point: hit.point, normal, object: hit.object };
@@ -2158,7 +2204,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
+  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
 function use(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
@@ -2176,6 +2222,7 @@ function use(action, screen) {
       const t = hit.object.userData.edit;
       if (t.t) {  // земля: ломаем — значит копаем
         if (t.t === 2) addChat("* дальше бедрок, его не сломать");
+        else if (t.t === 3) addChat("* в аду это не сломать");
         else share({ op: "dig", x: t.x, y: t.y, z: t.z });
         drawHotbar();
         return;
@@ -2201,6 +2248,7 @@ function use(action, screen) {
   if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
     const t = hit?.object.userData.edit;
     if (t?.k === "tnt") igniteTnt(t, 3);
+    else if (t?.k === "obsidian") lightPortal(t);
     return;
   }
   if (HOTBAR[slot] in KINDS && hit) {
@@ -2211,7 +2259,7 @@ function use(action, screen) {
     if (e.k === "jump" && color === 0) e.c = 3;  // трамплин по умолчанию жёлтый
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "jump", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["ramp", "jump", "vitsign", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "barrier") e.open = false;
     // Длинные предметы (шлагбаум, кровать, диван) не ставим, если их продолжение упирается в чужие блоки
     if (cell && extraCells(e).some(c => blocks.has(key(...c)))) return;
@@ -2504,7 +2552,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -4245,6 +4293,84 @@ function updateSelfFigure(dt) {
   placeLabel(selfLabel, selfFigure.position, selfFigure.visible, 2 * size);
 }
 
+// ---------- Ад и порталы ----------
+// Обсидиановая рамка 4×5 (внутри 2×3), поджечь огнивом — появляется портал. Он ведёт в ад: платформа далеко от старта (x > 1000).
+// Ад строится у каждого игрока сам, одинаково (в сеть не уходит); в нём можно строить и ломать свои блоки, а сам адский камень не ломается
+const HELL_X = 1500, HELL_Z = 1500, HELL_BORDER = 1000;
+const inHell = () => px > HELL_BORDER;
+let hellBuilt = false, lastOver = { x: SIZE / 2, y: 0, z: SIZE / 2 }, portalT = 0, portalLock = false, wasHell = false;
+function findPortal(bx, by, bz) {
+  const obs = (x, y, z) => blocks.get(key(x, y, z))?.userData.edit.k === "obsidian";
+  for (const axis of ["x", "z"]) {
+    const at = (u, y) => axis === "x" ? [u, y, bz] : [bx, y, u], c = axis === "x" ? bx : bz;
+    for (let u0 = c - 3; u0 <= c + 1; u0++) for (let y0 = by - 4; y0 <= by + 1; y0++) {
+      const frame = [];
+      for (let u = u0; u <= u0 + 1; u++) { frame.push(at(u, y0 - 1), at(u, y0 + 3)); }
+      for (let y = y0; y <= y0 + 2; y++) { frame.push(at(u0 - 1, y), at(u0 + 2, y)); }
+      if (!frame.some(([x, y, z]) => x === bx && y === by && z === bz)) continue;
+      if (!frame.every(([x, y, z]) => obs(x, y, z))) continue;
+      const inner = [];
+      for (let u = u0; u <= u0 + 1; u++) for (let y = y0; y <= y0 + 2; y++) inner.push(at(u, y));
+      if (inner.some(([x, y, z]) => blocks.has(key(x, y, z)))) continue;
+      return { inner, r: axis === "x" ? 0 : 1 };
+    }
+  }
+  return null;
+}
+function lightPortal(e) {
+  const f = findPortal(e.x, e.y, e.z);
+  if (!f) return addChat("* для портала нужна обсидиановая рамка 4×5 (внутри пусто 2×3)");
+  for (const [x, y, z] of f.inner) share({ op: "block", x, y, z, c: 7, k: "portal", r: f.r });
+  addChat("* портал открыт");
+}
+function buildHell() {
+  if (hellBuilt) return;
+  hellBuilt = true;
+  let sd = 12345;
+  const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const put = (x, y, z, k, rr) => { if (!blocks.has(key(x, y, z))) edit({ op: "block", x, y, z, c: k === "obsidian" ? 9 : k === "portal" ? 7 : 0, k, ...(rr !== undefined ? { r: rr } : {}), t: 3 }); };
+  const H = 28, pools = Array.from({ length: 6 }, () => [HELL_X + Math.floor((r() - 0.5) * 44), HELL_Z + Math.floor((r() - 0.5) * 44), 3 + Math.floor(r() * 3)]);
+  for (let x = HELL_X - H; x < HELL_X + H; x++) for (let z = HELL_Z - H; z < HELL_Z + H; z++) {
+    const lava = pools.some(([px2, pz2, rad]) => Math.hypot(x - px2, z - pz2) < rad) && Math.hypot(x - HELL_X, z - (HELL_Z + 5)) > 9;
+    put(x, 0, z, lava ? "lava" : "netherrack");
+    if (x === HELL_X - H || x === HELL_X + H - 1 || z === HELL_Z - H || z === HELL_Z + H - 1) for (let y = 1; y < 4; y++) put(x, y, z, "netherrack");
+  }
+  for (let i = 0; i < 26; i++) {  // колонны со светящимся верхом
+    const x = HELL_X + Math.floor((r() - 0.5) * 50), z = HELL_Z + Math.floor((r() - 0.5) * 50), h = 3 + Math.floor(r() * 7);
+    if (Math.hypot(x - HELL_X, z - (HELL_Z + 5)) < 8) continue;
+    for (let y = 1; y <= h; y++) put(x, y, z, "netherrack");
+    put(x, h + 1, z, "glowstone");
+  }
+  for (let i = 0; i < 40; i++) put(HELL_X + Math.floor((r() - 0.5) * 54), 14 + Math.floor(r() * 8), HELL_Z + Math.floor((r() - 0.5) * 54), r() < 0.5 ? "glowstone" : "netherrack");
+  // обратный портал в центре
+  for (let u = HELL_X - 1; u <= HELL_X + 2; u++) { put(u, 1, HELL_Z, "obsidian"); put(u, 5, HELL_Z, "obsidian"); }
+  for (let y = 2; y <= 4; y++) { put(HELL_X - 1, y, HELL_Z, "obsidian"); put(HELL_X + 2, y, HELL_Z, "obsidian"); put(HELL_X, y, HELL_Z, "portal", 0); put(HELL_X + 1, y, HELL_Z, "portal", 0); }
+}
+const portalFx = document.createElement("div");
+portalFx.style.cssText = "position:fixed;inset:0;z-index:58;pointer-events:none;background:radial-gradient(circle,#b060ff 0%,#4a0e8a 100%);opacity:0;display:none";
+document.body.append(portalFx);
+function updatePortal(dt) {
+  portalTex.offset.y = (performance.now() / 5000) % 1;
+  // Адский воздух: красноватая тьма, пола-плиты нет
+  const hell = inHell();
+  if (hell !== wasHell) { wasHell = hell; plate.visible = !hell; const c = hell ? 0x260400 : 0x000000; scene.background = new THREE.Color(c); scene.fog.color.set(c); }
+  if (hell) { scene.fog.near = 20; scene.fog.far = 120; }
+  if (!inGame || dead) return;
+  const kinds = [blocks.get(key(Math.floor(px), Math.floor(feet + 0.4), Math.floor(pz))), blocks.get(key(Math.floor(px), Math.floor(feet + 1.4), Math.floor(pz)))].map(m => m?.userData.edit.k);
+  if (kinds.includes("portal")) {
+    portalT += dt;
+    if (portalT >= 1.6 && !portalLock) {
+      portalLock = true; portalT = 0;
+      if (inHell()) { px = lastOver.x; feet = lastOver.y; pz = lastOver.z; }
+      else { lastOver = { x: px, y: feet, z: pz }; buildHell(); px = HELL_X + 0.5; feet = 1; pz = HELL_Z + 6.5; }
+      vy = 0;
+      addChat(inHell() ? "* ты в аду" : "* ты вернулся");
+    }
+  } else { portalT = Math.max(0, portalT - dt * 2); portalLock = false; }
+  portalFx.style.display = portalT > 0.02 ? "block" : "none";
+  portalFx.style.opacity = Math.min(0.85, portalT / 1.6).toFixed(2);
+}
+
 function updateWorld(dt) {
   updateSelfFigure(dt);
   // Пол и солнце едут за камерой целыми блоками, чтобы плитки не сдвигались
@@ -4678,7 +4804,7 @@ function throwGrenade(n, W) {
 }
 // Точка внутри чего-то твёрдого: пол, блок, машина
 function solidPoint(p) {
-  if (p.y < 0.05 && p.y >= 0 && !topDug(Math.floor(p.x), Math.floor(p.z))) return true;
+  if (p.y < 0.05 && p.y >= 0 && p.x <= HELL_BORDER && !topDug(Math.floor(p.x), Math.floor(p.z))) return true;
   const cx = Math.floor(p.x), cy = Math.floor(p.y), cz = Math.floor(p.z);
   if (cellBlocks(cx, cy, cz, p.x, p.z)) return true;
   const top = lowTop(cx, cy, cz, p.x, p.z);
@@ -5016,6 +5142,7 @@ renderer.setAnimationLoop(now => {
   updateGhosts();
   updateOnline(dt);
   updateWorld(dt);
+  updatePortal(dt);
   updateWeapons(dt);
   lampTimer += dt;
   if (lampTimer > 0.25) { lampTimer = 0; updateLamps(); }
