@@ -1,0 +1,22 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const source = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const jump = source.slice(source.indexOf('let lastJump ='), source.indexOf('addEventListener("keydown", e => {', source.indexOf('let lastJump =')));
+const state = {inGame:true, menuOpen:false, typing:false, dead:false, gameMode:'creative', online:{}, camMode:'first', drivingCar:null, drivingPlane:null, drivingTank:null, drivingCart:null, flying:false, vy:12, now:0, addChat(){}};
+state.performance = {now:()=>state.now};
+vm.createContext(state);
+vm.runInContext(jump, state);
+function tap(time) { state.now=time; state.jumpTap(); }
+tap(0); assert.equal(state.flying,false);
+tap(200); assert.equal(state.flying,true,'online creative enables flight');
+assert.equal(state.vy,0);
+tap(400); assert.equal(state.flying,true,'third tap alone must not toggle');
+tap(600); assert.equal(state.flying,false,'double tap while flying disables flight');
+tap(1000); tap(1500); assert.equal(state.flying,false,'slow taps do not toggle');
+state.gameMode='survival'; tap(1600); tap(1700); assert.equal(state.flying,false,'survival cannot fly');
+state.gameMode='creative'; state.online=null; tap(2000); tap(2300); assert.equal(state.flying,true,'single player still works');
+state.menuOpen=true; tap(2400); state.menuOpen=false; tap(2500); assert.equal(state.flying,true,'menu tap cannot prime a toggle');
+state.drivingCart={}; tap(2600); tap(2700); assert.equal(state.flying,true,'vehicle controls do not toggle flight');
+console.log('Flight: online/offline enable, disable, timing and mode guards passed.');

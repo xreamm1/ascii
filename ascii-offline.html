@@ -626,7 +626,7 @@ let adminIds = {};         // у кого в лобби есть админ-па
 let prefixes = {};         // выданные разработчиком префиксы: { id: "текст" }
 let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
-let flying = false;     // полёт разработчика
+let flying = false;     // полёт в творческом режиме или через админ-панель
 let currentWorld = null;  // свой мир одиночной игры, который сохраняется (null — сетевая игра)
 let worldDirty = false;    // мир менялся с последнего сохранения
 let inventoryBatch = false;
@@ -2984,15 +2984,15 @@ function selectSlot(n) {
 }
 
 let lastJump = -Infinity;
-function jumpTap() {  // два прыжка подряд (до 0,3 с) — включить или выключить полёт
-  if (gameMode !== "creative" || online || camMode !== "first") return;
+function jumpTap() {  // два быстрых нажатия переключают полёт, в том числе в онлайн-лобби
+  if (!inGame || menuOpen || typing || dead || gameMode !== "creative" || camMode !== "first" || drivingCar || drivingPlane || drivingTank || drivingCart) { lastJump = -Infinity; return; }
   const now = performance.now();
-  if (now - lastJump < 300) { flying = !flying; vy = 0; lastJump = -Infinity; addChat(flying ? "* полёт: пробел — вверх, Ctrl — вниз, два прыжка — выключить" : "* полёт выключен"); }
+  if (now - lastJump <= 350) { flying = !flying; vy = 0; lastJump = -Infinity; addChat(flying ? "* полёт: пробел — вверх, Ctrl — вниз, два прыжка — выключить" : "* полёт выключен"); }
   else lastJump = now;
 }
 addEventListener("keydown", e => {
   if (typing || !inGame) return;
-  if (e.code === "Space" && !e.repeat && !menuOpen) jumpTap();
+  if (e.code === "Space" && !menuOpen) { e.preventDefault(); if (!e.repeat) jumpTap(); }
   if (e.ctrlKey) e.preventDefault();  // Ctrl — присед, а не сочетания браузера вроде Ctrl+S или Ctrl+D
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
@@ -5122,6 +5122,8 @@ function drawLobbyLabel() {
 const showAdminButton = () => document.querySelector('[data-action="admin"]').style.display = isAdmin() ? "" : "none";
 
 function startGame(code, name, me) {
+  flying = false;
+  lastJump = -Infinity;
   inGame = true;
   lobbyCode = code || null;
   stopLobbyList?.();
