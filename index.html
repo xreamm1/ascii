@@ -734,10 +734,12 @@ plate.position.set(SIZE / 2, -0.003, SIZE / 2);  // чуть ниже верха
 plate.receiveShadow = true;
 scene.add(plate);
 
-// Пол можно копать: ниже плиты — слои земли глубиной DEPTH блоков, а под ними неломаемая бедрок.
+// Пол можно копать: ниже плиты — слои земли глубиной DEPTH блоков, а под ними бедрок (ломается только в творческом режиме).
 // Земля — это «воображаемые» клетки: вручную храним только выкопанные (dug). Блоки земли создаются лишь рядом с ямой (их стенки и дно),
 // остальное не нужно: внутрь не попасть. Выкопанное рассылается всем как { op: "dig", x, y, z }
-const DEPTH = 100;
+const Y_SHOW = 60; // отображаемая высота поверхности
+const BEDROCK_Y = -100 - Y_SHOW;
+const DEPTH = -BEDROCK_Y - 1; // последний слой обычной породы
 const dug = new Set();
 const isTerr = e => e?.op === "block" && !!e.t;  // блок земли или ада (у животных и шариков поле t — это вид, не земля)
 const HOLE_N = 2048, HOLE_ORIGIN = -1000;  // карта дыр в плите: копать можно в квадрате x, z от -1000 до 1048
@@ -905,6 +907,7 @@ replaceTex('ice',grainTex('8eb8da',7,52,(p)=>{for(let i=0;i<16;i++){p(i,(18-i)%1
 replaceTex('slime',grainTex('79b65a',9,53,(p,c)=>{c.fillStyle='#a4d47b';c.fillRect(1,1,14,1);c.fillRect(1,1,1,14);c.fillStyle='#588e3e';c.fillRect(2,14,13,1);c.fillRect(14,2,1,12);c.fillStyle='#609b45';c.fillRect(4,5,3,3);c.fillRect(10,5,3,3);c.fillRect(7,10,3,2);}));
 replaceTex('marble',grainTex('dedfd8',5,54,(p)=>{for(let y=0;y<16;y++){const x=(Math.floor(y*.65)+Math.floor(texHash(y>>2,0,55)*3))%16;p(x,y,'#aaaea4');p((x+1)%16,y,'#c4c8bc');}}));
 replaceTex('tiles',grainTex('e3e0d5',3,56,(p)=>{for(let i=0;i<16;i++){p(i,0,'#9c9e94');p(0,i,'#9c9e94');p(i,8,'#b9b9ad');p(8,i,'#b9b9ad');}}));
+replaceTex('bedrock',grainTex('55575a',25,91,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const h=texHash(x>>1,y>>1,92);if(h<.3)p(x,y,'#292b30');else if(h>.74)p(x,y,texHash(x,y,93)>.5?'#85868a':'#6e7075');}}));
 const grassSide=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.dirt.image,0,0);for(let x=0;x<16;x++)for(let y=0;y<3+Math.floor(texHash(x,0,27)*4);y++)p(x,y,y<2?'#769c43':texHash(x,y)>.5?'#668b39':'#567d31');});
 const logEnd=grainTex('ad8952',10,28,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const r=Math.max(Math.abs(x-7.5),Math.abs(y-7.5));if(r>6.5)p(x,y,'#58452a');else if(Math.floor(r)%3===0)p(x,y,'#806139');}});
 const craftTop=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.planks.image,0,0);c.fillStyle='#654126';c.fillRect(1,1,14,14);c.fillStyle='#b38751';for(let y=0;y<3;y++)for(let x=0;x<3;x++)c.fillRect(2+x*4,2+y*4,3,3);});
@@ -2893,7 +2896,7 @@ function placeCell(hit, item) {
 function blockCell(hit, allowSelf = false) {  // allowSelf — плоское (рельсы) можно класть и в свою клетку
   const p = hit.point.clone().addScaledVector(hit.normal, 0.5);
   const [x, y, z] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
-  if (y < -DEPTH || (y < 0 && !dug.has(`${x},${y},${z}`))) return null;
+  if (y < BEDROCK_Y || (y < 0 && !dug.has(`${x},${y},${z}`))) return null;
   // Нельзя ставить блок внутрь себя
   const overlapsPlayer = x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
                          y < feet + bodyH && y + 1 > feet;
@@ -2959,9 +2962,9 @@ function useInner(action, screen) {
     } else if (hit) {
       const t = hit.object.userData.edit;
       if (isTerr(t)) {  // земля: ломаем — значит копаем
-        if (t.t === 2) addChat("* дальше бедрок, его не сломать");
+        if (t.t === 2 && gameMode !== "creative") addChat("* бедрок можно сломать только в творческом режиме");
         else if (t.t === 3) addChat("* в аду это не сломать");
-        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(harvest(t)); burst(hit.point, t.c, 18,t); }
+        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag && t.t !== 2) give(harvest(t)); burst(hit.point, t.c, 18,t); }
         drawHotbar();
         return;
       }
@@ -4640,8 +4643,7 @@ function showAnnouncement(text, by) {
 }
 
 // ---------- Координаты в углу экрана (админам) и телепорт по ним ----------
-// Высота как в майнкрафте: плита (поверхность) — Y 60, ниже Y 0 — глубинный сланец, дно (бедрок) — Y −41
-const Y_SHOW = 60;
+// Поверхность — Y60, глубинный сланец ниже Y0, слой бедрока — Y−100.
 const coordsEl = Object.assign(document.createElement("pre"), { id: "coords" });
 coordsEl.style.cssText = "position:fixed;left:16px;top:60px;z-index:20;margin:0;display:none;cursor:pointer;color:#fff;background:rgba(0,0,0,.45);padding:2px 6px";
 document.body.append(coordsEl);
@@ -6032,7 +6034,7 @@ function cleanEdit(e) {
     if (e.p === true && (!online || isDev)) out.p = true;  // прочный блок в сети ставит только разработчик: иначе база отклонит весь кусок импорта
     return out;
   }
-  if (e.op === "dig" && [e.x, e.y, e.z].every(Number.isInteger) && e.y >= -DEPTH && e.y <= -1 && inDigArea(e.x, e.z)) return { op: "dig", x: e.x, y: e.y, z: e.z };
+  if (e.op === "dig" && [e.x, e.y, e.z].every(Number.isInteger) && e.y >= BEDROCK_Y && e.y <= -1 && inDigArea(e.x, e.z)) return { op: "dig", x: e.x, y: e.y, z: e.z };
   if(e.op==='mined'&&[e.x,e.y,e.z].every(netCell))return {op:'mined',x:e.x,y:e.y,z:e.z};
   if (e.op === "plank" && validEdit({...e,id:'import'})) return { op: "plank", id: newId(), ends: [...e.ends], c };
   if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
@@ -7823,6 +7825,7 @@ function hardness(hit) {
   if (hit.object === plate) return 0.5;
   const e = hit.object.userData.edit;
   if (!e) return 0.4;
+  if (e.t === 2 && gameMode !== "creative") return Infinity;
   if (isTerr(e)) return HARD[e.k] ?? (e.y > -4 ? 0.5 : 1.2);
   if (e.op !== "block") return 0.3;
   if (!e.k || e.k === "flat") return 1;
@@ -8281,7 +8284,7 @@ function terrKind(x, y, z) {
   if (y < -5 && h < 0.055) return ds ? "ds_iron" : "ore_iron";
   return ds ? "deepslate" : "stone";
 }
-const terrEdit = (x, y, z) => y === -DEPTH - 1 ? { op: "block", x, y, z, c: 13, t: 2 } : { op: "block", x, y, z, c: 0, k: terrKind(x, y, z), t: 1 };
+const terrEdit = (x, y, z) => y === BEDROCK_Y ? { op: "block", x, y, z, c: 0, k: "bedrock", t: 2 } : { op: "block", x, y, z, c: 0, k: terrKind(x, y, z), t: 1 };
 // Открыли пещеру: обходим её ходы и ставим стенки вокруг — понемногу, до CAVE_STEP клеток за кадр, чтобы игра не дёргалась.
 // Дальше CAVE_R от игрока не идём: такие клетки ждут в frontier и откроются, когда игрок подойдёт (под землёй дальше всё равно не видно).
 // Стенки и ходы пещер записаны по кускам, чтобы их можно было выгрузить
@@ -8508,7 +8511,24 @@ function setArmorLook(group, code) {
 }
 // Кирка: рукоять и наконечник цвета материала
 const PICK_COLORS = [0, 0xa0733f, 0x8a8a8a, 0xd8dde2, 0x4fe3dc];
-const pickGeo = tier => mergeParts([...P(0x7a5230, box(0.05, 0.62, 0.05, 0, 0, 0)), ...P(PICK_COLORS[tier], box(0.44, 0.07, 0.08, 0, 0.29, 0), box(0.08, 0.06, 0.08, -0.24, 0.26, 0), box(0.08, 0.06, 0.08, 0.24, 0.26, 0))]);
+// Одна объединённая геометрия на материал: грани, кромка и рукоять без дополнительных draw calls.
+const pickGeo = tier => {
+  const parts=[],head=new THREE.Color(PICK_COLORS[tier]);
+  const dark=head.clone().multiplyScalar(.55).getHex(),light=head.clone().lerp(new THREE.Color(0xffffff),.42).getHex();
+  parts.push(...P(0x614026,box(.075,.64,.075,0,-.015,0)),
+    ...P(0xa07843,box(.027,.58,.007,-.016,-.015,-.041)),
+    ...P(0x8a6034,box(.017,.58,.007,.019,-.015,-.041)));
+  for(let i=0;i<4;i++)parts.push(...P(i%2?0x523a28:0x76502e,box(.084,.027,.084,0,-.29+i*.044,0)));
+  // Ступенчатый изгиб от центрального крепления к опущенным острым концам.
+  const profile=[[0,.30,.14,.10],[.10,.295,.075,.095],[.17,.265,.075,.09],[.23,.22,.065,.08],[.275,.165,.045,.07]];
+  for(const [x,y,w,h] of profile)for(const side of x?[-1,1]:[1]){
+    parts.push(...P(dark,box(w,h,.10,x*side,y,0)),
+      ...P(PICK_COLORS[tier],box(w*.88,h*.72,.012,x*side,y+.005,-.056)),
+      ...P(light,box(w*.9,.018,.104,x*side,y+h*.5-.009,0)));
+  }
+  parts.push(...P(0x59422c,box(.09,.11,.112,0,.265,0)),...P(light,box(.027,.025,.008,0,.275,-.061)));
+  return mergeParts(parts);
+};
 const pickGeos = [null, 1, 2, 3, 4].map(t => t && pickGeo(t));
 // Кирка в руке (вид от первого лица): машет, пока ломаешь
 const toolView = new THREE.Mesh(pickGeos[1], vmaterial(plainTex, 0));
