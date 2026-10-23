@@ -124,6 +124,7 @@
   .gg .gl { margin: 0 8px 0 0; }
   .slot i, .cell i { position: absolute; right: 2px; bottom: 0; font-style: normal; font-size: 11px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; pointer-events: none; }
   .slot.empty img { opacity: 0.3; }
+  .hbs.armor { margin-top: 4px; } .hbs.armor small { font-size: 9px; color: #888; }
   #toast { position: fixed; left: 50%; bottom: calc(var(--slot, 44px) + 70px); transform: translateX(-50%); z-index: 30; color: #ffd34d; text-align: center; pointer-events: none; display: none; text-shadow: 0 0 3px #000; }
   .crafts { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow: auto; text-align: left; }
   .craft { display: flex; align-items: center; gap: 8px; padding: 2px 4px; opacity: 0.5; cursor: pointer; line-height: 1.25; }
@@ -371,7 +372,9 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
-  "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка"].filter(Boolean);
+  "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка",
+  "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
+  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
 const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
@@ -531,8 +534,8 @@ const PLANK_W = 1;         // ширина доски
 const PLANK_T = 0.15;      // толщина доски
 const TEXT_H = 0.6;        // высота надписи в блоках
 const CHAT_TIME = 15000;   // через столько миллисекунд сообщение чата исчезает
-const NEAR = 0.1, FAR = 450;  // дальность обзора; туман почти не размывает горизонт
-const FOG_NEAR = 170, FOG_FAR = 440;
+const NEAR = 0.1; let FAR = 450;  // дальность обзора; туман почти не размывает горизонт
+let FOG_NEAR = 170, FOG_FAR = 440;  // в бесконечном мире ближе (см. setInfinite)
 
 // Символы для заливки — только блочные. Порядок не важен: при запуске каждый измеряется по количеству
 // "чернил" и раскладывается по SHADES ступеням яркости
@@ -568,6 +571,8 @@ let worldDirty = false;    // мир менялся с последнего со
 let bag = null;            // выживание: { "Камень": 12, … } — вещи считаются; null — всё бесконечно (творческий и сеть)
 let shareN = 0, shareMade = 0;  // сколько правок мира ушло и сколько из них — новые предметы (их тратим из вещей)
 let drivingCart = null;    // меш вагонетки, в которой едет игрок
+let gen = null;            // бесконечный мир: { seed, removed, animals, mouths, loaded, caveOpen } (null — обычный мир)
+let armor = [null, null, null, null];  // надетая броня: шлем, нагрудник, поножи, ботинки
 let drivingTank = null;  // меш танка, которым управляет игрок
 let drivingPlane = null;  // меш самолёта, которым управляет игрок
 let drivingCar = null;  // меш машины, в которой сидит игрок
@@ -658,14 +663,27 @@ const holeTex = new THREE.DataTexture(holeData, HOLE_N, HOLE_N, THREE.RedFormat)
 holeTex.minFilter = holeTex.magFilter = THREE.NearestFilter;
 holeTex.needsUpdate = true;
 let holesDirty = false;
-const inDigArea = (x, z) => x >= HOLE_ORIGIN && x < HOLE_ORIGIN + HOLE_N && z >= HOLE_ORIGIN && z < HOLE_ORIGIN + HOLE_N;
+// Окно карты дыр едет за игроком (recenterHoles), поэтому копать можно где угодно
+let holeOX = HOLE_ORIGIN, holeOZ = HOLE_ORIGIN;
+const holeOrigin = { value: new THREE.Vector2(holeOX, holeOZ) };
+const inHoleWin = (x, z) => x >= holeOX && x < holeOX + HOLE_N && z >= holeOZ && z < holeOZ + HOLE_N;
+const holeIdx = (x, z) => (z - holeOZ) * HOLE_N + (x - holeOX);
+const inDigArea = (x, z) => Math.abs(x) < 1e6 && Math.abs(z) < 1e6;
+function recenterHoles() {
+  holeOX = Math.floor(px) - HOLE_N / 2; holeOZ = Math.floor(pz) - HOLE_N / 2;
+  holeOrigin.value.set(holeOX, holeOZ);
+  holeData.fill(0);
+  for (const k of dug) { const [x, y, z] = k.split(",").map(Number); if (y === -1 && inHoleWin(x, z)) holeData[holeIdx(x, z)] = 255; }
+  holesDirty = true;
+}
 const topDug = (x, z) => dug.size > 0 && dug.has(`${x},-1,${z}`);
 // Плита рисуется с дырами: там, где выкопан верхний слой, пиксели отбрасываются
 plate.material.onBeforeCompile = sh => {
   sh.uniforms.holeTex = { value: holeTex };
+  sh.uniforms.holeOrigin = holeOrigin;
   sh.vertexShader = "varying vec3 vWorldPos;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;");
-  sh.fragmentShader = "varying vec3 vWorldPos;\nuniform sampler2D holeTex;\n" + sh.fragmentShader.replace("#include <map_fragment>",
-    `vec2 hUv = (vWorldPos.xz - float(${HOLE_ORIGIN})) / float(${HOLE_N});
+  sh.fragmentShader = "varying vec3 vWorldPos;\nuniform sampler2D holeTex;\nuniform vec2 holeOrigin;\n" + sh.fragmentShader.replace("#include <map_fragment>",
+    `vec2 hUv = (vWorldPos.xz - holeOrigin) / float(${HOLE_N});
     if (hUv.x >= 0.0 && hUv.x < 1.0 && hUv.y >= 0.0 && hUv.y < 1.0 && texture2D(holeTex, hUv).r > 0.5) discard;
     #include <map_fragment>`);
 };
@@ -682,6 +700,10 @@ const rnd = () => (seedN = (seedN * 16807) % 2147483647) / 2147483647;
 const noisy = (p, base, cols, n = 70) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, base); for (let i = 0; i < n; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), cols[Math.floor(rnd() * cols.length)]); };
 const BLOCK_TEX = {
   stone: pixelTex(p => noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f", "#757575"], 90)),
+  ore_iron: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#d8af93", "#c49478"][i % 2]); }),
+  ore_gold: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#ffd84a", "#e8b400"][i % 2]); }),
+  ore_red: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 16; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#ff2a2a", "#b80000"][i % 2]); }),
+  ore_diamond: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#5ff5ec", "#1fc4bb"][i % 2]); }),
   wood: pixelTex(p => { noisy(p, "#a0733f", ["#94683a", "#ad7f48"], 40); for (let x = 0; x < 16; x++) for (const y of [3, 7, 11, 15]) p(x, y, "#6e4c25"); for (const [x, y] of [[4, 0], [11, 4], [2, 8], [9, 12]]) for (let k = 0; k < 3; k++) p(x, y + k, "#6e4c25"); }),
   grass: pixelTex(p => noisy(p, "#5aa03a", ["#4a8a2e", "#6cb84a", "#3f7a28"], 110)),
   sand: pixelTex(p => noisy(p, "#e0d18a", ["#cfbf75", "#ede2a0", "#d8c880"], 80)),
@@ -949,7 +971,11 @@ function edit(e, replace = false) {
     addSolid(mesh, e);
     planks.set(e.id, mesh);
   }
-  if (e.op === "unblock") removeSolid(blocks.get(key(e.x, e.y, e.z)));
+  if (e.op === "unblock") {
+    const m = blocks.get(key(e.x, e.y, e.z));
+    if (gen && m?.userData.edit.g) gen.removed.add(key(e.x, e.y, e.z));  // сломали сгенерированный блок — запоминаем, чтобы он не вырос снова
+    removeSolid(m);
+  }
   if (e.op === "car") {
     const m = cars.get(e.id);
     if (!m) {
@@ -964,17 +990,19 @@ function edit(e, replace = false) {
     dug.add(`${e.x},${e.y},${e.z}`);
     const t = blocks.get(key(e.x, e.y, e.z));
     if (t?.userData.edit.t) removeSolid(t);
-    if (e.y === -1 && inDigArea(e.x, e.z)) { holeData[(e.z - HOLE_ORIGIN) * HOLE_N + (e.x - HOLE_ORIGIN)] = 255; holesDirty = true; }
+    if (e.y === -1 && inHoleWin(e.x, e.z)) { holeData[holeIdx(e.x, e.z)] = 255; holesDirty = true; }
     // Открывшиеся стенки и дно — настоящие блоки (в сеть не уходят)
     for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
       const [nx, ny, nz] = [e.x + dx, e.y + dy, e.z + dz];
       if (ny > -1 || ny < -DEPTH - 1 || dug.has(`${nx},${ny},${nz}`) || blocks.has(key(nx, ny, nz))) continue;
-      edit({ op: "block", x: nx, y: ny, z: nz, c: ny === -DEPTH - 1 ? 13 : ny > -4 ? 10 : 11, t: ny === -DEPTH - 1 ? 2 : 1 });
+      if (caveAt(nx, ny, nz)) openCave(nx, ny, nz);  // докопались до пещеры — открываем её целиком
+      else edit(terrEdit(nx, ny, nz));
     }
   }
   if (e.op === "undig" && dug.delete(`${e.x},${e.y},${e.z}`)) {  // яму засыпали: клетка снова земля
-    if (e.y === -1 && inDigArea(e.x, e.z)) { holeData[(e.z - HOLE_ORIGIN) * HOLE_N + (e.x - HOLE_ORIGIN)] = 0; holesDirty = true; }
-    const near = (x, y, z) => [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([a, b, c]) => dug.has(`${x + a},${y + b},${z + c}`));
+    if (e.y === -1 && inHoleWin(e.x, e.z)) { holeData[holeIdx(e.x, e.z)] = 0; holesDirty = true; }
+    // стенка нужна, пока рядом есть яма или открытая пещера
+    const near = (x, y, z) => [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].some(([a, b, c]) => dug.has(`${x + a},${y + b},${z + c}`) || gen?.caveOpen.has(key(x + a, y + b, z + c)));
     for (const [dx, dy, dz] of [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
       const m = blocks.get(key(e.x + dx, e.y + dy, e.z + dz));
       if (m?.userData.edit.t && !near(e.x + dx, e.y + dy, e.z + dz)) removeSolid(m);
@@ -1061,12 +1089,13 @@ function share(e, replace = false) {
 // Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
 const shadedMats = {};
 const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex || tex === plainTex ? material(tex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return m; })();
-const CH = 8;
+const CH = 16;  // кусок склейки 16³: замер на лабиринте — вызовов отрисовки 52 вместо 227
 const chunks = new Map();
 const dirtyChunks = new Set();
 const FACE_DIR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];  // порядок граней BoxGeometry
 // Грань закрыта, если вплотную стоит такой же склеенный блок (стекло и лёд не считаем: через них видно)
-const faceHidden = (e, f) => { const d = FACE_DIR[f], nb = blocks.get(key(e.x + d[0], e.y + d[1], e.z + d[2])); return !!nb && nb.userData.mergeable && nb.userData.edit.k !== "ice" && nb.userData.edit.k !== "slime"; };
+// Верх земли прямо под плитой (y = −1) тоже закрыт: его накрывает плита, иначе вокруг ям и над пещерами проступают пятна
+const faceHidden = (e, f) => { if (f === 2 && e.t && e.y === -1) return true; const d = FACE_DIR[f], nb = blocks.get(key(e.x + d[0], e.y + d[1], e.z + d[2])); return !!nb && nb.userData.mergeable && nb.userData.edit.k !== "ice" && nb.userData.edit.k !== "slime"; };
 // Поставили или убрали блок — у соседей в других кусках меняются видимые грани
 function dirtyNeighbors(e) {
   for (const d of FACE_DIR) { const c = chunks.get(`${Math.floor((e.x + d[0]) / CH)},${Math.floor((e.y + d[1]) / CH)},${Math.floor((e.z + d[2]) / CH)}`); if (c) dirtyChunks.add(c); }
@@ -1104,7 +1133,7 @@ function rebuildChunks(limit = 24) {
       const faces = list.map(m => { const f = []; for (let k = 0; k < 6; k++) if (!faceHidden(m.userData.edit, k)) f.push(k); return f; });
       const n = faces.reduce((a, f) => a + f.length, 0);
       if (!n) { const ex = c.meshes.get(col); if (ex) { scene.remove(ex); ex.geometry.dispose(); c.meshes.delete(col); } continue; }
-      const pos = new Float32Array(n * 12), nor = new Float32Array(n * 12), uv = new Float32Array(n * 8), idx = new Uint16Array(n * 6), colr = new Float32Array(n * 12);
+      const pos = new Float32Array(n * 12), nor = new Float32Array(n * 12), uv = new Float32Array(n * 8), idx = n * 4 > 65535 ? new Uint32Array(n * 6) : new Uint16Array(n * 6), colr = new Float32Array(n * 12);
       const bp = boxGeo.attributes.position.array, bn = boxGeo.attributes.normal.array, bu = boxGeo.attributes.uv.array, bi = boxGeo.index.array;
       let q = 0;
       list.forEach((m, i) => {
@@ -1901,13 +1930,15 @@ function drawHp() {
   const show = gameMode === "survival" && inGame;
   hpEl.style.display = show ? "block" : "none";
   if (!show) return;
-  const t = isGod() ? "♥ БОГ\n" + "█".repeat(10) : `♥ ${Math.max(0, Math.ceil(hp))}\n` + "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10));
+  const ap = armorPoints(), arm = ap ? `\n▣ ${ap}\n` + "▣".repeat(Math.ceil(ap / 2)) + "·".repeat(10 - Math.ceil(ap / 2)) : "";
+  const t = (isGod() ? "♥ БОГ\n" + "█".repeat(10) : `♥ ${Math.max(0, Math.ceil(hp))}\n` + "█".repeat(Math.ceil(hp / 10)) + "░".repeat(10 - Math.ceil(hp / 10))) + arm;
   if (t !== lastHpText) { lastHpText = t; hpEl.textContent = t; }
 }
 
 // Урон: в творческом режиме его нет. by — кто виноват (для сообщения о гибели)
 function damage(n, by) {
   if (gameMode !== "survival" || dead || isGod() || performance.now() < invulnUntil || n <= 0) return;
+  n *= Math.max(0.2, 1 - armorPoints() * 0.04);  // броня: каждое очко — минус 4% урона
   hp -= n;
   sfx("hurt");
   lastHurt = performance.now();
@@ -2679,7 +2710,7 @@ function useInner(action, screen) {
       if (isTerr(t)) {  // земля: ломаем — значит копаем
         if (t.t === 2) addChat("* дальше бедрок, его не сломать");
         else if (t.t === 3) addChat("* в аду это не сломать");
-        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(digDrop(t.y)); burst(hit.point, t.c, 8); }
+        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(harvest(t)); burst(hit.point, t.c, 8); }
         drawHotbar();
         return;
       }
@@ -2691,7 +2722,7 @@ function useInner(action, screen) {
         if (gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 25); drawHp(); }  // еда лечит
       }
       if (t.op === "animal" && gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 20); drawHp(); addChat("* ты съел животное"); }
-      if (bag && !eaten) give(dropFor(t));
+      if (bag && !eaten) give(harvest(t));
       burst(hit.point, t.c ?? 11, 10);
       share(undo(hit.object.userData.edit));
     }
@@ -2707,6 +2738,7 @@ function useInner(action, screen) {
   }
   if (target && rsInteract(target)) return;  // рычаг, кнопка, повторитель, нота
   if (bag && !have(HOTBAR[slot])) { if (HOTBAR[slot]) toast(`нет: ${HOTBAR[slot]}`); return; }  // выживание: ставить нечего
+  if (ARMOR[HOTBAR[slot]]) return wear(HOTBAR[slot]);  // броню в руке — надеть
   if (itemBanned(HOTBAR[slot])) return;
   if (RS_ITEMS[HOTBAR[slot]] && hit) { rsPlace(RS_ITEMS[HOTBAR[slot]], hit); return; }
   if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
@@ -3035,7 +3067,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -3084,6 +3116,8 @@ function iconModel(name, c) {
     m.rotation.y = Math.PI * 0.8;
   }
   else if (name === "Вагонетка") m = new THREE.Mesh(cartGeo, plain());
+  else if (PICKS[name]) { m = new THREE.Mesh(pickGeos[PICKS[name]], plain()); m.rotation.z = 0.6; }
+  else if (ARMOR[name]) m = new THREE.Mesh(ARMOR_GEO[ARMOR[name][0]], armorMats[ARMOR[name][1]]);
   else if (WEAPON_GEO[name]) { m = new THREE.Mesh(WEAPON_GEO[name], weaponMats); m.rotation.y = -Math.PI / 2; }
   return m;
 }
@@ -3188,6 +3222,8 @@ const INV_TABS = {
   "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
   "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
   "Транспорт": ["Машина", "Автобус", "Танк", "Самолёт"],
+  "Инструменты": ["Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка", "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки",
+    "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки"],
   "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель"],
 };
 const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка"];
@@ -3223,13 +3259,14 @@ function drawInventory() {
   const tabs = bag ? survTabs() : invTabs(), q = invQuery.trim();
   if (!tabs[invTab]) invTab = bag ? "Вещи" : "Блоки";
   const list = invList(), focused = document.activeElement?.id === "invq", caret = focused ? document.activeElement.selectionStart : 0;
-  wantIcons(list);
+  wantIcons([...list, ...armor]);
   inv.innerHTML = `<div class="invt">ИНВЕНТАРЬ</div>
 <input id="invq" class="invq" placeholder="поиск по названию…" autocomplete="off" spellcheck="false" value="${invQuery.replace(/"/g, "&quot;")}">
 <div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${!q && n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
 ${bag && invTab === "Крафт" && !q ? craftHtml() : `<div class="grid">${invGridHtml(list)}</div>`}
 <div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
 <div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
+<div class="hbs armor">${ARMOR_SLOTS.map((n, i) => `<span class="slot" data-armor="${i}" title="${armor[i] || n + " — не надет"}">${armor[i] ? iconImg(armor[i]) : `<small>${n}</small>`}</span>`).join("")}</div>
 <div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div><span class="xbtn">✕</span>`;
   const input = inv.querySelector("#invq");
   input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") input.blur(); });  // буквы идут в поиск, а не в игру
@@ -3272,6 +3309,8 @@ document.addEventListener("click", e => { if (e.target.closest(".xbtn") && panel
 inv.addEventListener("click", e => {
   const cr = e.target.closest("[data-craft]");
   if (cr) return craft(Number(cr.dataset.craft));
+  const ar = e.target.closest("[data-armor]");
+  if (ar) { unwear(Number(ar.dataset.armor)); return drawInventory(); }  // снять броню
   const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
   if (tab) { invTab = tab.dataset.tab; invQuery = ""; drawInventory(); }
   else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
@@ -3516,7 +3555,7 @@ function resize() {
     // Обычная 3D-картинка без символов и без второго прохода: рисуем сцену прямо на экран, разрешение подстраивается под тяжесть
     const cap = !TOUCH ? 1.25 : VERY_WEAK_GPU ? 1.0 : WEAK_GPU ? 1.15 : LOWEND ? 1.25 : 1.5;  // потолок разрешения: пикселей сцены на css-пиксель
     const k = Math.min(dpr, cap) * QUALITY[quality][0] / 100;
-    camera.far = LOWEND ? 260 : FAR;  // слабому телефону — меньше дальность
+    camera.far = Math.min(LOWEND ? 260 : 450, FAR);  // слабому телефону — меньше дальность
     renderer.setPixelRatio(k);
     renderer.setSize(innerWidth, innerHeight, false);
     renderer.domElement.style.width = innerWidth + "px";
@@ -3698,7 +3737,7 @@ const others = new Map();   // id игрока → его фигурка
 let poseTimer = 0, sentPose = {};  // sentPose — какую позу база уже знает
 // Моя поза для других игроков
 function buildPose() {
-  const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(asInvis ? { i: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
+  const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(asInvis ? { i: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}), ...(armor.some(Boolean) ? { ar: armorCode() } : {}) };
   if (camMode === "drone" && boom <= 0) p.d = [...dronePos.toArray().map(v => +v.toFixed(2)), +yaw.toFixed(2)];
   return p;
 }
@@ -3804,6 +3843,7 @@ function updateAvatar(id, p) {
   a.group.visible = !p.dd && !a.invis;  // погибший и невидимый пропадают
   setHand(a.group, typeof p.w === "string" ? p.w : null);
   setBallLook(a.group, p.v === 1 ? "verity" : BALL_TYPES[p.v] ? p.v : null);
+  setArmorLook(a.group, typeof p.ar === "string" ? p.ar.slice(0, 4) : "");
   const [r, g, b] = (COLORS[p.c] || COLORS[0]).rgb;
   a.mat.color.setRGB(r / 255, g / 255, b / 255);
   a.nick = String(p.nick).slice(0, 24);
@@ -5175,7 +5215,7 @@ function updateSelfFigure(dt) {
 // ---------- Ад и порталы ----------
 // Обсидиановая рамка 4×5 (внутри 2×3), поджечь огнивом — появляется портал. Он ведёт в ад: платформа далеко от старта (x > 1000).
 // Ад строится у каждого игрока сам, одинаково (в сеть не уходит); в нём можно строить и ломать свои блоки, а сам адский камень не ломается
-const HELL_X = 1500, HELL_Z = 1500, HELL_BORDER = 1000;
+let HELL_X = 1500, HELL_BORDER = 1000; const HELL_Z = 1500;  // в бесконечном мире ад уезжает далеко (setInfinite)
 const inHell = () => px > HELL_BORDER;
 let hellBuilt = false, lastOver = { x: SIZE / 2, y: 0, z: SIZE / 2 }, portalT = 0, portalLock = false, wasHell = false;
 function findPortal(bx, by, bz) {
@@ -5255,6 +5295,7 @@ function updateWorld(dt) {
   // Пол и солнце едут за камерой целыми блоками, чтобы плитки не сдвигались
   const cx = Math.round(camera.position.x), cz = Math.round(camera.position.z);
   plate.position.set(cx, -0.003, cz);
+  if (Math.abs(cx - holeOX - HOLE_N / 2) > 500 || Math.abs(cz - holeOZ - HOLE_N / 2) > 500) recenterHoles();  // плита (900) всегда внутри окна дыр
   if (holesDirty) { holesDirty = false; holeTex.needsUpdate = true; }
   sun.target.position.set(cx, 0, cz);
   sun.position.set(cx + 30, 50, cz + 15);
@@ -7001,11 +7042,14 @@ async function idb(store, mode, fn) {
 }
 const listWorlds = () => idb("meta", "readonly", s => s.getAll()).then(l => l.sort((a, b) => b.updated - a.updated));
 // Всё, что построено в мире (как экспорт .baseAscii): земля под плитой восстанавливается из ям сама
-const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+// В бесконечном мире сгенерированное (g) и входы в пещеры не храним: они получатся из зерна снова
+const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr && !e.g)),
+  ...[...dug].filter(k => !gen?.mouths.has(k)).map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
 function saveWorld(manual) {
   if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
   const edits = worldEdits();
-  const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color };
+  const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
+    gen: gen && { removed: [...gen.removed], animals: [...gen.animals] } };
   Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
   worldDirty = false;
   savedAt = [px, feet, pz];
@@ -7045,7 +7089,9 @@ async function playWorld(meta) {
   bag = meta.res ? { ...(data?.bag || {}) } : null;
   if (Array.isArray(data?.bar)) data.bar.forEach((n, i) => { if (i < BAR_SIZE) HOTBAR[i] = n && ITEMS.includes(n) ? n : null; });
   if (Number.isInteger(data?.color) && COLORS[data.color]) color = data.color;
+  if (Array.isArray(data?.armor)) armor = data.armor.map(n => ARMOR[n] ? n : null);
   startGame();
+  setInfinite(!!meta.inf, data?.gen);
   const list = data?.edits || [];
   if (list.length > 3000) addChat(`* загрузка мира: ${list.length} предметов…`);
   worldLoading = true;
@@ -7054,6 +7100,7 @@ async function playWorld(meta) {
     const p = data?.player;
     if (p && [p.x, p.f, p.z].every(Number.isFinite)) {
       px = p.x; feet = p.f; pz = p.z; vy = 0;
+      if (gen && feet < -1) for (const [dx, dy, dz] of FACE_DIR) { const c = [Math.floor(px) + dx, Math.floor(feet) + dy, Math.floor(pz) + dz]; if (caveAt(...c)) openCave(...c); stepCaves(20000); }  // сохранились в пещере: стенки нужны сразу
       yaw = Number.isFinite(p.yaw) ? p.yaw : 0; pitch = Number.isFinite(p.pitch) ? p.pitch : 0;
       if (gameMode === "survival" && p.hp > 0) hp = Math.min(MAX_HP, p.hp);
       drawHp();
@@ -7071,74 +7118,17 @@ async function createWorld(kind) {
   const name = await ask("НАЗВАНИЕ МИРА", `Мир ${n}`, 24);
   if (!name) return;
   const now = Date.now();
-  currentWorld = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), name, mode, res: resources, nature, created: now, updated: now, count: 0, seed: Math.floor(Math.random() * 1e9) };
+  currentWorld = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), name, mode, res: resources, inf: nature, created: now, updated: now, count: 0, seed: Math.floor(Math.random() * 1e9) };
   gameMode = mode;
   bag = resources ? {} : null;
   if (bag) HOTBAR.fill(null);  // в выживании начинаем с пустыми руками, как в майнкрафте
+  armor = [null, null, null, null];
   startGame();
-  if (nature) {
-    worldLoading = true;
-    loadEdits(generateNature(currentWorld.seed), () => { worldLoading = false; saveWorld(); });
-  } else saveWorld();
+  setInfinite(nature);  // природа — бесконечная, создаётся вокруг игрока по мере ходьбы
+  saveWorld();
 }
 const deleteWorld = id => Promise.all([idb("meta", "readwrite", s => s.delete(id)), idb("data", "readwrite", s => s.delete(id))]);
 const renameWorld = (meta, name) => idb("meta", "readwrite", s => s.put({ ...meta, name }));
-
-// Природа для нового мира: холмы из земли с травой, песчаные пятна, камни, деревья и животные.
-// Создаётся один раз, дальше это обычные блоки мира (их можно ломать, они сохраняются)
-function generateNature(seed) {
-  const hash = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7 + (seed % 1000) * 0.731) * 43758.5453; return v - Math.floor(v); };
-  const smooth = t => t * t * (3 - 2 * t);
-  // Гладкий шум: случайные значения в узлах сетки g×g, между узлами — плавный переход
-  const noise = (x, z, g) => {
-    const i = Math.floor(x / g), j = Math.floor(z / g), fx = smooth(x / g - i), fz = smooth(z / g - j);
-    const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
-    return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
-  };
-  let s = seed >>> 0;
-  const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
-  const R = 48, cx = SIZE / 2, cz = SIZE / 2, list = [], top = new Map(), taken = new Set();
-  const put = (x, y, z, k) => { const kk = key(x, y, z); if (taken.has(kk)) return; taken.add(kk); list.push({ op: "block", x, y, z, c: 0, k }); };
-  for (let x = cx - R; x < cx + R; x++) for (let z = cz - R; z < cz + R; z++) {
-    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
-    if (d > R) continue;
-    const fade = Math.min(1, Math.max(0, (d - 7) / 10)) * Math.min(1, (R - d) / 8);  // у точки появления ровно, к краю холмы сходят на нет
-    const h = Math.max(0, Math.floor((noise(x, z, 22) * 0.75 + noise(x, z, 7) * 0.25) * 8 * fade - 1.5));
-    const sandy = noise(x + 900, z - 400, 16) > 0.7;
-    for (let y = 0; y < h; y++) put(x, y, z, sandy ? "sand" : y === h - 1 ? "grass" : y < h - 3 ? "stone" : "dirt");
-    top.set(x + "," + z, { h, sandy, d });
-  }
-  // Деревья: ствол 4–6 блоков, крона из листвы
-  for (let n = 0, tries = 0; n < 34 && tries < 400; tries++) {
-    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
-    if (!t || t.sandy || t.d < 10 || t.d > R - 4) continue;
-    const y0 = t.h, hgt = 4 + Math.floor(rnd() * 3);
-    for (let y = y0; y < y0 + hgt; y++) put(x, y, z, "wood");
-    for (let dy = -2; dy <= 1; dy++) {
-      const r = dy >= 0 ? 1 : 2;
-      for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-        if (Math.abs(dx) === r && Math.abs(dz) === r && (dy === 1 || rnd() < 0.5)) continue;  // углы кроны срезаны
-        if (dx || dz || dy > 0) put(x + dx, y0 + hgt + dy, z + dz, "leaves");
-      }
-    }
-    n++;
-  }
-  // Валуны из камня
-  for (let n = 0; n < 10; n++) {
-    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
-    if (!t || t.d < 10) continue;
-    for (let dx = 0; dx < 2; dx++) for (let dz = 0; dz < 2; dz++) if (rnd() < 0.8) { put(x + dx, t.h, z + dz, "stone"); if (rnd() < 0.4) put(x + dx, t.h + 1, z + dz, "stone"); }
-  }
-  // Животные пасутся на траве
-  const kinds = ["pig", "cow", "sheep", "chicken"];
-  for (let n = 0, tries = 0; n < 12 && tries < 200; tries++) {
-    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
-    if (!t || t.d < 9 || taken.has(key(x, t.h, z))) continue;
-    list.push({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[n % kinds.length], x: x + 0.5, y: t.h, z: z + 0.5, yaw: +(rnd() * 6.28).toFixed(2), o: myId });
-    n++;
-  }
-  return list;
-}
 
 // ---------- Выживание: вещи считаются, блоки добываются и ломаются не сразу, остальное крафтится ----------
 const have = name => !bag || (bag[name] || 0) > 0;
@@ -7178,7 +7168,13 @@ function dropFor(e) {
   if (["glass", "ice", "window", "portal", "rs_head"].includes(e.k)) return null;  // стекло бьётся
   return KIND_ITEM[e.k] ?? null;
 }
-// Из ямы: сверху земля и песок, глубже камень, ещё глубже руда
+// Что достаётся игроку: без нужной кирки камень и руда не выпадают
+function harvest(e) {
+  if (needTier(e) > pickTier()) { toast(pickTier() ? "нужна кирка получше" : "нужна кирка"); return null; }
+  if (!isTerr(e)) return dropFor(e);
+  return { ore_iron: "Металл", ore_gold: "Золото", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Камень" }[e.k] ?? digDrop(e.y);
+}
+// Из ямы: сверху земля и песок, глубже камень, ещё глубже руда (для старых миров, где земля без руды)
 function digDrop(y) {
   const r = Math.random();
   if (y < -24 && r < 0.012) return "Алмаз";
@@ -7189,13 +7185,13 @@ function digDrop(y) {
   return y > -4 ? "Земля" : "Камень";
 }
 // Сколько секунд ломать рукой
-const HARD = { dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
+const HARD = { ore_iron: 1.8, ore_red: 1.8, ore_gold: 2, ore_diamond: 2.6, dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
   gold: 1.6, diamond: 2.5, obsidian: 6, glass: 0.3, ice: 0.4, netherrack: 0.5, glowstone: 0.4 };
 function hardness(hit) {
   if (hit.object === plate) return 0.5;
   const e = hit.object.userData.edit;
   if (!e) return 0.4;
-  if (isTerr(e)) return e.y > -4 ? 0.5 : 1.2;
+  if (isTerr(e)) return HARD[e.k] ?? (e.y > -4 ? 0.5 : 1.2);
   if (e.op !== "block") return 0.3;
   if (!e.k || e.k === "flat") return 1;
   return HARD[e.k] ?? 0.5;
@@ -7216,7 +7212,9 @@ function updateBreaking(dt) {
   const id = !hit ? null : hit.object === plate ? `p${Math.floor(hit.point.x)},${Math.floor(hit.point.z)}` : hit.object.uuid;
   if (!id) { breaking.prog = 0; mineEl.style.display = "none"; return; }
   if (id !== breaking.id) { breaking.id = id; breaking.prog = 0; }
-  breaking.prog += dt / hardness(hit);
+  // Кирка ускоряет камень и руду; без нужной кирки — втрое дольше (и ничего не выпадет)
+  const e = hit.object.userData.edit, need = e ? needTier(e) : 0, tier = pickTier();
+  breaking.prog += dt / hardness(hit) * (!need ? 1 : tier >= need ? PICK_SPEED[tier] : 0.33);
   if ((breaking.tick += dt) > 0.22) { breaking.tick = 0; sfx("mine"); burst(hit.point, hit.object.userData.edit?.c ?? 10, 2); }
   if (breaking.prog >= 1) { use("remove", breaking.screen); breaking.prog = 0; breaking.id = null; }
   const n = Math.min(10, Math.floor(breaking.prog * 10));
@@ -7225,7 +7223,7 @@ function updateBreaking(dt) {
 }
 // Рецепты: [что получится, сколько, из чего]. Только из предметов, которые есть в игре
 const RECIPES = [
-  ["Доска", 4, { "Дерево": 1 }], ["Палка", 4, { "Доска": 2 }], ["Блок", 4, { "Камень": 4 }], ["Ступеньки", 4, { "Камень": 6 }], ["Рампа", 2, { "Камень": 3 }],
+  ["Доска", 4, { "Дерево": 1 }], ["Палка", 4, { "Доска": 2 }], ["Блок", 4, { "Камень": 4 }], ["Обсидиан", 1, { "Камень": 8, "Алмаз": 1 }], ["Ступеньки", 4, { "Камень": 6 }], ["Рампа", 2, { "Камень": 3 }],
   ["Бетон", 4, { "Камень": 2, "Песок": 2 }], ["Стекло", 1, { "Песок": 1 }], ["Окно", 2, { "Стекло": 2, "Палка": 1 }], ["Плитка", 4, { "Камень": 4, "Песок": 1 }],
   ["Дверь", 1, { "Доска": 6 }], ["Стул", 1, { "Доска": 3, "Палка": 2 }], ["Стол", 1, { "Доска": 4, "Палка": 2 }], ["Скамейка", 1, { "Доска": 3, "Палка": 2 }],
   ["Кровать", 1, { "Шерсть": 3, "Доска": 3 }], ["Бочка", 1, { "Доска": 7 }], ["Текст", 3, { "Доска": 6, "Палка": 1 }], ["Трава", 1, { "Земля": 1, "Листва": 1 }],
@@ -7239,6 +7237,10 @@ const RECIPES = [
   ["Наблюдатель", 1, { "Камень": 6, "Редстоун": 2 }], ["Раздатчик", 1, { "Камень": 7, "Редстоун": 1 }], ["Нотный блок", 1, { "Доска": 8, "Редстоун": 1 }],
   ["Железная дверь", 1, { "Металл": 6 }], ["Рельсы", 16, { "Металл": 6, "Палка": 1 }], ["Энергорельсы", 6, { "Золото": 6, "Палка": 1, "Редстоун": 1 }],
   ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
+  ["Деревянная кирка", 1, { "Доска": 3, "Палка": 2 }], ["Каменная кирка", 1, { "Камень": 3, "Палка": 2 }], ["Железная кирка", 1, { "Металл": 3, "Палка": 2 }],
+  ["Алмазная кирка", 1, { "Алмаз": 3, "Палка": 2 }], ["Железный шлем", 1, { "Металл": 5 }], ["Железный нагрудник", 1, { "Металл": 8 }], ["Железные поножи", 1, { "Металл": 7 }],
+  ["Железные ботинки", 1, { "Металл": 4 }], ["Алмазный шлем", 1, { "Алмаз": 5 }], ["Алмазный нагрудник", 1, { "Алмаз": 8 }], ["Алмазные поножи", 1, { "Алмаз": 7 }],
+  ["Алмазные ботинки", 1, { "Алмаз": 4 }],
 ].filter(([r, , ing]) => ITEMS.includes(r) && Object.keys(ing).every(n => ITEMS.includes(n)));
 const canCraft = ([, , ing]) => !!bag && Object.entries(ing).every(([n, k]) => (bag[n] || 0) >= k);
 function craft(i) {
@@ -7473,6 +7475,9 @@ function updateCartRide() {
 // Всё новое, что считается каждый кадр
 let fpsFrames = 0, fpsTime = 0;
 function updateGameplay(dt) {
+  updateGen(dt);
+  updateTool(dt);
+  setArmorLook(selfFigure, armorCode());
   updateSteps();
   updateBreaking(dt);
   updateParticles(dt);
@@ -7484,6 +7489,262 @@ function updateGameplay(dt) {
     if (settings.fps) fpsEl.textContent = `${Math.round(fpsFrames / fpsTime)} FPS`;
     fpsFrames = 0; fpsTime = 0;
   }
+}
+
+// ---------- Бесконечный мир: природа создаётся кусками 16×16 вокруг игрока и убирается, когда он уходит ----------
+// Всё сгенерированное получается из зерна мира, поэтому в сохранение попадает только то, что игрок поменял:
+// поставленные блоки, ямы и список сломанных сгенерированных блоков
+const GEN = 16;
+const GEN_R = LOWEND ? 3 : 5;  // сколько кусков вокруг игрока держим (дальше — туман)
+const hashN = (seed, x, y, z) => { const v = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + seed * 0.0137) * 43758.5453; return v - Math.floor(v); };
+const smooth = t => t * t * (3 - 2 * t);
+// Гладкий шум: случайные значения в узлах решётки g, между узлами — плавный переход (2D и 3D)
+function noise2(x, z, g, seed) {
+  const i = Math.floor(x / g), j = Math.floor(z / g), fx = smooth(x / g - i), fz = smooth(z / g - j);
+  const a = hashN(seed, i, 0, j), b = hashN(seed, i + 1, 0, j), c = hashN(seed, i, 0, j + 1), d = hashN(seed, i + 1, 0, j + 1);
+  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+}
+function noise3(x, y, z, g, seed) {
+  const i = Math.floor(x / g), j = Math.floor(y / g), k = Math.floor(z / g), fx = smooth(x / g - i), fy = smooth(y / g - j), fz = smooth(z / g - k);
+  const l = (a, b, t) => a + (b - a) * t, h = (di, dj, dk) => hashN(seed, i + di, j + dj, k + dk);
+  return l(l(l(h(0, 0, 0), h(1, 0, 0), fx), l(h(0, 1, 0), h(1, 1, 0), fx), fy), l(l(h(0, 0, 1), h(1, 0, 1), fx), l(h(0, 1, 1), h(1, 1, 1), fx), fy), fz);
+}
+// Высота холма в столбце и что лежит сверху. У точки появления ровно
+function genColumn(x, z) {
+  const s = gen.seed, d = Math.hypot(x + 0.5 - SIZE / 2, z + 0.5 - SIZE / 2), fade = Math.min(1, Math.max(0, (d - 9) / 12));
+  const h = Math.max(0, Math.floor((noise2(x, z, 26, s) * 0.7 + noise2(x, z, 8, s + 1) * 0.3) * 10 * fade - 3.2));
+  const desert = noise2(x, z, 70, s + 2) > 0.66;
+  return { h, desert, snow: h >= 7 };
+}
+// Пещеры: извилистые ходы (там, где два шума одновременно около середины) и залы на глубине
+function caveAt(x, y, z) {
+  if (!gen || y > -2 || y < -DEPTH + 3) return false;
+  const s = gen.seed, yy = y * 1.5;
+  if (Math.abs(noise3(x, yy, z, 16, s + 10) - 0.5) < 0.034 && Math.abs(noise3(x, yy, z, 16, s + 11) - 0.5) < 0.034) return true;
+  return y < -14 && noise3(x, y * 2, z, 24, s + 12) > 0.83;
+}
+// Из чего стенка под землёй: сверху земля, глубже камень с рудой (одинаково у всех игроков — считается по координатам)
+function terrKind(x, y, z) {
+  if (y > -4) return "dirt";
+  const h = hashN(9137, x, y, z);
+  if (y < -35 && h < 0.004) return "ore_diamond";
+  if (y < -20 && h < 0.012) return "ore_gold";
+  if (y < -12 && h < 0.03) return "ore_red";
+  if (y < -5 && h < 0.055) return "ore_iron";
+  return "stone";
+}
+const terrEdit = (x, y, z) => y === -DEPTH - 1 ? { op: "block", x, y, z, c: 13, t: 2 } : { op: "block", x, y, z, c: 0, k: terrKind(x, y, z), t: 1 };
+// Открыли пещеру: обходим её ходы и ставим стенки вокруг — понемногу, до CAVE_STEP клеток за кадр, чтобы игра не дёргалась.
+// Дальше CAVE_R от игрока не идём: такие клетки ждут в frontier и откроются, когда игрок подойдёт (под землёй дальше всё равно не видно).
+// Стенки и ходы пещер записаны по кускам, чтобы их можно было выгрузить
+const CAVE_R = 40, CAVE_STEP = 700;
+const caveChunk = (x, z) => { const ck = Math.floor(x / GEN) + "," + Math.floor(z / GEN); let c = gen.caves.get(ck); if (!c) gen.caves.set(ck, c = { walls: [], cells: [] }); return c; };
+function openCave(x, y, z) {
+  const k = key(x, y, z);
+  if (gen.caveOpen.has(k)) return;
+  gen.caveOpen.add(k);
+  caveChunk(x, z).cells.push(k);
+  gen.cq.push([x, y, z]);
+}
+// Очередь обхода: budget клеток за раз
+function stepCaves(budget) {
+  const q = gen.cq;
+  for (let n = 0; gen.cqi < q.length && n < budget; n++) {
+    const [cx, cy, cz] = q[gen.cqi++];
+    if (Math.abs(cx - px) > CAVE_R || Math.abs(cz - pz) > CAVE_R) { gen.frontier.add(key(cx, cy, cz)); continue; }
+    for (const [dx, dy, dz] of FACE_DIR) {
+      const nx = cx + dx, ny = cy + dy, nz = cz + dz, k = key(nx, ny, nz);
+      if (ny > -1 || ny < -DEPTH - 1 || dug.has(`${nx},${ny},${nz}`) || blocks.has(k)) continue;
+      if (caveAt(nx, ny, nz)) {
+        if (gen.caveOpen.has(k)) continue;
+        gen.caveOpen.add(k);
+        caveChunk(nx, nz).cells.push(k);
+        q.push([nx, ny, nz]);
+      } else {
+        edit({ ...terrEdit(nx, ny, nz), cv: 1 });
+        caveChunk(nx, nz).walls.push(k);
+      }
+    }
+  }
+  if (gen.cqi > 5000 && gen.cqi * 2 > q.length) { gen.cq = q.slice(gen.cqi); gen.cqi = 0; }
+}
+// Уходим: стенки пещер в далёком куске убираем, его ходы забываем; соседние открытые ходы снова ждут в frontier
+function unloadCaves(ck) {
+  const c = gen.caves.get(ck);
+  if (!c) return;
+  gen.caves.delete(ck);
+  for (const k of c.walls) { const m = blocks.get(k); if (m?.userData.edit.cv) removeSolid(m); }
+  for (const k of c.cells) { gen.caveOpen.delete(k); gen.frontier.delete(k); }
+  for (const k of c.cells) {
+    const [x, y, z] = k.split(",").map(Number);
+    for (const [dx, dy, dz] of FACE_DIR) { const n = key(x + dx, y + dy, z + dz); if (gen.caveOpen.has(n)) gen.frontier.add(n); }
+  }
+}
+// Подошли к куску: пещеры, в которые ведут ямы этого куска (и входы с поверхности), открываются снова
+function reopenCaves(x0, z0) {
+  for (const k of dug) {
+    const [x, y, z] = k.split(",").map(Number);
+    if (x < x0 - 1 || x > x0 + GEN || z < z0 - 1 || z > z0 + GEN) continue;
+    for (const [dx, dy, dz] of FACE_DIR) if (caveAt(x + dx, y + dy, z + dz)) openCave(x + dx, y + dy, z + dz);
+  }
+}
+// Один кусок природы: холмы, пустыни, снег, деревья, входы в пещеры и (один раз) животные
+function generateChunk(cx, cz) {
+  const s = gen.seed, x0 = cx * GEN, z0 = cz * GEN, made = [];
+  const put = (x, y, z, k) => {
+    if (x < x0 || x >= x0 + GEN || z < z0 || z >= z0 + GEN) return;  // кроны соседних деревьев ставит их собственный кусок
+    const kk = key(x, y, z);
+    if (gen.removed.has(kk) || blocks.has(kk)) return;
+    edit({ op: "block", x, y, z, c: 0, k, g: 1 });
+    if (blocks.has(kk)) made.push(kk);
+  };
+  for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) {
+    const { h, desert, snow } = genColumn(x, z);
+    for (let y = 0; y < h; y++) put(x, y, z, desert ? "sand" : y === h - 1 ? (snow ? "snow" : "grass") : y < h - 3 ? "stone" : "dirt");
+    // Вход в пещеру: на ровном месте, если ход подходит близко к поверхности
+    if (!h && hashN(s + 5, x, 0, z) < 0.08 && caveAt(x, -2, z) && caveAt(x, -3, z)) {
+      gen.mouths.add(`${x},-1,${z}`);
+      if (!dug.has(`${x},-1,${z}`)) edit({ op: "dig", x, y: -1, z });
+    }
+  }
+  // Деревья (их кроны могут заходить в соседние куски — смотрим и деревья рядом с куском)
+  for (let x = x0 - 3; x < x0 + GEN + 3; x++) for (let z = z0 - 3; z < z0 + GEN + 3; z++) {
+    if (hashN(s + 3, x, 0, z) > 0.012) continue;
+    const { h, desert, snow } = genColumn(x, z);
+    if (desert || snow || Math.hypot(x - SIZE / 2, z - SIZE / 2) < 10) continue;
+    const hgt = 4 + Math.floor(hashN(s + 4, x, 0, z) * 3);
+    for (let y = h; y < h + hgt; y++) put(x, y, z, "wood");
+    for (let dy = -2; dy <= 1; dy++) {
+      const r = dy >= 0 ? 1 : 2;
+      for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+        if (Math.abs(dx) === r && Math.abs(dz) === r && (dy === 1 || hashN(s + 6, x + dx, dy, z + dz) < 0.5)) continue;
+        if (dx || dz || dy > 0) put(x + dx, h + hgt + dy, z + dz, "leaves");
+      }
+    }
+  }
+  // Животные появляются в куске один раз за всю жизнь мира, дальше живут сами
+  const ck = cx + "," + cz;
+  if (!gen.animals.has(ck)) {
+    gen.animals.add(ck);
+    const kinds = ["pig", "cow", "sheep", "chicken"];
+    if (hashN(s + 7, cx, 0, cz) < 0.35) for (let n = 0; n < 2; n++) {
+      const x = x0 + Math.floor(hashN(s + 8, cx, n, cz) * GEN), z = z0 + Math.floor(hashN(s + 9, cx, n, cz) * GEN), { h, desert } = genColumn(x, z);
+      if (desert || blocks.has(key(x, h, z))) continue;
+      edit({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[Math.floor(hashN(s + 10, cx, n, cz) * 4)], x: x + 0.5, y: h, z: z + 0.5, yaw: n * 2.1, o: myId });
+    }
+  }
+  gen.loaded.set(ck, made);
+  reopenCaves(x0, z0);
+}
+function unloadChunk(ck) {
+  for (const kk of gen.loaded.get(ck) || []) { const m = blocks.get(kk); if (m?.userData.edit.g) removeSolid(m); }  // поставленное игроком остаётся
+  gen.loaded.delete(ck);
+}
+// Раз в кадр: догружаем ближайший недостающий кусок и выгружаем далёкие
+let genTimer = 0;
+function updateGen(dt) {
+  if (!gen || worldLoading || !inGame || inHell()) return;
+  const pcx = Math.floor(px / GEN), pcz = Math.floor(pz / GEN);
+  let best = null, bestD = Infinity;
+  for (let dx = -GEN_R; dx <= GEN_R; dx++) for (let dz = -GEN_R; dz <= GEN_R; dz++) {
+    const d = dx * dx + dz * dz;
+    if (d > GEN_R * GEN_R + 1 || d >= bestD || gen.loaded.has((pcx + dx) + "," + (pcz + dz))) continue;
+    best = [pcx + dx, pcz + dz]; bestD = d;
+  }
+  if (best) generateChunk(...best);
+  stepCaves(CAVE_STEP);
+  if ((genTimer += dt) < 1) return;
+  genTimer = 0;
+  const far = ck => { const [cx, cz] = ck.split(",").map(Number); return (cx - pcx) ** 2 + (cz - pcz) ** 2 > (GEN_R + 2) ** 2; };
+  for (const ck of [...gen.loaded.keys()]) if (far(ck)) unloadChunk(ck);
+  for (const ck of [...gen.caves.keys()]) if (far(ck)) unloadCaves(ck);
+  // Игрок подошёл к недообойдённым ходам — продолжаем открывать пещеру
+  const near = [];
+  for (const k of gen.frontier) { const [x, y, z] = k.split(",").map(Number); if (Math.abs(x - px) < CAVE_R - 8 && Math.abs(z - pz) < CAVE_R - 8) near.push([x, y, z]); }
+  for (const [x, y, z] of near) { gen.frontier.delete(key(x, y, z)); gen.cq.push([x, y, z]); }
+}
+// Бесконечный мир: туман ближе (дальше всё равно ничего не создано — и рисовать меньше), ад уезжает далеко
+function setInfinite(on, saved) {
+  gen = on ? { seed: currentWorld.seed, removed: new Set(saved?.removed || []), animals: new Set(saved?.animals || []), mouths: new Set(), loaded: new Map(),
+    caveOpen: new Set(), caves: new Map(), frontier: new Set(), cq: [], cqi: 0 } : null;
+  HELL_BORDER = on ? 100000 : 1000; HELL_X = on ? 100500 : 1500;
+  FOG_FAR = on ? GEN_R * GEN - 6 : 440; FOG_NEAR = on ? FOG_FAR * 0.45 : 170;
+  FAR = on ? FOG_FAR + 10 : 450;
+  scene.fog.near = FOG_NEAR; scene.fog.far = FOG_FAR;
+  setQuality();
+}
+
+// ---------- Кирки и броня ----------
+const PICKS = { "Деревянная кирка": 1, "Каменная кирка": 2, "Железная кирка": 3, "Алмазная кирка": 4 };
+const PICK_SPEED = [1, 2, 3, 4, 6];
+// Какая кирка нужна, чтобы блок добывался (0 — хватит рук). Без нужной ломается втрое дольше и ничего не даёт
+const NEED = { stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
+const needTier = e => e.op !== "block" || e.t === 2 ? 0 : !e.k ? (e.t ? 0 : 1) : NEED[e.k] || 0;
+const pickTier = () => { const n = HOTBAR[slot]; return PICKS[n] && have(n) ? PICKS[n] : 0; };
+const ARMOR = {  // слот (0 шлем, 1 нагрудник, 2 поножи, 3 ботинки), материал, очки защиты (каждое — минус 4% урона)
+  "Железный шлем": [0, "i", 2], "Железный нагрудник": [1, "i", 6], "Железные поножи": [2, "i", 5], "Железные ботинки": [3, "i", 2],
+  "Алмазный шлем": [0, "d", 3], "Алмазный нагрудник": [1, "d", 8], "Алмазные поножи": [2, "d", 6], "Алмазные ботинки": [3, "d", 3] };
+const ARMOR_SLOTS = ["шлем", "нагрудник", "поножи", "ботинки"];
+const armorPoints = () => armor.reduce((s, n) => s + (ARMOR[n]?.[2] || 0), 0);
+const armorCode = () => armor.map(n => ARMOR[n]?.[1] || "0").join("");
+function wear(name) {
+  const [i] = ARMOR[name];
+  if (armor[i]) give(armor[i], 1, true);  // снятое возвращается в вещи
+  armor[i] = name;
+  take(name);
+  sfx("craft");
+  toast(`надето: ${name}`);
+  worldDirty = true;
+  drawHp();
+}
+function unwear(i) {
+  if (!armor[i]) return;
+  give(armor[i], 1, true);
+  armor[i] = null;
+  worldDirty = true;
+  drawHp();
+}
+const armorMats = { i: new THREE.MeshLambertMaterial({ color: 0xc9cdd2 }), d: new THREE.MeshLambertMaterial({ color: 0x4fe3dc }) };
+const ARMOR_GEO = [
+  mergeParts([box(0.47, 0.18, 0.47, 0, 1.6, 0), box(0.47, 0.2, 0.06, 0, 1.47, 0.21), box(0.06, 0.2, 0.47, -0.21, 1.47, 0), box(0.06, 0.2, 0.47, 0.21, 1.47, 0)]),
+  mergeParts([box(0.58, 0.56, 0.32, 0, 0.9, 0), box(0.18, 0.2, 0.2, -0.35, 1.05, 0), box(0.18, 0.2, 0.2, 0.35, 1.05, 0)]),
+  mergeParts([box(0.54, 0.14, 0.3, 0, 0.6, 0), box(0.22, 0.42, 0.26, -0.13, 0.36, 0), box(0.22, 0.42, 0.26, 0.13, 0.36, 0)]),
+  mergeParts([box(0.24, 0.16, 0.34, -0.13, 0.08, -0.03), box(0.24, 0.16, 0.34, 0.13, 0.08, -0.03)]),
+];
+// Броня на фигурке: code — 4 буквы (0 — ничего, i — железо, d — алмаз)
+function setArmorLook(group, code) {
+  if (group.userData.armorCode === code) return;
+  group.userData.armorCode = code;
+  for (const m of group.userData.armorMeshes || []) group.remove(m);
+  group.userData.armorMeshes = [];
+  [...(code || "")].forEach((c, i) => {
+    if (!armorMats[c]) return;
+    const m = new THREE.Mesh(ARMOR_GEO[i], armorMats[c]);
+    m.castShadow = true;
+    group.add(m);
+    group.userData.armorMeshes.push(m);
+  });
+}
+// Кирка: рукоять и наконечник цвета материала
+const PICK_COLORS = [0, 0xa0733f, 0x8a8a8a, 0xd8dde2, 0x4fe3dc];
+const pickGeo = tier => mergeParts([...P(0x7a5230, box(0.05, 0.62, 0.05, 0, 0, 0)), ...P(PICK_COLORS[tier], box(0.44, 0.07, 0.08, 0, 0.29, 0), box(0.08, 0.06, 0.08, -0.24, 0.26, 0), box(0.08, 0.06, 0.08, 0.24, 0.26, 0))]);
+const pickGeos = [null, 1, 2, 3, 4].map(t => t && pickGeo(t));
+// Кирка в руке (вид от первого лица): машет, пока ломаешь
+const toolView = new THREE.Mesh(pickGeos[1], vmaterial(plainTex, 0));
+toolView.frustumCulled = false;
+toolView.scale.setScalar(0.42);
+toolView.visible = false;
+camera.add(toolView);
+let pickSwing = 0;
+function updateTool(dt) {
+  const tier = PICKS[HOTBAR[slot]];
+  toolView.visible = !!tier && camMode === "first" && inGame && !dead && have(HOTBAR[slot]);
+  if (!toolView.visible) return;
+  toolView.geometry = pickGeos[tier];
+  pickSwing = breaking?.id ? pickSwing + dt * 14 : Math.max(0, pickSwing - dt * 6) % (Math.PI * 2);
+  const k = Math.abs(Math.sin(pickSwing));
+  toolView.position.set(0.3, -0.27 - k * 0.04, -0.6);
+  toolView.rotation.set(-0.15 - k * 0.8, 0.35, 0.55);
 }
 
 // ---------- Главный цикл ----------
