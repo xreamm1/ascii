@@ -90,7 +90,7 @@
   #inv .invhint { margin-top: 6px; color: #888; font-size: 12px; }
 
   /* Общий вид окон — как раньше в ASCII: чёрный фон, двойная белая рамка, кнопки в скобках, моноширинный шрифт */
-  #menu, #game, #admin, #palette, #inv, #schem {
+  #menu, #game, #admin, #palette, #inv, #schem, #chess {
     white-space: normal; background: #000; border: 4px double #fff; border-radius: 0; box-shadow: none;
     padding: 10px 14px; color: #fff; font-size: var(--fs, 16px); line-height: 1.35; box-sizing: border-box;
     max-height: 94vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
@@ -101,7 +101,7 @@
   body.panel-open #hint, body.panel-open #touch, body.panel-open #lobby, body.panel-open #coords, body.panel-open #hotbar, body.panel-open #hp, body.panel-open #ammo, body.panel-open #chat { display: none !important; }
   /* Низкий экран (телефон лёжа): окна сжимаем, лишние подписи убираем */
   @media (max-height: 520px) {
-    #menu, #game, #admin, #palette, #inv, #schem, #ask { padding: 6px 10px; border-width: 3px; }
+    #menu, #game, #admin, #palette, #inv, #schem, #chess, #ask { padding: 6px 10px; border-width: 3px; }
     #inv .invt, #inv .invhint, .gx { display: none; }
     #inv .grid { max-height: 36vh; }
     #inv .invq { margin-bottom: 4px; padding: 2px 6px; }
@@ -110,7 +110,7 @@
     .gt { margin-bottom: 4px; }
     .gb { margin: 1px 0; }
   }
-  #menu, #game, #admin, #palette, #inv, #schem, #p2p { touch-action: pan-y; overscroll-behavior: contain; }
+  #menu, #game, #admin, #palette, #inv, #schem, #chess, #p2p { touch-action: pan-y; overscroll-behavior: contain; }
   .gt { margin: 0 0 8px; text-align: center; }
   .gt::before { content: "═══ "; } .gt::after { content: " ═══"; }
   .gl { color: #fff; margin: 3px 0; }
@@ -133,6 +133,18 @@
   .craft.ok { opacity: 1; } .craft.ok:hover { background: #333; }
   .craft img, .craft .ph { width: 30px; height: 30px; flex-shrink: 0; }
   .craft .miss { color: #f77; }
+  #chess { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: min(96vw, 440px); font-family: "JetBrains Mono", Consolas, monospace; }  /* div, а не pre: свои отступы у клеток */
+  .cstat { margin: 4px 0 6px; color: #ffd34d; }
+  .cboard { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: min(86vw, 400px, 58vh); aspect-ratio: 1; margin: 0 auto 8px; border: 2px solid #4a3a28; }
+  .cboard .sq { display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; user-select: none; font-size: min(7.4vw, 38px, 5.4vh); line-height: 1; }
+  .sq.l { background: #eeeed2; } .sq.d { background: #769656; }
+  .sq.last.l { background: #f6f669; } .sq.last.d { background: #baca2b; }
+  .sq.sel { box-shadow: inset 0 0 0 3px #f5c400; }
+  .sq.to::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(0, 0, 0, 0.22); pointer-events: none; }
+  .sq.chk { background: radial-gradient(circle, #ff4040 0, #ff404000 75%), #eeeed2; }
+  .sq i { font-style: normal; font-family: "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", "Apple Symbols", serif; pointer-events: none; }
+  .sq i.pw { color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000, 0 1px 1px #333; }
+  .sq i.pb { color: #262421; text-shadow: 0 0 1px rgba(255, 255, 255, 0.5); }
   .help { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 4px 0; }
   .help b { color: #ffd34d; font-weight: 700; white-space: nowrap; }
   .help span { color: #ddd; }
@@ -276,6 +288,7 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "chess.js": "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js",
       "firebase/app": "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js",
       "firebase/database": "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js",
       "firebase/auth": "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"
@@ -294,6 +307,7 @@
 <pre id="palette"></pre>
 <pre id="inv"></pre>
 <pre id="schem"></pre>
+<div id="chess"></div>
 <pre id="chat"></pre>
 <pre id="lobby"></pre>
 <pre id="admin"></pre>
@@ -316,6 +330,7 @@
     <pre class="button" data-action="chat">ЧАТ</pre>
     <pre class="button" data-action="color">ЦВЕТ</pre>
     <pre class="button" data-action="inv">ИНВ</pre>
+    <pre class="button" data-action="drop">ВЫКИНУТЬ</pre>
   </div>
   <div class="row bottom">
     <pre class="button big" data-weapon data-action="fire" style="display: none">ОГОНЬ</pre>
@@ -382,7 +397,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
   "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка",
   "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
-  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки"].filter(Boolean);
+  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
 const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
@@ -705,34 +720,41 @@ function pixelTex(draw) {
 }
 let seedN = 1;
 const rnd = () => (seedN = (seedN * 16807) % 2147483647) / 2147483647;
-const noisy = (p, base, cols, n = 70) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, base); for (let i = 0; i < n; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), cols[Math.floor(rnd() * cols.length)]); };
+// В стиле Bare Bones: ровный цвет и несколько крупных мягких пятен вместо пиксельного шума — чисто и читается издалека
+const bb = (base, spots = [], frame) => pixelTex(p => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, base);
+  for (const [x, y, w, h, c] of spots) for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) p((x + i) % 16, (y + j) % 16, c);
+  if (frame) for (let i = 0; i < 16; i++) { p(i, 0, frame[0]); p(0, i, frame[0]); p(i, 15, frame[1]); p(15, i, frame[1]); }
+});
+const STONE_SPOTS = [[2, 3, 3, 2, "#7f7f7f"], [10, 1, 2, 2, "#999999"], [6, 9, 4, 2, "#7f7f7f"], [12, 11, 3, 2, "#999999"], [1, 12, 2, 2, "#999999"]];
+const ore = (a, b) => bb("#8c8c8c", [...STONE_SPOTS, [3, 3, 2, 2, a], [4, 4, 1, 1, b], [10, 6, 3, 2, a], [11, 6, 1, 1, b], [5, 11, 2, 2, a], [6, 11, 1, 1, b], [12, 12, 2, 2, a]]);
 const BLOCK_TEX = {
-  stone: pixelTex(p => noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f", "#757575"], 90)),
-  ore_iron: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#d8af93", "#c49478"][i % 2]); }),
-  ore_gold: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#ffd84a", "#e8b400"][i % 2]); }),
-  ore_red: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 16; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#ff2a2a", "#b80000"][i % 2]); }),
-  ore_diamond: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (let i = 0; i < 14; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), ["#5ff5ec", "#1fc4bb"][i % 2]); }),
-  wood: pixelTex(p => { noisy(p, "#a0733f", ["#94683a", "#ad7f48"], 40); for (let x = 0; x < 16; x++) for (const y of [3, 7, 11, 15]) p(x, y, "#6e4c25"); for (const [x, y] of [[4, 0], [11, 4], [2, 8], [9, 12]]) for (let k = 0; k < 3; k++) p(x, y + k, "#6e4c25"); }),
-  grass: pixelTex(p => noisy(p, "#5aa03a", ["#4a8a2e", "#6cb84a", "#3f7a28"], 110)),
-  sand: pixelTex(p => noisy(p, "#e0d18a", ["#cfbf75", "#ede2a0", "#d8c880"], 80)),
-  ice: pixelTex(p => { noisy(p, "#a8dcf0", ["#8fcbe6", "#c4ecf8"], 40); for (let i = 0; i < 9; i++) { p(2 + i, 12 - i, "#e6f8fd"); p(3 + i, 12 - i, "#d8f2fb"); } }),
-  lava: pixelTex(p => { noisy(p, "#d84a0a", ["#ff8c00", "#ffb000", "#a82800", "#8a1a00"], 120); for (let i = 0; i < 12; i++) p(Math.floor(rnd() * 16), Math.floor(rnd() * 16), "#ffe060"); }),
-  metal: pixelTex(p => { noisy(p, "#9aa3ab", ["#8e979f", "#a6aeb5"], 30); for (let i = 0; i < 16; i++) { p(i, 0, "#6d757c"); p(i, 15, "#6d757c"); p(0, i, "#6d757c"); p(15, i, "#6d757c"); } for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) p(x, y, "#d4dce2"); }),
-  concrete: pixelTex(p => noisy(p, "#8a8a85", ["#7d7d78", "#979792", "#838380"], 130)),
-  leaves: pixelTex(p => noisy(p, "#2f7a2a", ["#1f5a1c", "#4aa03e", "#256b22", "#173f14"], 140)),
-  gold: pixelTex(p => { noisy(p, "#f2c230", ["#e8b520", "#f7d24f"], 30); for (let i = 0; i < 16; i++) { p(i, 0, "#fff1a0"); p(0, i, "#fff1a0"); p(i, 15, "#b58a10"); p(15, i, "#b58a10"); } for (const [x, y] of [[4, 4], [5, 4], [10, 9], [11, 9], [7, 12]]) p(x, y, "#fff6c0"); }),
-  diamond: pixelTex(p => { noisy(p, "#7d7d7d", ["#6b6b6b", "#8f8f8f"], 70); for (const [x, y] of [[3, 3], [4, 3], [3, 4], [10, 5], [11, 5], [11, 6], [6, 11], [7, 11], [7, 12], [12, 12]]) p(x, y, "#4be0e0"); for (const [x, y] of [[3, 3], [10, 5], [6, 11]]) p(x, y, "#c8ffff"); }),
+  stone: bb("#8c8c8c", STONE_SPOTS),
+  ore_iron: ore("#d9a988", "#f2d2bb"),
+  ore_gold: ore("#f5c932", "#fff08a"),
+  ore_red: ore("#e02020", "#ff7070"),
+  ore_diamond: ore("#3fe0d6", "#b8fff9"),
+  wood: bb("#8a6235", [[2, 0, 1, 16, "#6f4c28"], [7, 0, 2, 16, "#6f4c28"], [12, 0, 1, 16, "#6f4c28"], [4, 3, 1, 5, "#9b7140"], [10, 9, 1, 5, "#9b7140"]]),
+  grass: bb("#6cb350", [[2, 2, 2, 1, "#5fa246"], [9, 5, 3, 1, "#7cc35e"], [4, 10, 2, 1, "#5fa246"], [12, 12, 2, 1, "#7cc35e"], [13, 2, 1, 1, "#5fa246"]]),
+  sand: bb("#e6d7a0", [[3, 4, 2, 1, "#d8c88e"], [10, 2, 1, 1, "#d8c88e"], [7, 10, 2, 1, "#efe2b4"], [12, 13, 2, 1, "#d8c88e"]]),
+  ice: bb("#a5d8f7", [[3, 11, 1, 1, "#d8f0ff"], [4, 10, 1, 1, "#d8f0ff"], [5, 9, 1, 1, "#d8f0ff"], [6, 8, 1, 1, "#d8f0ff"], [9, 5, 1, 1, "#d8f0ff"], [10, 4, 1, 1, "#d8f0ff"]]),
+  lava: bb("#e8641c", [[2, 2, 4, 3, "#f59a2a"], [9, 7, 5, 3, "#f59a2a"], [4, 11, 3, 2, "#f59a2a"], [3, 3, 1, 1, "#ffd75e"], [11, 8, 2, 1, "#ffd75e"], [12, 1, 2, 2, "#c94a12"]]),
+  metal: bb("#d8d8d8", [[2, 2, 4, 1, "#ececec"]], ["#ececec", "#b8b8b8"]),
+  concrete: bb("#9d9d98", [[4, 5, 2, 1, "#949490"], [11, 11, 2, 1, "#a6a6a1"]]),
+  leaves: bb("#4f9e3c", [[1, 1, 3, 2, "#5fb04a"], [9, 3, 2, 2, "#428a32"], [5, 8, 3, 2, "#5fb04a"], [12, 10, 2, 3, "#428a32"], [2, 12, 2, 2, "#428a32"]]),
+  gold: bb("#f7cd3c", [[2, 2, 5, 1, "#fbe37e"], [2, 3, 1, 3, "#fbe37e"]], ["#fbe37e", "#d9aa22"]),
+  diamond: bb("#5fe6dc", [[2, 2, 5, 1, "#b8fff9"], [2, 3, 1, 3, "#b8fff9"]], ["#b8fff9", "#33c2b8"]),
   neon: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, x < 2 || y < 2 || x > 13 || y > 13 ? "#d0d0d0" : "#ffffff"); }),
-  slime: pixelTex(p => { noisy(p, "#6ee05a", ["#8cf078", "#5ac848"], 50); for (let i = 0; i < 16; i++) { p(i, 0, "#43b035"); p(i, 15, "#43b035"); p(0, i, "#43b035"); p(15, i, "#43b035"); } for (const [x, y] of [[4, 4], [5, 4], [4, 5]]) p(x, y, "#d8ffd0"); }),
-  tiles: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, x % 8 === 0 || y % 8 === 0 ? "#bdbdbd" : (x + y) % 11 === 0 ? "#f8f8f8" : "#eeeeee"); }),
-  snow: pixelTex(p => noisy(p, "#f4f8ff", ["#dfe8f5", "#ffffff", "#e8f0fb"], 60)),
-  obsidian: pixelTex(p => { noisy(p, "#1c1033", ["#2a1750", "#3a1f66", "#140a26"], 80); for (const [x, y] of [[3, 2], [9, 7], [12, 12], [5, 11]]) p(x, y, "#7a45d0"); }),
-  marble: pixelTex(p => { noisy(p, "#e8e6e0", ["#f2f0ea", "#dedcd4"], 50); for (let i = 0; i < 16; i++) { p(i, (i * 7 + 3) % 16, "#b0aca0"); p((i + 1) % 16, (i * 7 + 3) % 16, "#c4c0b4"); } }),
-  dirt: pixelTex(p => noisy(p, "#7a5230", ["#5e3c20", "#8c6238", "#6a4526"], 120)),
-  wool: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, (x + y) % 4 === 0 ? "#dcdcdc" : (x * 3 + y) % 5 === 0 ? "#ffffff" : "#efefef"); }),
-  netherrack: pixelTex(p => noisy(p, "#6e2f2f", ["#8a3b3b", "#4e1f1f", "#7a3333", "#5a2424"], 130)),
-  glowstone: pixelTex(p => { noisy(p, "#e8b850", ["#fff0a0", "#d09030", "#f5d070"], 110); for (const [x, y] of [[3, 3], [10, 6], [6, 11], [12, 12]]) p(x, y, "#ffffd0"); }),
-  clay: pixelTex(p => { noisy(p, "#b5654a", ["#a45a42", "#c4725a"], 60); for (let x = 0; x < 16; x++) { p(x, 5, "#9a5039"); p(x, 11, "#9a5039"); } }),
+  slime: bb("#7bd567", [[3, 3, 10, 10, "#8fe37a"], [4, 4, 2, 2, "#d8ffd0"]], ["#5dbb4b", "#5dbb4b"]),
+  tiles: pixelTex(p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p(x, y, x % 8 === 0 || y % 8 === 0 ? "#c4c4c4" : "#efefef"); }),
+  snow: bb("#f5faff", [[3, 4, 2, 1, "#e4edf8"], [11, 10, 2, 1, "#e4edf8"]]),
+  obsidian: bb("#1f1533", [[2, 3, 4, 2, "#2e2050"], [9, 9, 4, 3, "#2e2050"], [4, 4, 1, 1, "#7a55c8"], [11, 10, 1, 1, "#7a55c8"]]),
+  marble: bb("#ece9e2", [[0, 4, 5, 1, "#d6d1c5"], [5, 5, 4, 1, "#d6d1c5"], [9, 6, 7, 1, "#d6d1c5"], [2, 12, 6, 1, "#dfdbd0"]]),
+  dirt: bb("#8b5d36", [[2, 2, 2, 2, "#7a4f2c"], [10, 4, 2, 1, "#9c6b41"], [5, 9, 3, 2, "#7a4f2c"], [12, 11, 2, 2, "#9c6b41"], [1, 13, 2, 1, "#9c6b41"]]),
+  wool: bb("#f0f0f0", [[0, 5, 16, 1, "#e4e4e4"], [0, 11, 16, 1, "#e4e4e4"], [5, 0, 1, 16, "#e8e8e8"]]),
+  netherrack: bb("#7e3030", [[2, 2, 3, 2, "#923a3a"], [9, 6, 4, 2, "#682626"], [4, 11, 3, 2, "#682626"], [12, 12, 2, 2, "#923a3a"]]),
+  glowstone: bb("#efc35b", [[2, 2, 4, 3, "#ffe08a"], [9, 8, 4, 4, "#ffe08a"], [10, 2, 3, 2, "#d39a36"], [3, 11, 3, 2, "#d39a36"]]),
+  clay: bb("#b96c4c", [[0, 5, 16, 1, "#a75e41"], [0, 11, 16, 1, "#a75e41"]]),
 };
 for (const k in BLOCK_TEX) BLOCK_TEX[k].userData.kind = k;
 // Вывеска «Вкусно — и точка»: зелёная панель 3×1 с жёлто-оранжевым знаком и надписью
@@ -771,21 +793,21 @@ const blockMaterial = (kind, c) => blockMats[kind + c] ??= (() => {
 })();
 const brickTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "#e0e0e0"; ctx.fillRect(0, 0, 64, 64);
-  ctx.fillStyle = "#808080";
+  ctx.fillStyle = "#a8a8a8";
   for (let row = 0; row < 4; row++) {
     ctx.fillRect(0, row * 16, 64, 2);
     const shift = row % 2 ? 16 : 0;
     for (let x = shift; x < 64; x += 32) ctx.fillRect(x, row * 16, 2, 16);
   }
-  ctx.strokeStyle = "#555"; ctx.lineWidth = 4; ctx.strokeRect(0, 0, 64, 64);
+  ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 2; ctx.strokeRect(0, 0, 64, 64);  // мягкая рамка, как в Bare Bones
 });
 
 // Доска: продольные волокна дерева
 const woodTex = canvasTexture(32, 128, ctx => {
   ctx.fillStyle = "#d8d8d8"; ctx.fillRect(0, 0, 32, 128);
-  ctx.fillStyle = "#9a9a9a";
-  for (let x = 3; x < 32; x += 6) ctx.fillRect(x, 0, 1, 128);
-  ctx.strokeStyle = "#666"; ctx.lineWidth = 3; ctx.strokeRect(0, 0, 32, 128);
+  ctx.fillStyle = "#b4b4b4";
+  for (let x = 3; x < 32; x += 8) ctx.fillRect(x, 0, 1, 128);
+  ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 2; ctx.strokeRect(0, 0, 32, 128);
 });
 
 // Стекло: почти прозрачное, только с рамкой по краю — так его видно и в ASCII
@@ -972,6 +994,7 @@ function edit(e, replace = false) {
     for (const c of extraCells(e)) blocks.set(key(...c), mesh);  // шлагбаум, кровать и диван длиннее одной клетки
     rsAdd(e, mesh);
     if (rsRec.size) rsChanged(e.x, e.y, e.z);
+    if (e.k === "chess") chessUpdated(e);
   }
   if (e.op === "plank" && !planks.has(e.id)) {
     const mesh = new THREE.Mesh(plankGeo, material(woodTex, e.c));
@@ -1082,6 +1105,13 @@ function edit(e, replace = false) {
     } else if (m !== drivingCart) m.userData.edit = m.userData.target = e;  // чужая вагонетка плавно доезжает
   }
   if (e.op === "uncart") removeSolid(carts.get(e.id));
+  if (e.op === "item") addDrop(e);
+  if (e.op === "mined") {  // сломали блок природы
+    const k = key(e.x, e.y, e.z), m = blocks.get(k);
+    gen?.removed.add(k);
+    if (m?.userData.edit.g) removeSolid(m);
+  }
+  if (e.op === "unitem") removeDrop(e.id);
   if (e.op === "unplank") removeSolid(planks.get(e.id));
 }
 
@@ -1112,7 +1142,7 @@ function chunkAdd(mesh) {
   const e = mesh.userData.edit, k = `${Math.floor(e.x / CH)},${Math.floor(e.y / CH)},${Math.floor(e.z / CH)}`;
   dirtyNeighbors(e);
   let c = chunks.get(k);
-  if (!c) chunks.set(k, c = { blocks: new Set(), meshes: new Map() });
+  if (!c) chunks.set(k, c = { blocks: new Set(), meshes: new Map(), key: k, o: [Math.floor(e.x / CH) * CH, Math.floor(e.y / CH) * CH, Math.floor(e.z / CH) * CH] });
   c.blocks.add(mesh);
   mesh.userData.chunk = c;
   dirtyChunks.add(c);
@@ -1124,10 +1154,22 @@ function chunkRemove(mesh) {
   dirtyChunks.add(c);
   dirtyNeighbors(mesh.userData.edit);
 }
-function rebuildChunks(limit = 24) {
+// Бюджет — миллисекунды за кадр, а не число кусков: на ходу (новая природа) кусков меняется много, а кадр не должен проседать.
+// Замер на прогулке в 2000 блоков: при «24 куска за кадр» перестройка съедала 3–7 мс каждого кадра
+function rebuildChunks(budget = LOWEND ? 2.5 : 5) {
+  const t0 = performance.now();
   for (const c of dirtyChunks) {
-    if (limit-- <= 0) return;
+    if (performance.now() - t0 > budget) return;
     dirtyChunks.delete(c);
+    // Кто закрывает грани внутри куска — в маленьком массиве (быстро), за краем куска — как раньше, по таблице блоков.
+    // Строковые ключи на каждую из шести граней каждого блока и были главной ценой перестройки
+    const [ox, oy, oz] = c.o, occ = new Uint8Array(CH * CH * CH);
+    for (const m of c.blocks) { const e = m.userData.edit; if (!m.userData.slide && e.k !== "ice" && e.k !== "slime") occ[(e.x - ox) + CH * ((e.y - oy) + CH * (e.z - oz))] = 1; }
+    const hidden = (e, f) => {
+      const d = FACE_DIR[f], x = e.x + d[0] - ox, y = e.y + d[1] - oy, z = e.z + d[2] - oz;
+      if (x < 0 || y < 0 || z < 0 || x >= CH || y >= CH || z >= CH || (f === 2 && e.t && e.y === -1)) return faceHidden(e, f);
+      return occ[x + CH * (y + CH * z)] === 1;
+    };
     const byColor = new Map();
     for (const m of c.blocks) {
       if (m.userData.slide) continue;  // едет за поршнем — рисуется сам
@@ -1138,7 +1180,7 @@ function rebuildChunks(limit = 24) {
     }
     for (const [col, list] of byColor) {
       // Для каждого блока берём только видимые грани
-      const faces = list.map(m => { const f = []; for (let k = 0; k < 6; k++) if (!faceHidden(m.userData.edit, k)) f.push(k); return f; });
+      const faces = list.map(m => { const f = []; for (let k = 0; k < 6; k++) if (!hidden(m.userData.edit, k)) f.push(k); return f; });
       const n = faces.reduce((a, f) => a + f.length, 0);
       if (!n) { const ex = c.meshes.get(col); if (ex) { scene.remove(ex); ex.geometry.dispose(); c.meshes.delete(col); } continue; }
       const pos = new Float32Array(n * 12), nor = new Float32Array(n * 12), uv = new Float32Array(n * 8), idx = n * 4 > 65535 ? new Uint32Array(n * 6) : new Uint16Array(n * 6), colr = new Float32Array(n * 12);
@@ -1176,6 +1218,7 @@ function rebuildChunks(limit = 24) {
       } else { mesh.geometry.dispose(); mesh.geometry = g; }
     }
     for (const [col, mesh] of c.meshes) if (!byColor.has(col)) { scene.remove(mesh); mesh.geometry.dispose(); c.meshes.delete(col); }
+    if (!c.blocks.size && !c.meshes.size && chunks.get(c.key) === c) chunks.delete(c.key);  // кусок опустел (ушли далеко) — запись не нужна
   }
 }
 function addSolid(mesh, e) {
@@ -1674,7 +1717,7 @@ const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
 const RS_THIN = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator", "rs_rail", "rs_prail"]);  // редстоун-мелочь: через неё проходят
-const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
+const LOW_TOP = { chess: 0.9, table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
 let onIce = false, iceVx = 0, iceVz = 0;  // лёд: игрок скользит
 let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
 function lowTop(cx, cy, cz, x, z) {
@@ -1758,6 +1801,7 @@ function blockMesh(e) {
     m.rotation.y = (e.r || 0) * Math.PI / 2;
     return m;
   }
+  if (e.k === "chess") return chessMesh(e);
   if (e.k === "portal") {
     const m = new THREE.Mesh(portalPlane, portalMat);
     m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
@@ -2692,7 +2736,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
+  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Шахматы": "chess", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
 // Действие игрока: поставить или сломать. Звук и расход вещей (в выживании) — по тому, что реально ушло в мир
 function use(action, screen) {
@@ -2740,6 +2784,7 @@ function useInner(action, screen) {
 
   // Дверь под прицелом — открываем или закрываем, чем бы ни кликнули
   const target = hit?.object.userData.edit;
+  if (target?.k === "chess") return openChess(target);  // доска: меню партии
   if (target?.k === "door" || target?.k === "barrier") {
     if (!target.i) share({ ...target, open: !target.open }, true);  // железная дверь открывается только сигналом
     return;
@@ -2764,7 +2809,7 @@ function useInner(action, screen) {
     if (e.k === "jump" && color === 0) e.c = 3;  // трамплин по умолчанию жёлтый
     // Дверь встаёт поперёк взгляда, чтобы через неё можно было пройти вперёд
     if (HOTBAR[slot].startsWith("Прочн")) e.p = true;  // такой блок сломает только разработчик
-    if (["ramp", "jump", "vitsign", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
+    if (["chess", "ramp", "jump", "vitsign", "chair", "stairs", "barrier", "grate", "bed", "sofa", "bench", ...Object.keys(KITCHEN), ...Object.keys(STREET), ...Object.keys(GLASSY), ...Object.keys(DECOR)].includes(e.k)) e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4;  // подъём — в ту сторону, куда смотришь
     if (e.k === "barrier") e.open = false;
     // Длинные предметы (шлагбаум, кровать, диван) не ставим, если их продолжение упирается в чужие блоки
     if (cell && extraCells(e).some(c => blocks.has(key(...c)))) return;
@@ -2872,6 +2917,7 @@ addEventListener("keydown", e => {
   if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "KeyP" && !e.repeat) toggleAdmin();
+  if (e.code === "KeyG" && !e.repeat && !menuOpen) throwItem(e.shiftKey);  // G — выкинуть один, Shift+G — всю стопку
   if (e.code === "KeyH" && !e.repeat && (!menuOpen || panel === gameEl)) {  // H — окно «Управление»
     if (panel === gameEl && gameScreen === "help") toggleGameMenu();
     else { gameScreen = "help"; if (panel === gameEl) drawGameMenu(); else togglePanel(gameEl, drawGameMenu); }
@@ -2944,7 +2990,7 @@ function screenPoint(t) {
 
 addEventListener("touchstart", e => {
   for (const t of e.changedTouches) {
-    if (!inGame || menuOpen || t.target.closest(".button, #hotbar, #palette, #ask, #inv, #admin, #game, #schem, #menu, #p2p")) continue;  // пока открыто окно, камера и движение не работают: палец листает окно
+    if (!inGame || menuOpen || t.target.closest(".button, #hotbar, #palette, #ask, #inv, #admin, #game, #schem, #chess, #menu, #p2p")) continue;  // пока открыто окно, камера и движение не работают: палец листает окно
     if (!press) {
       const screen = screenPoint(t);
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
@@ -2968,7 +3014,7 @@ addEventListener("touchstart", e => {
 }, { passive: false });
 
 addEventListener("touchmove", e => {
-  if (e.target.closest?.("#inv, #admin, #game, #schem, #palette, #menu, #p2p")) return;  // внутри окон палец листает список, а не крутит камеру
+  if (e.target.closest?.("#inv, #admin, #game, #schem, #chess, #palette, #menu, #p2p")) return;  // внутри окон палец листает список, а не крутит камеру
   e.preventDefault();
   for (const t of e.changedTouches) {
     // Палец заметно сдвинулся — значит, это ходьба или поворот, а не нажатие
@@ -3047,6 +3093,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
     if (action === "nitro") keys.ShiftLeft = true;
     if (action === "color") togglePalette();
     if (action === "inv") toggleInventory();
+    if (action === "drop") throwItem(false);
     if (action === "fullscreen") toggleFullscreen();
     if (action === "chat") openChat();
     if (action === "admin") toggleAdmin();
@@ -3075,7 +3122,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Шахматы": "▚▞▚▞", "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -3226,7 +3273,7 @@ addEventListener("wheel", e => {
 // ---------- Инвентарь: все предметы по вкладкам, клик кладёт предмет в выбранный слот хотбара ----------
 const INV_TABS = {
   "Блоки": ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Ступеньки", "Шлагбаум", "Решётка", "Окно", "Лампа", "Вывеска", "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота", "Адский камень", "Светокамень", "Трамплин"],
-  "Мебель": ["Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
+  "Мебель": ["Шахматы", "Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
   "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
   "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
   "Транспорт": ["Машина", "Автобус", "Танк", "Самолёт"],
@@ -3885,9 +3932,10 @@ function removeAvatar(id) {
 }
 
 // Под каким ключом изменение лежит в базе: блок — по клетке, доска и надпись — по своему id
-const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op.endsWith("dig") ? `d${e.x}_${e.y}_${e.z}` : e.id;
+const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op.endsWith("dig") ? `d${e.x}_${e.y}_${e.z}` : e.op === "mined" ? `m${e.x}_${e.y}_${e.z}` : e.id;
 // Обратное изменение: что сделать, когда предмет удалили из базы
-const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
+// Блок природы в базе не лежит (он у всех получается из seed), поэтому его поломку записываем отдельно — «mined»
+const undo = e => e.op === "block" && e.g ? { op: "mined", x: e.x, y: e.y, z: e.z } : e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
   const { db, ref, get, set, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp, goOffline, goOnline } = await loadFirebase();
@@ -4317,6 +4365,7 @@ function applyTrollCam() {
   if (trollOn("shake")) { camera.position.x += (Math.random() - 0.5) * 0.18; camera.position.y += (Math.random() - 0.5) * 0.18; camera.rotation.z += (Math.random() - 0.5) * 0.06; }
 }
 function clearMapLocal() {
+  for (const id of [...drops.keys()]) removeDrop(id);
   if (helpers) helpers.queue.length = 0;
   for (const m of [...solids]) { const e = m.userData.edit; if (e && !isTerr(e)) removeSolid(m); }
   for (const k of [...dug]) { const [x, y, z] = k.split(",").map(Number); edit({ op: "undig", x, y, z }); }
@@ -4566,6 +4615,7 @@ function refreshWorlds() {
   listWorlds().then(l => { worldList = l; if (menuScreen === "worlds") drawMenu(); }, () => { worldList = []; showNote("хранилище миров недоступно"); });
 }
 let pendingMode = null;    // что делаем после выбора режима: "single" — одиночная игра, "create" — создаём лобби
+let pendingNature = false;  // лобби или игра без интернета с бесконечной природой
 let lobbyList = [];        // [{ code, name, players }]
 let stopLobbyList = null;  // отписка от обновлений списка лобби
 let menuNote = "";         // подсказка внизу: "загрузка…", ошибки
@@ -4610,7 +4660,8 @@ function drawMenu() {
     h = gtitle("БЕЗ ИНТЕРНЕТА") + glabel("Игра вдвоём и больше напрямую, интернет не нужен (можно в самолёте).") + mbtn("СОЗДАТЬ ИГРУ", "p2phost", "big") + mbtn("ПОДКЛЮЧИТЬСЯ К ДРУГУ", "p2pjoin", "big") +
       glabel("Нужна общая сеть: хотспот одного телефона или его Bluetooth-модем. Подробнее в README.") + note + mbtn("НАЗАД", "back");
   } else if (menuScreen === "mode") {
-    h = gtitle("РЕЖИМ ИГРЫ") + mbtn("ТВОРЧЕСКИЙ", "mode:creative", "big") + glabel("строй и летай, урона нет") + mbtn("ОБЫЧНЫЙ", "mode:survival", "big") + glabel("есть HP, можно погибнуть") + mbtn("НАЗАД", "backmode");
+    h = gtitle("РЕЖИМ ИГРЫ") + mbtn("ТВОРЧЕСКИЙ", "mode:creative", "big") + glabel("строй и летай, урона нет") + mbtn("ОБЫЧНЫЙ", "mode:survival", "big") + glabel("есть HP, можно погибнуть") +
+      mbtn(`ПРИРОДА: ${pendingNature ? "ДА" : "НЕТ"}`, "nature") + glabel(pendingNature ? "бесконечный мир: холмы, деревья, пещеры с рудой" : "плоская плита, как раньше") + mbtn("НАЗАД", "backmode");
   } else {
     h = gtitle("СЕТЕВАЯ ИГРА") + `<div class="gg"><span class="gl">Ник: ${esc(nick)}</span>${mbtn("сменить", "nick", "small")}</div>`;
     if (!FIREBASE_CONFIG) h += glabel("Сетевая игра ещё не настроена: нужны настройки Firebase.");
@@ -4619,7 +4670,7 @@ function drawMenu() {
       if (!lobbyList.length) h += glabel("пока пусто — создай своё лобби");
       const canDelete = isDev;  // кнопки только у вошедшего по паролю; сервер всё равно проверит
       for (const l of lobbyList) {
-        const text = `${l.code}  ${l.name.slice(0, 16)}  ${l.players} чел.  ${ACCESS_NAME[l.access]}`;
+        const text = `${l.code}  ${l.name.slice(0, 16)}${l.nature ? "  природа" : ""}  ${l.players} чел.  ${ACCESS_NAME[l.access]}`;
         h += `<div class="lobbyrow">${mbtn(text, "join:" + l.code)}${canDelete ? mbtn("имя", "ren:" + l.code, "small") + mbtn("доступ", "acc:" + l.code, "small") + mbtn("×", "del:" + l.code, "small warn") : ""}</div>`;
       }
     }
@@ -4633,6 +4684,7 @@ menuEl.addEventListener("click", e => {
   if (!act || typing) return;
   if (act === "single" || act === "worlds") { menuScreen = "worlds"; menuNote = ""; refreshWorlds(); }
   if (act === "newworld") menuScreen = "newworld";
+  if (act === "nature") pendingNature = !pendingNature;
   if (act.startsWith("nw:")) createWorld(act.slice(3)).catch(() => showNote("не удалось создать мир"));
   const world = worldList?.find(w => w.id === act.slice(5));
   if (act.startsWith("play:") && world) playWorld(world);
@@ -4692,7 +4744,7 @@ async function watchLobbies() {
       const mine = ++seq, all = [];
       snap.forEach(l => {
         const v = l.val();
-        all.push({ code: l.key, name: String(v.name || l.key), players: Object.keys(v.online || {}).length, access: ACCESS.includes(v.access) ? v.access : "all" });
+        all.push({ code: l.key, nature: v.nature === true, name: String(v.name || l.key), players: Object.keys(v.online || {}).length, access: ACCESS.includes(v.access) ? v.access : "all" });
       });
       // «Только я» видит один разработчик, «админы» — разработчик и админы этого лобби, обычные — все
       const seen = await Promise.all(all.map(async l => {
@@ -4721,9 +4773,11 @@ async function createLobby(mode) {
   do code = Array.from({ length: 4 }, () => ABC[Math.floor(Math.random() * ABC.length)]).join("");
   while ((await get(ref(db, `lobbyInfo/${code}`))).exists());
   // update пишет поля по отдельности — так их проверяют правила базы
-  await update(ref(db, `lobbyInfo/${code}`), { name, created: Date.now(), mode, access: "all" });
+  const seed = Math.floor(Math.random() * 1e9);
+  await update(ref(db, `lobbyInfo/${code}`), { name, created: Date.now(), mode, access: "all", ...(pendingNature ? { nature: true, seed } : {}) });
   gameMode = mode;
   startGame(code, name, me);
+  if (pendingNature) setInfinite(true, null, seed, true);
 }
 
 // Удаляет лобби целиком: название, игроков, постройки, чат, кики, баны и объявление.
@@ -4760,6 +4814,7 @@ async function enterLobby(code) {
     if (access === "admins" && !isDev && !(await get(ref(db, `admins/${code}/${me}`))).exists()) return showNote("это лобби только для админов");
     gameMode = info.val().mode === "survival" ? "survival" : "creative";  // у старых лобби режима нет — они творческие
     startGame(code, String(info.val().name || code), me);
+    if (info.val().nature === true && Number.isFinite(info.val().seed)) setInfinite(true, null, info.val().seed, true);
   } catch (err) {
     showNote(err.message.length < 38 ? err.message : "нет связи с сервером");
   }
@@ -4967,6 +5022,7 @@ async function p2pHost(mode) {
     p2pStart("host");
     p2pAddPeer(link);
     startGame("P2P", "Игра без интернета", "host");
+    if (pendingNature) setInfinite(true, null, Math.floor(Math.random() * 1e9), true);
   } catch (err) { cam?.getTracks().forEach(t => t.stop()); p2pFail(err); }
 }
 // Ещё один друг в уже идущую игру (до 4 игроков)
@@ -5090,6 +5146,7 @@ function p2pHandle(m, from) {
     gameMode = m.mode === "survival" ? "survival" : "creative";
     if (typeof m.id === "string") meId = m.id.slice(0, 8);
     startGame("P2P", "Игра без интернета", "guest");
+    if (Number.isFinite(m.seed)) setInfinite(true, null, m.seed, true);
   }
   if (m.t === "edits") p2pApplyEdits(m.l);
   if (m.t === "pose" && typeof m.id === "string" && m.p && typeof m.p === "object") p2pPose(m.id.slice(0, 24), m.p);
@@ -5163,7 +5220,7 @@ function p2pAddPeer(link, fixedId) {
   if (link.pc) link.pc.onconnectionstatechange = () => { if (["failed", "closed"].includes(link.pc.connectionState)) onclose(); };
   if (host) {
     const send = (type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
-    p2pSendTo(peer, { t: "hello", mode: gameMode, id });
+    p2pSendTo(peer, { t: "hello", mode: gameMode, id, ...(gen ? { seed: gen.seed } : {}) });
     if (banned.size) p2pSendTo(peer, { t: "ban", l: [...banned] });
     const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
     send("edits", list);  // мир хозяина — только новому другу
@@ -5349,9 +5406,9 @@ function applySetting(act) {
 const HELP_PC = [["W A S D", "ходить"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
   ["ЛКМ / ПКМ", "поставить / сломать (поменять — в настройках)"], ["1–9, колесо", "выбрать слот"], ["E", "инвентарь и крафт; рядом с транспортом — сесть"],
   ["F", "цвет блоков"], ["Q", "следующее оружие"], ["R", "перезарядка"], ["C", "зум (колесо с C — сильнее)"], ["Enter", "чат"], ["T", "телепорт по координатам"],
-  ["H", "это окно"], ["Esc", "пауза"]];
+  ["G / Shift+G", "выкинуть предмет / всю стопку"], ["H", "это окно"], ["Esc", "пауза"]];
 const HELP_TOUCH = [["левая половина", "джойстик — ходить"], ["правая половина", "вести пальцем — смотреть"], ["короткое нажатие", "поставить предмет"],
-  ["удержание", "сломать (в выживании — держать, пока не сломается)"], ["ИНВ", "инвентарь и крафт"], ["ЦВЕТ", "цвет блоков"], ["ПРЫЖОК, СЕСТЬ, БЕГ", "движение"],
+  ["удержание", "сломать (в выживании — держать, пока не сломается)"], ["ИНВ", "инвентарь и крафт"], ["ВЫКИНУТЬ", "выкинуть предмет из руки"], ["доска «Шахматы»", "нажми на неё — партия с игроком или ботом"], ["ЦВЕТ", "цвет блоков"], ["ПРЫЖОК, СЕСТЬ, БЕГ", "движение"],
   ["МЕНЮ", "пауза, настройки, это окно"]];
 function helpHtml(btn) {
   const rows = (TOUCH ? HELP_TOUCH : HELP_PC).map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
@@ -5407,7 +5464,7 @@ const num = (...v) => v.every(Number.isFinite);
 
 // Правка из сети (Firebase или друг без интернета): проверяем форму, чтобы кривая или подделанная запись
 // не ломала мир (NaN в координатах, чужие поля не того типа). Лишние поля не вырезаем — только отбрасываем негодное
-const NET_OPS = new Set(["block", "unblock", "dig", "undig", "text", "untext", "plank", "unplank", "car", "uncar", "plane", "unplane", "tank", "untank", "animal", "unanimal", "ball", "unball", "cart", "uncart"]);
+const NET_OPS = new Set(["block", "unblock", "dig", "undig", "text", "untext", "plank", "unplank", "car", "uncar", "plane", "unplane", "tank", "untank", "animal", "unanimal", "ball", "unball", "cart", "uncart", "item", "unitem", "mined"]);
 const netCell = v => Number.isInteger(v) && Math.abs(v) < 1e6;
 const netId = v => typeof v === "string" && v.length > 0 && v.length <= 64;
 const optNum = (...v) => v.every(x => x === undefined || Number.isFinite(x));
@@ -5416,13 +5473,14 @@ function validEdit(e) {
   if (e.c !== undefined && !(Number.isInteger(e.c) && e.c >= 0 && e.c < COLORS.length)) return false;
   switch (e.op) {
     case "block": return [e.x, e.y, e.z].every(netCell) && (e.k === undefined || KIND_SET.has(e.k)) && (e.r === undefined || (Number.isInteger(e.r) && e.r >= 0 && e.r < 4));
-    case "unblock": case "dig": case "undig": return [e.x, e.y, e.z].every(netCell);
+    case "unblock": case "dig": case "undig": case "mined": return [e.x, e.y, e.z].every(netCell);
     case "text": return netId(e.id) && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q);
     case "plank": return netId(e.id) && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends);
     case "car": return netId(e.id) && num(e.x, e.y, e.z, e.yaw);
     case "plane": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.pt, e.rl);
     case "tank": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.tu, e.bp);
     case "animal": case "ball": case "cart": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw);
+    case "item": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.vx, e.vy, e.vz) && ITEMS.includes(e.n) && (e.k === undefined || (Number.isInteger(e.k) && e.k > 0 && e.k < 10000));
     default: return netId(e.id);  // un… — убрать предмет по id
   }
 }
@@ -7051,13 +7109,13 @@ async function idb(store, mode, fn) {
 const listWorlds = () => idb("meta", "readonly", s => s.getAll()).then(l => l.sort((a, b) => b.updated - a.updated));
 // Всё, что построено в мире (как экспорт .baseAscii): земля под плитой восстанавливается из ям сама
 // В бесконечном мире сгенерированное (g) и входы в пещеры не храним: они получатся из зерна снова
-const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr && !e.g)),
+const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr && !e.g)), ...[...drops.values()].map(d => d.e),
   ...[...dug].filter(k => !gen?.mouths.has(k)).map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
 function saveWorld(manual) {
   if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
   const edits = worldEdits();
   const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
-    gen: gen && { removed: [...gen.removed], animals: [...gen.animals] } };
+    gen: gen && { removed: [...gen.removed], animals: [...gen.animals], store: Object.fromEntries(gen.store) } };
   Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
   worldDirty = false;
   savedAt = [px, feet, pz];
@@ -7244,7 +7302,7 @@ const RECIPES = [
   ["Поршень", 1, { "Доска": 3, "Камень": 4, "Металл": 1, "Редстоун": 1 }], ["Липкий поршень", 1, { "Поршень": 1, "Слизь": 1 }],
   ["Наблюдатель", 1, { "Камень": 6, "Редстоун": 2 }], ["Раздатчик", 1, { "Камень": 7, "Редстоун": 1 }], ["Нотный блок", 1, { "Доска": 8, "Редстоун": 1 }],
   ["Железная дверь", 1, { "Металл": 6 }], ["Рельсы", 16, { "Металл": 6, "Палка": 1 }], ["Энергорельсы", 6, { "Золото": 6, "Палка": 1, "Редстоун": 1 }],
-  ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
+  ["Шахматы", 1, { "Доска": 4, "Камень": 2 }], ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
   ["Деревянная кирка", 1, { "Доска": 3, "Палка": 2 }], ["Каменная кирка", 1, { "Камень": 3, "Палка": 2 }], ["Железная кирка", 1, { "Металл": 3, "Палка": 2 }],
   ["Алмазная кирка", 1, { "Алмаз": 3, "Палка": 2 }], ["Железный шлем", 1, { "Металл": 5 }], ["Железный нагрудник", 1, { "Металл": 8 }], ["Железные поножи", 1, { "Металл": 7 }],
   ["Железные ботинки", 1, { "Металл": 4 }], ["Алмазный шлем", 1, { "Алмаз": 5 }], ["Алмазный нагрудник", 1, { "Алмаз": 8 }], ["Алмазные поножи", 1, { "Алмаз": 7 }],
@@ -7489,6 +7547,7 @@ function updateGameplay(dt) {
   updateSteps();
   updateBreaking(dt);
   updateParticles(dt);
+  updateDrops(dt);
   updateSliding(dt);
   updateCarts(dt);
   autosave(dt);
@@ -7527,8 +7586,13 @@ function genColumn(x, z) {
 // Пещеры: извилистые ходы (там, где два шума одновременно около середины) и залы на глубине
 function caveAt(x, y, z) {
   if (!gen || y > -2 || y < -DEPTH + 3) return false;
-  const s = gen.seed, yy = y * 1.5;
-  if (Math.abs(noise3(x, yy, z, 16, s + 10) - 0.5) < 0.034 && Math.abs(noise3(x, yy, z, 16, s + 11) - 0.5) < 0.034) return true;
+  const s = gen.seed, yy = y * 1.5, w = y < -20 ? 0.04 : 0.032;  // глубже ходы шире
+  if (Math.abs(noise3(x, yy, z, 16, s + 10) - 0.5) < w && Math.abs(noise3(x, yy, z, 16, s + 11) - 0.5) < w) return true;
+  // Огромные залы на глубине 15–70: десятки блоков в ширину, а в высоту не больше ~15 (шум сильно сплющен по вертикали), к краям слоя сходят на нет
+  if (y < -15 && y > -70) {
+    const edge = Math.min(y + 70, -15 - y) / 12;  // у верха и низа слоя порог выше — потолок и пол залов ровнее
+    if (noise3(x, y * 4, z, 64, s + 13) > 0.765 + Math.max(0, 1 - edge) * 0.1) return true;
+  }
   return y < -14 && noise3(x, y * 2, z, 24, s + 12) > 0.83;
 }
 // Из чего стенка под землёй: сверху земля, глубже камень с рудой (одинаково у всех игроков — считается по координатам)
@@ -7545,7 +7609,8 @@ const terrEdit = (x, y, z) => y === -DEPTH - 1 ? { op: "block", x, y, z, c: 13, 
 // Открыли пещеру: обходим её ходы и ставим стенки вокруг — понемногу, до CAVE_STEP клеток за кадр, чтобы игра не дёргалась.
 // Дальше CAVE_R от игрока не идём: такие клетки ждут в frontier и откроются, когда игрок подойдёт (под землёй дальше всё равно не видно).
 // Стенки и ходы пещер записаны по кускам, чтобы их можно было выгрузить
-const CAVE_R = 40, CAVE_STEP = 700;
+// Замер: зал с ходами в радиусе 40 давал 46 тысяч стенок — для телефона много. Под землёй туман ближе (см. updateGen), граница не видна
+const CAVE_R = LOWEND ? 20 : 30, CAVE_RY = LOWEND ? 12 : 16, CAVE_STEP = 400;  // 700 клеток за кадр давали кадры до 25 мс
 const caveChunk = (x, z) => { const ck = Math.floor(x / GEN) + "," + Math.floor(z / GEN); let c = gen.caves.get(ck); if (!c) gen.caves.set(ck, c = { walls: [], cells: [] }); return c; };
 function openCave(x, y, z) {
   const k = key(x, y, z);
@@ -7559,7 +7624,7 @@ function stepCaves(budget) {
   const q = gen.cq;
   for (let n = 0; gen.cqi < q.length && n < budget; n++) {
     const [cx, cy, cz] = q[gen.cqi++];
-    if (Math.abs(cx - px) > CAVE_R || Math.abs(cz - pz) > CAVE_R) { gen.frontier.add(key(cx, cy, cz)); continue; }
+    if (Math.abs(cx - px) > CAVE_R || Math.abs(cz - pz) > CAVE_R || Math.abs(cy - feet) > CAVE_RY) { gen.frontier.add(key(cx, cy, cz)); continue; }
     for (const [dx, dy, dz] of FACE_DIR) {
       const nx = cx + dx, ny = cy + dy, nz = cz + dz, k = key(nx, ny, nz);
       if (ny > -1 || ny < -DEPTH - 1 || dug.has(`${nx},${ny},${nz}`) || blocks.has(k)) continue;
@@ -7630,26 +7695,37 @@ function generateChunk(cx, cz) {
       }
     }
   }
-  // Животные появляются в куске один раз за всю жизнь мира, дальше живут сами
-  const ck = cx + "," + cz;
-  if (!gen.animals.has(ck)) {
+  // Животные появляются в куске один раз за всю жизнь мира, дальше живут сами. Ушёл далеко — они ждут в gen.store (в сетевой природе их нет:
+  // у каждого игрока были бы свои)
+  const ck = cx + "," + cz, stored = gen.store.get(ck);
+  if (stored) { gen.store.delete(ck); for (const a of stored) edit({ ...a, o: myId }); }
+  if (!gen.animals.has(ck) && !gen.net) {
     gen.animals.add(ck);
     const kinds = ["pig", "cow", "sheep", "chicken"];
     if (hashN(s + 7, cx, 0, cz) < 0.35) for (let n = 0; n < 2; n++) {
       const x = x0 + Math.floor(hashN(s + 8, cx, n, cz) * GEN), z = z0 + Math.floor(hashN(s + 9, cx, n, cz) * GEN), { h, desert } = genColumn(x, z);
       if (desert || blocks.has(key(x, h, z))) continue;
-      edit({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[Math.floor(hashN(s + 10, cx, n, cz) * 4)], x: x + 0.5, y: h, z: z + 0.5, yaw: n * 2.1, o: myId });
+      edit({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[Math.floor(hashN(s + 10, cx, n, cz) * 4)], x: x + 0.5, y: h, z: z + 0.5, yaw: n * 2.1, o: myId, ga: 1 });
     }
   }
   gen.loaded.set(ck, made);
   reopenCaves(x0, z0);
 }
 function unloadChunk(ck) {
+  // Животные природы, что сейчас стоят в этом куске, уходят в хранилище (замер: за 2000 блоков ходьбы их набиралось 840, и все бегали каждый кадр)
+  const [cx, cz] = ck.split(",").map(Number), keep = [];
+  for (const m of [...animals.values()]) {
+    const e = m.userData.edit;
+    if (!e.ga || Math.floor(m.position.x / GEN) !== cx || Math.floor(m.position.z / GEN) !== cz) continue;
+    keep.push({ ...e, x: +m.position.x.toFixed(2), y: +m.position.y.toFixed(2), z: +m.position.z.toFixed(2), yaw: +m.rotation.y.toFixed(2) });
+    removeSolid(m);
+  }
+  if (keep.length) gen.store.set(ck, [...(gen.store.get(ck) || []), ...keep]);
   for (const kk of gen.loaded.get(ck) || []) { const m = blocks.get(kk); if (m?.userData.edit.g) removeSolid(m); }  // поставленное игроком остаётся
   gen.loaded.delete(ck);
 }
 // Раз в кадр: догружаем ближайший недостающий кусок и выгружаем далёкие
-let genTimer = 0;
+let genTimer = 0, genSkip = false;
 function updateGen(dt) {
   if (!gen || worldLoading || !inGame || inHell()) return;
   const pcx = Math.floor(px / GEN), pcz = Math.floor(pz / GEN);
@@ -7659,8 +7735,11 @@ function updateGen(dt) {
     if (d > GEN_R * GEN_R + 1 || d >= bestD || gen.loaded.has((pcx + dx) + "," + (pcz + dz))) continue;
     best = [pcx + dx, pcz + dz]; bestD = d;
   }
-  if (best) generateChunk(...best);
-  stepCaves(CAVE_STEP);
+  if (best && !(LOWEND && (genSkip = !genSkip))) generateChunk(...best);  // слабому телефону — кусок через кадр
+  // Под землёй туман ближе: дальше CAVE_R пещера ещё не открыта, а в темноте залы выглядят глубже
+  const under = feet < -3 && camMode === "first";
+  scene.fog.near = under ? 6 : FOG_NEAR; scene.fog.far = under ? CAVE_R - 4 : FOG_FAR;
+  stepCaves(LOWEND ? CAVE_STEP / 2 : CAVE_STEP);
   if ((genTimer += dt) < 1) return;
   genTimer = 0;
   const far = ck => { const [cx, cz] = ck.split(",").map(Number); return (cx - pcx) ** 2 + (cz - pcz) ** 2 > (GEN_R + 2) ** 2; };
@@ -7668,12 +7747,14 @@ function updateGen(dt) {
   for (const ck of [...gen.caves.keys()]) if (far(ck)) unloadCaves(ck);
   // Игрок подошёл к недообойдённым ходам — продолжаем открывать пещеру
   const near = [];
-  for (const k of gen.frontier) { const [x, y, z] = k.split(",").map(Number); if (Math.abs(x - px) < CAVE_R - 8 && Math.abs(z - pz) < CAVE_R - 8) near.push([x, y, z]); }
+  for (const k of gen.frontier) { const [x, y, z] = k.split(",").map(Number); if (Math.abs(x - px) < CAVE_R - 8 && Math.abs(z - pz) < CAVE_R - 8 && Math.abs(y - feet) < CAVE_RY - 4) near.push([x, y, z]); }
   for (const [x, y, z] of near) { gen.frontier.delete(key(x, y, z)); gen.cq.push([x, y, z]); }
 }
 // Бесконечный мир: туман ближе (дальше всё равно ничего не создано — и рисовать меньше), ад уезжает далеко
-function setInfinite(on, saved) {
-  gen = on ? { seed: currentWorld.seed, removed: new Set(saved?.removed || []), animals: new Set(saved?.animals || []), mouths: new Set(), loaded: new Map(),
+// seed — у лобби и игры без интернета свой (общий для всех игроков), net — природа в сети (без животных: у каждого были бы свои)
+function setInfinite(on, saved, seed, net) {
+  gen = on ? { seed: seed ?? currentWorld.seed, net: !!net, removed: new Set(saved?.removed || []), animals: new Set(saved?.animals || []),
+    store: new Map(Object.entries(saved?.store || {})), mouths: new Set(), loaded: new Map(),
     caveOpen: new Set(), caves: new Map(), frontier: new Set(), cq: [], cqi: 0 } : null;
   HELL_BORDER = on ? 100000 : 1000; HELL_X = on ? 100500 : 1500;
   FOG_FAR = on ? GEN_R * GEN - 6 : 440; FOG_NEAR = on ? FOG_FAR * 0.45 : 170;
@@ -7755,13 +7836,287 @@ function updateTool(dt) {
   toolView.rotation.set(-0.15 - k * 0.8, 0.35, 0.55);
 }
 
+// ---------- Шахматы: блок-доска. Партия хранится в самом блоке (поле ch), поэтому сама расходится по сети и сохраняется с миром ----------
+// ch: { st: "free" | "wait" | "play" | "over", w, b — id игроков ("bot" — Stockfish), wn, bn — их ники, fen, last — последний ход, lvl — уровень бота, res — итог }
+const chessEl = document.getElementById("chess");
+const GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const fenBoard = fen => (fen || START_FEN).split(" ")[0].split("/").map(r => [...r.replace(/\d/g, d => ".".repeat(+d))]);  // [8-я горизонталь … 1-я][a … h]
+const glyph = pc => GLYPH[pc.toLowerCase()] + "︎";  // ︎ — текстовый вид, а не эмодзи (пешка иначе бывает цветной картинкой)
+// Верх блока — картинка доски с текущей позицией: партию видно издалека
+const chessTex = new Map();
+function drawChessTex(k, e) {
+  let t = chessTex.get(k);
+  if (!t) { const c = document.createElement("canvas"); c.width = c.height = 256; t = { c, tex: new THREE.CanvasTexture(c) }; t.tex.anisotropy = 4; chessTex.set(k, t); }
+  const g = t.c.getContext("2d"), b = fenBoard(e.ch?.fen);
+  g.font = "bold 29px serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 3;
+  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
+    g.fillStyle = (r + f) % 2 ? "#5c7f42" : "#d4d4b0";  // чуть темнее, чем в окне: верх блока ярко освещён солнцем
+    g.fillRect(f * 32, r * 32, 32, 32);
+    const pc = b[r][f];
+    if (pc === ".") continue;
+    const white = pc !== pc.toLowerCase();
+    g.strokeStyle = white ? "#111" : "#999"; g.fillStyle = white ? "#fff" : "#151515";
+    g.strokeText(glyph(pc), f * 32 + 16, r * 32 + 17); g.fillText(glyph(pc), f * 32 + 16, r * 32 + 17);
+  }
+  t.tex.needsUpdate = true;
+  return t.tex;
+}
+const chessBodyMat = new THREE.MeshLambertMaterial({ color: 0x6b4423 });
+const chessGeo = new THREE.BoxGeometry(1, 0.9, 1).translate(0, -0.05, 0);
+function chessMesh(e) {
+  const top = new THREE.MeshLambertMaterial({ map: drawChessTex(key(e.x, e.y, e.z), e) });
+  const m = new THREE.Mesh(chessGeo, [chessBodyMat, chessBodyMat, top, chessBodyMat, chessBodyMat, chessBodyMat]);
+  m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+  m.rotation.y = (e.r || 0) * Math.PI / 2;
+  return m;
+}
+let ChessLib = null;
+const loadChess = () => ChessLib ? Promise.resolve(ChessLib) : import("chess.js").then(m => ChessLib = m.Chess);
+const chessMe = () => meId || myId;
+let chessKey = null, chessSel = null, chessLvl = 3;
+const chessBusy = new Set();
+const LEVEL_NAME = ["", "новичок", "лёгкий", "простой", "средний", "крепкий", "сильный", "мастер", "максимум"];
+const chessEdit = () => blocks.get(chessKey)?.userData.edit;
+const chessName = (id, saved, lvl) => id === "bot" ? `Stockfish, ур. ${lvl || 3}` : id === chessMe() ? nick : others.get(id)?.nick || saved || "игрок";
+const setChess = (e, ch) => share({ ...e, ch }, true);
+function openChess(e) {
+  chessKey = key(e.x, e.y, e.z);
+  chessSel = null;
+  togglePanel(chessEl, drawChess);
+  loadChess().then(() => panel === chessEl && drawChess(), () => panel === chessEl && drawChess());
+}
+// Доска изменилась (свой ход, чужой ход по сети): перерисовать окно, а если ходит бот — пусть думает
+function chessUpdated(e) {
+  if (panel === chessEl && chessKey === key(e.x, e.y, e.z)) drawChess();
+  if (e.ch?.st === "play" && (e.ch.w === "bot" || e.ch.b === "bot")) loadChess().then(() => chessThink(blocks.get(key(e.x, e.y, e.z))?.userData.edit), () => {});
+}
+const kingSq = (b, color) => { for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) if (b[r][f] === (color === "w" ? "K" : "k")) return "abcdefgh"[f] + (8 - r); return null; };
+function drawChess() {
+  const e = chessEdit();
+  if (e?.k !== "chess") return chessEl.innerHTML = gtitle("ШАХМАТЫ") + glabel("доски больше нет") + xbtnHtml();
+  const ch = e.ch || {}, me = chessMe(), st = ch.st || "free", fen = st === "play" || st === "over" ? ch.fen : START_FEN;
+  const mine = ch.w === me ? "w" : ch.b === me ? "b" : null, turn = fen.split(" ")[1];
+  let game = null;
+  if (ChessLib) try { game = new ChessLib(fen); } catch {}
+  const W = chessName(ch.w, ch.wn, ch.lvl), B = chessName(ch.b, ch.bn, ch.lvl);
+  const status = st === "free" ? "Доска свободна" : st === "wait" ? `${W} ждёт соперника` : st === "over" ? ch.res || "Партия окончена" :
+    `${W} (белые) — ${B} (чёрные). Ход ${turn === "w" ? "белых" : "чёрных"}${game?.inCheck() ? ", шах!" : ""}${mine === turn ? " — твой ход" : ""}`;
+  const b = fenBoard(fen), flip = mine === "b";
+  const targets = chessSel && game ? game.moves({ square: chessSel, verbose: true }).map(m => m.to) : [];
+  const check = game?.inCheck() ? kingSq(b, turn) : null;
+  let cells = "";
+  for (let i = 0; i < 64; i++) {
+    const r = flip ? 7 - (i >> 3) : i >> 3, f = flip ? 7 - (i & 7) : i & 7, sq = "abcdefgh"[f] + (8 - r), pc = b[r][f];
+    const cls = ["sq", (r + f) % 2 ? "d" : "l", sq === chessSel && "sel", targets.includes(sq) && "to", ch.last && st !== "free" && (ch.last.startsWith(sq) || ch.last.slice(2, 4) === sq) && "last", sq === check && "chk"];
+    cells += `<span class="${cls.filter(Boolean).join(" ")}" data-sq="${sq}">${pc === "." ? "" : `<i class="${pc === pc.toLowerCase() ? "pb" : "pw"}">${glyph(pc)}</i>`}</span>`;
+  }
+  const absent = id => id && id !== "bot" && id !== me && !others.has(id);
+  let btns = "";
+  if (st === "free" || st === "over") {
+    if (online) btns += gbtn("ждать соперника (ты — белые)", "ch:wait", "big");
+    btns += `<div class="gg"><span class="gl">бот Stockfish: ${chessLvl} — ${LEVEL_NAME[chessLvl]}</span>${gbtn("−", "ch:lvl-", "small")}${gbtn("+", "ch:lvl+", "small")}</div>` +
+      `<div class="gg">${gbtn("играть с ботом белыми", "ch:botw")}${gbtn("чёрными", "ch:botb")}</div>`;
+  }
+  if (st === "wait" && ch.w === me) btns += glabel("Жди: кто-нибудь подойдёт к доске и сядет за чёрных.") + gbtn("не ждать", "ch:free");
+  if (st === "wait" && ch.w !== me) btns += gbtn(`сесть за доску против ${W} (ты — чёрные)`, "ch:join", "big");
+  if (st === "play" && mine) btns += gbtn("сдаться", "ch:resign", "warn");
+  if ((st === "play" || st === "wait") && !mine && (absent(ch.w) || absent(ch.b))) btns += gbtn("освободить доску (игрок ушёл)", "ch:free", "warn");
+  if (st === "over") btns += gbtn("убрать фигуры", "ch:free");
+  chessEl.innerHTML = gtitle("ШАХМАТЫ") + `<div class="cstat">${esc(status)}</div><div class="cboard">${cells}</div>` +
+    (ChessLib ? "" : glabel("загружаю правила шахмат…")) + (chessBusy.size && st === "play" ? glabel("Stockfish думает…") : "") + btns +
+    `<div class="gx">${TOUCH ? "" : "Esc — закрыть"}</div>` + xbtnHtml();
+  chessThink(e);
+}
+chessEl.addEventListener("click", e => {
+  const be = chessEdit();
+  if (be?.k !== "chess") return;
+  const sqEl = e.target.closest("[data-sq]");
+  if (sqEl) return chessClick(be, sqEl.dataset.sq);
+  const a = e.target.closest(".act")?.dataset.a;
+  if (!a?.startsWith("ch:")) return;
+  const cmd = a.slice(3), ch = be.ch || {}, me = chessMe(), fresh = { fen: START_FEN, n: 0, t: Date.now() };
+  sfx("click");
+  chessSel = null;
+  if (cmd === "lvl-" || cmd === "lvl+") { chessLvl = Math.max(1, Math.min(8, chessLvl + (cmd === "lvl+" ? 1 : -1))); return drawChess(); }
+  if (cmd === "wait") setChess(be, { st: "wait", w: me, wn: nick, t: Date.now() });
+  if (cmd === "join" && ch.st === "wait" && ch.w !== me) setChess(be, { ...ch, ...fresh, st: "play", b: me, bn: nick });
+  if (cmd === "botw") setChess(be, { ...fresh, st: "play", w: me, wn: nick, b: "bot", lvl: chessLvl });
+  if (cmd === "botb") setChess(be, { ...fresh, st: "play", w: "bot", b: me, bn: nick, lvl: chessLvl });
+  if (cmd === "resign") setChess(be, { ...ch, st: "over", res: `${nick} сдался` });
+  if (cmd === "free") setChess(be, { st: "free" });
+});
+// Клик по клетке: выбрать свою фигуру, потом клетку, куда пойти (пешка на последней горизонтали становится ферзём)
+function chessClick(be, sq) {
+  const ch = be.ch || {};
+  if (ch.st !== "play" || !ChessLib) return;
+  const g = new ChessLib(ch.fen), turn = g.turn();
+  if ((turn === "w" ? ch.w : ch.b) !== chessMe()) return;  // не твой ход
+  const pc = g.get(sq);
+  if (pc && pc.color === turn) { chessSel = chessSel === sq ? null : sq; return drawChess(); }
+  const mv = chessSel && g.moves({ square: chessSel, verbose: true }).find(m => m.to === sq);
+  chessSel = null;
+  if (!mv) return drawChess();
+  chessMove(be, { from: mv.from, to: mv.to, promotion: mv.promotion ? "q" : undefined });
+}
+function chessMove(be, mv) {
+  const ch = be.ch, g = new ChessLib(ch.fen);
+  let done = null;
+  try { done = g.move(mv); } catch { return; }
+  const next = { ...ch, fen: g.fen(), last: done.from + done.to, n: (ch.n || 0) + 1, t: Date.now() };
+  if (g.isGameOver()) {
+    const winner = g.turn() === "w" ? "b" : "w";
+    next.st = "over";
+    next.res = g.isCheckmate() ? `Мат! Победил${winner === "w" ? "и белые" : "и чёрные"}: ${chessName(ch[winner], ch[winner + "n"], ch.lvl)}` :
+      g.isStalemate() ? "Пат — ничья" : g.isThreefoldRepetition() ? "Троекратное повторение — ничья" : g.isInsufficientMaterial() ? "Мало фигур для мата — ничья" : "Ничья";
+  }
+  sfx(done.captured ? "break" : "place");
+  setChess(be, next);
+}
+// Ход бота считает тот, кто с ним играет (у остальных партия просто обновляется по сети)
+function chessThink(be) {
+  const ch = be?.ch;
+  if (!ch || ch.st !== "play" || !ChessLib) return;
+  const turn = ch.fen.split(" ")[1];
+  if ((turn === "w" ? ch.w : ch.b) !== "bot" || (turn === "w" ? ch.b : ch.w) !== chessMe()) return;
+  const k = key(be.x, be.y, be.z) + " " + ch.fen;
+  if (chessBusy.has(k)) return;
+  chessBusy.add(k);
+  engineMove(ch.fen, ch.lvl || 3).then(mv => {
+    chessBusy.delete(k);
+    const cur = blocks.get(key(be.x, be.y, be.z))?.userData.edit;
+    if (mv && cur?.ch?.fen === ch.fen && cur.ch.st === "play") chessMove(cur, mv);  // пока бот думал, партию могли сбросить
+    else if (panel === chessEl) drawChess();
+  });
+}
+// Stockfish: файл движка с CDN запускается в отдельном потоке (через Blob — фоновый поток с чужого адреса браузер не создаст).
+// Уровни 1–8: «Skill Level» движка 0–20, глубина и время на ход
+const SF_URL = "https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js";
+const SF_SKILL = [0, 0, 3, 6, 9, 12, 15, 18, 20], SF_DEPTH = [0, 1, 2, 4, 6, 8, 11, 14, 18], SF_TIME = [0, 150, 250, 400, 600, 800, 1200, 1800, 2500];
+let sfReady = null;
+function stockfish() {
+  return sfReady ??= (async () => {
+    const src = await (await fetch(SF_URL)).text();
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    await new Promise((ok, fail) => {
+      const t = setTimeout(() => fail(new Error("Stockfish не ответил")), 20000);
+      w.onmessage = m => { if (String(m.data).includes("uciok")) { clearTimeout(t); ok(); } };
+      w.onerror = err => { clearTimeout(t); fail(err); };
+      w.postMessage("uci");
+    });
+    return w;
+  })().catch(err => { sfReady = null; throw err; });
+}
+async function engineMove(fen, lvl) {
+  try {
+    const w = await stockfish();
+    const uci = await new Promise(ok => {
+      w.onmessage = m => { const r = String(m.data).match(/^bestmove (\S+)/); if (r) ok(r[1]); };
+      w.postMessage(`setoption name Skill Level value ${SF_SKILL[lvl]}`);
+      w.postMessage(`position fen ${fen}`);
+      w.postMessage(`go depth ${SF_DEPTH[lvl]} movetime ${SF_TIME[lvl]}`);
+    });
+    if (!/^[a-h][1-8][a-h][1-8]/.test(uci)) return null;
+    return { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] };
+  } catch (err) {
+    console.warn("Stockfish недоступен, играет запасной движок", err);
+    return fallbackMove(fen, lvl);
+  }
+}
+// Запасной движок без интернета: перебор на 1–2 хода вперёд по материалу (на слабых уровнях — с ошибками)
+const PIECE_VAL = { p: 1, n: 3, b: 3.2, r: 5, q: 9, k: 0 };
+function fallbackMove(fen, lvl) {
+  const g = new ChessLib(fen), me = g.turn();
+  const score = () => { let s = 0; for (const row of g.board()) for (const c of row) if (c) s += (c.color === me ? 1 : -1) * PIECE_VAL[c.type]; return s; };
+  const value = depth => {  // оценка для того, кто ходит сейчас в корне
+    if (g.isCheckmate()) return g.turn() === me ? -1000 : 1000;
+    if (g.isDraw()) return 0;
+    if (!depth) return score();
+    let best = g.turn() === me ? -Infinity : Infinity;
+    for (const m of g.moves()) { g.move(m); const v = value(depth - 1); g.undo(); best = g.turn() === me ? Math.max(best, v) : Math.min(best, v); }
+    return best;
+  };
+  let pick = null, bestV = -Infinity;
+  for (const m of g.moves({ verbose: true })) {
+    g.move(m);
+    const v = value(lvl <= 2 ? 0 : 1) + Math.random() * (lvl <= 2 ? 3 : 0.3);
+    g.undo();
+    if (v > bestV) { bestV = v; pick = m; }
+  }
+  return pick && { from: pick.from, to: pick.to, promotion: pick.promotion ? "q" : undefined };
+}
+
+// ---------- Выкинутые предметы: G — один, Shift+G — вся стопка. Лежат на земле, подошёл — подобрал ----------
+const drops = new Map();  // id → { e, sprite, vy, born }
+const dropTex = new Map();
+function dropTexture(name) {
+  let t = dropTex.get(name);
+  if (t) return t;
+  const url = iconCache.get(iconKey(name));
+  if (!url) return null;
+  t = new THREE.TextureLoader().load(url);
+  t.magFilter = THREE.NearestFilter;
+  dropTex.set(name, t);
+  return t;
+}
+const dropFallback = new THREE.SpriteMaterial({ color: 0xbbbbbb });
+function addDrop(e) {
+  if (drops.has(e.id)) return;
+  wantIcons([e.n]);
+  const tex = dropTexture(e.n);
+  const s = new THREE.Sprite(tex ? new THREE.SpriteMaterial({ map: tex }) : dropFallback);
+  s.scale.setScalar(0.45);
+  s.position.set(e.x, e.y, e.z);
+  scene.add(s);
+  drops.set(e.id, { e, s, vy: e.vy || 0, vx: e.vx || 0, vz: e.vz || 0, born: performance.now() });
+}
+function removeDrop(id) {
+  const d = drops.get(id);
+  if (!d) return;
+  scene.remove(d.s);
+  if (d.s.material !== dropFallback) d.s.material.dispose();
+  drops.delete(id);
+}
+function throwItem(all) {
+  const name = HOTBAR[slot];
+  if (!name || !inGame || dead || menuOpen) return;
+  if (bag && !have(name)) return;
+  const n = bag ? (all ? bag[name] : 1) : 1;
+  if (bag) take(name, n);
+  const fx = -Math.sin(yaw) * Math.cos(pitch), fz = -Math.cos(yaw) * Math.cos(pitch);
+  share({ op: "item", id: `${myId}-${idCount++}`, n: name, k: n, x: +(px + fx * 0.6).toFixed(2), y: +(feet + 1.3).toFixed(2), z: +(pz + fz * 0.6).toFixed(2),
+    vx: +(fx * 4).toFixed(2), vy: +(Math.sin(pitch) * 4 + 2).toFixed(2), vz: +(fz * 4).toFixed(2), by: myId });
+  sfx("click");
+}
+function updateDrops(dt) {
+  const now = performance.now();
+  for (const [id, d] of drops) {
+    const s = d.s;
+    if (s.material === dropFallback) { const tex = dropTexture(d.e.n); if (tex) s.material = new THREE.SpriteMaterial({ map: tex }); }
+    const ground = groundHeight(s.position.x, s.position.y, s.position.z) + 0.25;
+    if (s.position.y > ground + 0.01 || d.vy > 0) {  // летит: тяжесть и трение воздуха
+      d.vy -= 20 * dt;
+      s.position.x += d.vx * dt; s.position.z += d.vz * dt; s.position.y += d.vy * dt;
+      d.vx *= 1 - dt * 1.5; d.vz *= 1 - dt * 1.5;
+      if (s.position.y <= ground) { s.position.y = ground; d.vy = 0; d.vx = d.vz = 0; Object.assign(d.e, { x: +s.position.x.toFixed(2), y: +ground.toFixed(2), z: +s.position.z.toFixed(2), vx: 0, vy: 0, vz: 0 }); }
+    } else s.position.y = ground + Math.sin(now / 400 + d.born) * 0.06;  // лежит и чуть покачивается
+    // Подбор: своё — не сразу (иначе подберёшь, едва выкинув), чужое — сразу
+    if (dead || !inGame || camMode !== "first") continue;
+    if (Math.hypot(s.position.x - px, s.position.z - pz) < 1.3 && s.position.y > feet - 0.6 && s.position.y < feet + 2.2 && (d.e.by !== myId || now - d.born > 1500)) {
+      if (bag) give(d.e.n, d.e.k || 1);
+      else sfx("pickup");
+      share({ op: "unitem", id });
+    }
+  }
+}
+
 // ---------- Главный цикл ----------
 
 let last = performance.now();
 let refreshMs = 100, refreshN = 0, frameAtPrev = 0;  // самый короткий кадр = частота экрана (на 90 Гц слабым телефонам рисуем через кадр)
 let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 renderer.setAnimationLoop(now => {
-  const dt = Math.min((now - last) / 1000, 0.1);
+  const dt = Math.max(0, Math.min((now - last) / 1000, 0.1));  // время назад (смена вкладки, часы) не даёт отрицательного шага
   last = now;
   updateTroll(dt);
   updateCoords();

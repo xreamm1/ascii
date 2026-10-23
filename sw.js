@@ -1,8 +1,8 @@
 // Кэш для игры: после первого захода с интернетом она открывается и без него (установи игру на главный экран)
-const CACHE = "ascii-v3";
+const CACHE = "ascii-v4";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "worlds/vkusno-i-tochka-3-etazha.baseAscii",
   "lib/qrcode.js", "lib/jsQR.js", "meme.jpg"];
-const LIBS = ["https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+const LIBS = ["https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js",
   "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js", "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js"];
 const CACHED_HOSTS = ["cdn.jsdelivr.net", "www.gstatic.com", "fonts.googleapis.com", "fonts.gstatic.com"];
 const FONT_CSS = "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap";

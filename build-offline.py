@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Собирает ascii-offline.html — игру одним файлом, которая работает без интернета.
-Берёт index.html и подставляет внутрь всё, что он грузит отдельно: three.js, шрифт JetBrains Mono, мир для помощников, QR-библиотеки из lib/ и meme.jpg.
+Берёт index.html и подставляет внутрь всё, что он грузит отдельно: three.js, chess.js, шрифт JetBrains Mono, мир для помощников, QR-библиотеки из lib/ и meme.jpg.
 Нужны python3 и npm (интернет нужен только при сборке)."""
 import base64, glob, json, os, re, shutil, subprocess, sys, tarfile, tempfile
 
@@ -10,12 +10,13 @@ html = open(os.path.join(root, "index.html"), encoding="utf8").read()
 with tempfile.TemporaryDirectory() as tmp:
     # На Windows npm — это npm.cmd, его находит только which; архивы распаковываем самим Python, а не GNU tar
     npm = shutil.which("npm") or sys.exit("нужен npm (Node.js)")
-    for pkg in ("three@0.160.0", "@fontsource/jetbrains-mono@5.3.0"):
+    for pkg in ("three@0.160.0", "@fontsource/jetbrains-mono@5.3.0", "chess.js@1.4.0"):
         subprocess.run([npm, "pack", pkg], cwd=tmp, check=True, capture_output=True)
     for tgz in glob.glob(os.path.join(tmp, "*.tgz")):
         with tarfile.open(tgz) as t:
             t.extractall(os.path.join(tmp, os.path.basename(tgz)[:-4]), **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
     three = open(glob.glob(os.path.join(tmp, "three-*", "package", "build", "three.module.min.js"))[0], "rb").read()
+    chessjs = open(glob.glob(os.path.join(tmp, "chess.js-*", "package", "dist", "esm", "chess.js"))[0], "rb").read()
     fonts = {}
     for sub in ("latin", "cyrillic"):
         for w in (400, 700):
@@ -30,8 +31,10 @@ def sub1(old, new, pattern=False):
     html = re.sub(old, lambda m: new, html, flags=re.S) if pattern else html.replace(old, new)
 
 # three.js внутрь (importmap принимает data: адрес)
-data_url = "data:text/javascript;base64," + base64.b64encode(three).decode()
-sub1(r'<script type="importmap">.*?</script>', '<script type="importmap">{"imports":{"three":"%s"}}</script>' % data_url, True)
+# three.js и правила шахмат (chess.js) внутрь (importmap принимает data: адреса). Stockfish не вставляем: он под GPL и весит 1,6 МБ —
+# без интернета против бота играет запасной движок
+data_url = lambda b: "data:text/javascript;base64," + base64.b64encode(b).decode()
+sub1(r'<script type="importmap">.*?</script>', '<script type="importmap">{"imports":{"three":"%s","chess.js":"%s"}}</script>' % (data_url(three), data_url(chessjs)), True)
 # шрифт внутрь
 ranges = {"latin": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
           "cyrillic": "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116"}

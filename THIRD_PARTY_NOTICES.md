@@ -35,6 +35,42 @@ https://github.com/cozmo/jsQR
 Copyright Cosmo Wolfe. Распространяется по лицензии Apache License 2.0:
 https://www.apache.org/licenses/LICENSE-2.0 (полный текст лицензии нужно положить рядом, например в `lib/jsQR.LICENSE`).
 
+## chess.js — правила шахмат
+
+https://github.com/jhlywa/chess.js — грузится с CDN (в `ascii-offline.html` вставлен целиком).
+
+```
+Copyright (c) 2025, Jeff Hlywa (jhlywa@gmail.com)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Stockfish — шахматный бот
+
+https://github.com/nmrugg/stockfish.js (сборка Stockfish 10 для браузера), лицензия GNU GPL v3. В репозиторий и в `ascii-offline.html`
+**не входит**: игра скачивает движок с CDN (`stockfish.js@10.0.2`) при первой партии с ботом и запускает его отдельной программой
+в фоновом потоке, общаясь с ним по протоколу UCI. Без интернета против бота играет простой встроенный движок.
+
 ## three.js и Firebase
 
 Грузятся с CDN и в репозитории не лежат (в `ascii-offline.html` three.js вставлен целиком, со своим заголовком лицензии MIT).
