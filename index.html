@@ -330,6 +330,13 @@
   .bestmove-button:disabled {opacity:.65;cursor:wait;}
   .bestmove-note {font-size:11px;color:#c5e59e;line-height:1.4;margin:4px 0;}
   .cboard .sq.besthint {box-shadow:inset 0 0 0 4px #44a8ff;}
+  .chpiece {width:86%;height:86%;pointer-events:none;filter:drop-shadow(0 2px 1px #0007);}
+  .movebadge {display:inline-flex;align-items:center;justify-content:center;border-radius:50%;width:23px;height:23px;background:var(--grade);color:white;font:bold 14px Arial,sans-serif;box-shadow:0 1px 3px #0007;flex-shrink:0;}
+  .sq .movebadge {position:absolute;right:-4px;top:-5px;z-index:2;pointer-events:none;border:2px solid #fff;}
+  .move-review {display:flex;align-items:center;gap:8px;margin:7px 0;padding:8px 10px;background:#202720;border-radius:5px;min-height:28px;font-size:12px;}
+  .move-review small {display:block;color:#bdc5b8;margin-top:3px;font-size:10px;}
+  .cboard {border:6px solid #67472e;border-radius:3px;box-shadow:0 3px 0 #382719,0 5px 12px #0005;overflow:visible;}
+  .cboard .sq.l {background:#ead9b5;}.cboard .sq.d {background:#769451;}
 </style>
 <script type="importmap">
   {
@@ -834,6 +841,88 @@ const BLOCK_TEX = {
   glowstone: bb("#efc35b", [[2, 2, 4, 3, "#ffe08a"], [9, 8, 4, 4, "#ffe08a"], [10, 2, 3, 2, "#d39a36"], [3, 11, 3, 2, "#d39a36"]]),
   clay: bb("#b96c4c", [[0, 5, 16, 1, "#a75e41"], [0, 11, 16, 1, "#a75e41"]]),
 };
+// Собственные пиксельные рисунки 16×16: шум привязан к координатам и не меняется между запусками.
+const texHash = (x,y,s=0) => { let n=Math.imul(x+31,374761393)^Math.imul(y+17,668265263)^Math.imul(s+1,1274126177); n=Math.imul(n^(n>>>13),1274126177); return ((n^(n>>>16))>>>0)/4294967296; };
+function grainTex(base, amount=12, seed=0, pattern) {
+  return pixelTex((p,ctx)=>{
+    const rgb=base.match(/\w\w/g).map(v=>parseInt(v,16));
+    for(let y=0;y<16;y++)for(let x=0;x<16;x++){
+      const n=(texHash(x,y,seed)-.5)*amount*2+(texHash(x>>1,y>>1,seed+43)-.5)*amount;
+      p(x,y,`rgb(${rgb.map(v=>Math.max(0,Math.min(255,Math.round(v+n)))).join(',')})`);
+    }
+    pattern?.(p,ctx);
+  });
+}
+const replaceTex=(kind,tex)=>{BLOCK_TEX[kind]?.dispose();BLOCK_TEX[kind]=tex;return tex;};
+replaceTex('stone',grainTex('808080',14,1));
+replaceTex('dirt',grainTex('866044',20,2,(p)=>{for(let i=0;i<14;i++){const x=Math.floor(texHash(i,1)*16),y=Math.floor(texHash(i,2)*16);p(x,y,'#a0a09a');p((x+1)%16,y,'#655044');}}));
+replaceTex('grass',grainTex('779c46',18,3));
+replaceTex('sand',grainTex('dfd3a1',9,4));
+replaceTex('snow',grainTex('edf4f6',5,5));
+replaceTex('concrete',grainTex('999b96',3,6));
+replaceTex('clay',grainTex('b5684c',8,7));
+replaceTex('netherrack',grainTex('703634',24,8,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,80)>.7)p(x,y,texHash(x,y,9)>.5?'#462727':'#914742');}));
+replaceTex('obsidian',grainTex('241b34',10,10,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,11)>.7)p(x,y,texHash(x,y)>.6?'#57426c':'#35274e');}));
+replaceTex('deepslate',grainTex('4b4b50',12,12,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(y%4===0)p(x,y,texHash(x,y)>.5?'#34343a':'#3e3e44');}));
+replaceTex('wood',grainTex('6b5333',13,13,(p)=>{for(let x=0;x<16;x++)for(let y=0;y<16;y++)if((x+Math.floor(y/7))%4===0)p(x,y,texHash(x,y)>.5?'#45371f':'#554329');}));
+replaceTex('planks',grainTex('b28d58',10,14,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){if(y%4===3)p(x,y,'#705532');else if(y%4===0)p(x,y,'#c5a06b');else if(x===[4,11,7,14][y>>2])p(x,y,'#806039');else if(texHash(x,y,15)>.8)p(x,y,'#9c7747');}}));
+function cobbleTex(moss=false){return grainTex('777775',18,16,(p)=>{
+  const cells=[[2,2],[8,1],[14,3],[5,7],[11,7],[0,10],[7,13],[14,13]];
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++){
+    const distances=cells.map(([a,b],i)=>({i,d:Math.min(Math.abs(x-a),16-Math.abs(x-a))**2+Math.min(Math.abs(y-b),16-Math.abs(y-b))**2})).sort((a,b)=>a.d-b.d);
+    if(distances[1].d-distances[0].d<5)p(x,y,'#414343');
+    else if(distances[1].d-distances[0].d<11)p(x,y,'#a1a2a0');
+    else if(moss&&texHash(x>>1,y>>1,17)>.56)p(x,y,texHash(x,y)>.5?'#526d35':'#657c40');
+  }
+});}
+replaceTex('cobble',cobbleTex());replaceTex('mossy',cobbleTex(true));
+replaceTex('leaves',grainTex('426e2b',21,18,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const v=texHash(x>>1,y>>1,19);if(v>.65)p(x,y,texHash(x,y)>.5?'#71934a':'#567c35');else if(v<.2)p(x,y,'#294b21');}}));
+replaceTex('wool',grainTex('dededb',10,20,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if((x+2*y)%5===0)p(x,y,'#f2f2ed');}));
+function mineralTex(base,a,b,seed){return pixelTex((p,c)=>{
+  c.drawImage(BLOCK_TEX[base].image,0,0);
+  for(const [x,y] of [[2,2],[10,2],[6,6],[12,10],[3,12]])for(let j=0;j<3;j++)for(let i=0;i<3;i++){
+    if((i===0&&j===0)||(i===2&&j===2))continue;
+    p(x+i,y+j,j===0||i===0?b:texHash(x+i,y+j,seed)>.45?a:b);
+    if(j===2)p(x+i,y+j+1,base==='deepslate'?'#303036':'#5c5c5c');
+  }
+});}
+for(const [name,a,b] of [['coal','#242424','#454545'],['iron','#b68468','#dfb59a'],['gold','#d6a624','#f7df63'],['red','#a71913','#ed4230'],['diamond','#35aaa5','#8be5df']]){
+  replaceTex('ore_'+name,mineralTex('stone',a,b,21));
+  if(name!=='coal')replaceTex('ds_'+name,mineralTex('deepslate',a,b,22));
+}
+replaceTex('glowstone',grainTex('a47739',24,23,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,24)>.4)p(x,y,texHash(x,y)>.4?'#f4db91':'#d4b766');}));
+replaceTex('lava',grainTex('ce4c0b',28,25,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,26)>.5)p(x,y,texHash(x,y)>.5?'#ffb52c':'#f08012');}));
+const grassSide=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.dirt.image,0,0);for(let x=0;x<16;x++)for(let y=0;y<3+Math.floor(texHash(x,0,27)*4);y++)p(x,y,y<2?'#769c43':texHash(x,y)>.5?'#668b39':'#567d31');});
+const logEnd=grainTex('ad8952',10,28,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const r=Math.max(Math.abs(x-7.5),Math.abs(y-7.5));if(r>6.5)p(x,y,'#58452a');else if(Math.floor(r)%3===0)p(x,y,'#806139');}});
+const craftTop=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.planks.image,0,0);c.fillStyle='#654126';c.fillRect(1,1,14,14);c.fillStyle='#b38751';for(let y=0;y<3;y++)for(let x=0;x<3;x++)c.fillRect(2+x*4,2+y*4,3,3);});
+replaceTex('crafting',grainTex('9b703e',13,29,(p,c)=>{c.fillStyle='#5a3b24';c.fillRect(0,0,16,3);c.fillRect(1,3,2,13);c.fillRect(13,3,2,13);c.fillStyle='#c8c4b0';c.fillRect(5,5,6,2);c.fillRect(6,7,2,6);c.fillStyle='#6a4b2b';c.fillRect(10,8,2,6);}));
+const furnaceSide=grainTex('737372',18,30,(p,c)=>{c.fillStyle='#484847';c.fillRect(0,0,16,1);c.fillRect(0,15,16,1);c.fillRect(0,0,1,16);c.fillRect(15,0,1,16);});
+replaceTex('furnace',pixelTex((p,c)=>{c.drawImage(furnaceSide.image,0,0);c.fillStyle='#262626';c.fillRect(3,3,10,3);c.fillRect(3,9,10,5);c.fillStyle='#494948';c.fillRect(4,10,8,1);c.fillStyle='#999996';c.fillRect(2,7,12,1);}));
+// Четыре грани в одном атласе: склейка чанков по-прежнему использует один материал.
+// Восемь пикселей отступа вокруг каждой грани защищают mip-уровни от соседнего рисунка.
+const BLOCK_ATLAS={};
+function faceAtlas(side,top,bottom,front=side){
+  const t=canvasTexture(64,64,c=>{
+    for(const [i,tex] of [side,top,bottom,front].entries()){
+      const ox=(i%2)*32,oy=(1-Math.floor(i/2))*32,img=tex.image;
+      for(let y=0;y<32;y++)for(let x=0;x<32;x++)c.drawImage(img,Math.max(0,Math.min(15,x-8)),Math.max(0,Math.min(15,y-8)),1,1,ox+x,oy+y,1,1);
+    }
+  });t.magFilter=THREE.NearestFilter;return t;
+}
+BLOCK_ATLAS.grass=faceAtlas(grassSide,BLOCK_TEX.grass,BLOCK_TEX.dirt);
+BLOCK_ATLAS.wood=faceAtlas(BLOCK_TEX.wood,logEnd,logEnd);
+BLOCK_ATLAS.crafting=faceAtlas(BLOCK_TEX.crafting,craftTop,BLOCK_TEX.planks);
+BLOCK_ATLAS.furnace=faceAtlas(furnaceSide,furnaceSide,furnaceSide,BLOCK_TEX.furnace);
+function blockFaceShader(m,kind){
+  if(!BLOCK_ATLAS[kind])return m;
+  m.onBeforeCompile=sh=>{
+    sh.vertexShader='varying vec3 vBlockFace;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvBlockFace = normal;');
+    sh.fragmentShader='varying vec3 vBlockFace;\n'+sh.fragmentShader.replace('#include <map_fragment>',THREE.ShaderChunk.map_fragment.replace('vec4 sampledDiffuseColor',`vec2 faceTile = vBlockFace.y > 0.5 ? vec2(1.0,0.0) : vBlockFace.y < -0.5 ? vec2(0.0,1.0) : vBlockFace.z > 0.5 ? vec2(1.0,1.0) : vec2(0.0);
+      vec2 faceUv = (clamp(vMapUv,0.0,1.0)*16.0 + 8.0 + faceTile*32.0)/64.0;
+      vec4 sampledDiffuseColor`).replace('texture2D( map, vMapUv )','texture2D( map, faceUv )'));
+  };
+  m.customProgramCacheKey=()=> 'block-faces-v1';return m;
+}
 for (const k in BLOCK_TEX) BLOCK_TEX[k].userData.kind = k;
 // Вывеска «Вкусно — и точка»: зелёная панель 3×1 с жёлто-оранжевым знаком и надписью
 const vitSignTex = (() => {
@@ -867,7 +956,7 @@ const EMISSIVE = new Set(["lava", "neon", "glowstone"]);  // светятся: �
 const blockMats = {};
 const blockMaterial = (kind, c) => blockMats[kind + c] ??= (() => {
   const [r, g, b] = COLORS[c].rgb, col = new THREE.Color(r / 255, g / 255, b / 255);
-  return EMISSIVE.has(kind) ? new THREE.MeshBasicMaterial({ map: BLOCK_TEX[kind], color: col }) : new THREE.MeshLambertMaterial({ map: BLOCK_TEX[kind], color: col });
+  return blockFaceShader(EMISSIVE.has(kind) ? new THREE.MeshBasicMaterial({ map: BLOCK_TEX[kind], color: col }) : new THREE.MeshLambertMaterial({ map: BLOCK_ATLAS[kind] || BLOCK_TEX[kind], color: col }),kind);
 })();
 const brickTex = canvasTexture(64, 64, ctx => {
   ctx.fillStyle = "#e0e0e0"; ctx.fillRect(0, 0, 64, 64);
@@ -1207,7 +1296,7 @@ function share(e, replace = false) {
 // Склейка: обычные блоки рисуются кусками 8×8×8 (по цвету), а не тысячами отдельных вызовов отрисовки — так игра намного легче.
 // Сами блоки остаются в сцене невидимыми: прицел (луч) находит их как прежде
 const shadedMats = {};
-const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex || tex === plainTex ? material(tex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return m; })();
+const shadedMaterial = (tex, c) => shadedMats[tex.uuid + c] ??= (() => { const m = (tex === brickTex || tex === plainTex ? material(tex, c) : blockMaterial(tex.userData.kind, c)).clone(); m.vertexColors = true; return blockFaceShader(m,tex.userData.kind); })();
 const CH = 16;  // кусок склейки 16³: замер на лабиринте — вызовов отрисовки 52 вместо 227
 const chunks = new Map();
 const dirtyChunks = new Set();
@@ -8299,6 +8388,16 @@ function updateTool(dt) {
 // ch: { st: "free" | "wait" | "play" | "over", w, b — id игроков ("bot" — Stockfish), wn, bn — их ники, fen, last — последний ход, lvl — уровень бота, res — итог }
 const chessEl = document.getElementById("chess");
 const GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+// Собственные силуэты: одинаковые фигуры в меню и на блоке, без зависимости от шрифтов устройства.
+const CHESS_PATHS={
+ p:['M24 9a7 7 0 1 0 0 14a7 7 0 1 0 0-14Z','M20 23h8l-1 6c0 5 4 8 7 10H14c3-2 7-5 7-10Z','M14 38h20l2 6H12Z'],
+ r:['M12 10h6v5h4v-5h4v5h4v-5h6v12H12Z','M16 22h16l-2 15H18Z','M15 37h18l3 7H12Z'],
+ n:['M13 38c0-9 4-13 10-17l-5 1-5 5-5-4 7-13 5-3 1-4 5 5c12 3 13 15 10 30Z','M12 38h25l1 6H11Z'],
+ b:['M24 5c-3 5-12 10-10 17 1 6 19 6 20 0 2-7-7-12-10-17Z','M21 27h6l2 9 6 4H13l6-4Z','M12 39h24l2 5H10Z'],
+ q:['M11 15l6 9 7-12 7 12 6-9-5 21H16Z','M15 35h18l2 5H13Z','M12 40h24l2 4H10Z','M8 10h6v6H8Z M21 7h6v6h-6Z M34 10h6v6h-6Z'],
+ k:['M22 4h4v5h5v4h-5v6h-4v-6h-5V9h5Z','M24 22c-9-13-19-3-13 5l6 10h14l6-10c6-8-4-18-13-5Z','M16 35h16l3 5H13Z','M12 40h24l2 4H10Z']
+};
+function pieceSvg(pc){const white=pc!==pc.toLowerCase(),kind=pc.toLowerCase(),fill=white?'#fff6dc':'#343940',stroke=white?'#554b3a':'#12171c';return `<svg class="chpiece" viewBox="0 0 48 48" aria-hidden="true"><g fill="${fill}" stroke="${stroke}" stroke-width="1.8" stroke-linejoin="round">${CHESS_PATHS[kind].map(d=>`<path d="${d}"/>`).join('')}</g>${kind==='n'?`<circle cx="20" cy="14" r="1.6" fill="${stroke}"/>`:kind==='b'?`<path d="M26 13l-5 9" stroke="${stroke}" stroke-width="2"/>`:''}<path d="M16 41h16" stroke="${white?'#c7b68b':'#6f7880'}" stroke-width="1.3"/></svg>`;}
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const fenBoard = fen => (fen || START_FEN).split(" ")[0].split("/").map(r => [...r.replace(/\d/g, d => ".".repeat(+d))]);  // [8-я горизонталь … 1-я][a … h]
 const glyph = pc => GLYPH[pc.toLowerCase()] + "︎";  // ︎ — текстовый вид, а не эмодзи (пешка иначе бывает цветной картинкой)
@@ -8306,17 +8405,21 @@ const glyph = pc => GLYPH[pc.toLowerCase()] + "︎";  // ︎ — текстов�
 const chessTex = new Map();
 function drawChessTex(k, e) {
   let t = chessTex.get(k);
-  if (!t) { const c = document.createElement("canvas"); c.width = c.height = 256; t = { c, tex: new THREE.CanvasTexture(c) }; t.tex.anisotropy = 4; chessTex.set(k, t); }
+  if (!t) { const c = document.createElement("canvas"); c.width = c.height = 512; t = { c, tex: new THREE.CanvasTexture(c) }; t.tex.anisotropy = 4; chessTex.set(k, t); }
   const g = t.c.getContext("2d"), b = fenBoard(e.ch?.fen);
   g.font = "bold 29px serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 3;
   for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
-    g.fillStyle = (r + f) % 2 ? "#5c7f42" : "#d4d4b0";  // чуть темнее, чем в окне: верх блока ярко освещён солнцем
-    g.fillRect(f * 32, r * 32, 32, 32);
+    g.fillStyle = (r + f) % 2 ? "#58753d" : "#cbbb94";
+    g.fillRect(f * 64, r * 64, 64, 64);
+    g.fillStyle=(r+f)%2?'#ffffff09':'#ffffff13';g.fillRect(f*64,r*64,64,2);
     const pc = b[r][f];
     if (pc === ".") continue;
     const white = pc !== pc.toLowerCase();
-    g.strokeStyle = white ? "#111" : "#999"; g.fillStyle = white ? "#fff" : "#151515";
-    g.strokeText(glyph(pc), f * 32 + 16, r * 32 + 17); g.fillText(glyph(pc), f * 32 + 16, r * 32 + 17);
+    g.save();g.translate(f*64+5,r*64+4);g.scale(1.12,1.12);
+    g.strokeStyle=white?'#554b3a':'#12171c';g.fillStyle=white?'#fff6dc':'#343940';g.lineWidth=1.8;g.lineJoin='round';
+    for(const d of CHESS_PATHS[pc.toLowerCase()]){const path=new Path2D(d);g.fill(path);g.stroke(path);}
+    if(pc.toLowerCase()==='n'){g.beginPath();g.arc(20,14,1.6,0,Math.PI*2);g.fillStyle=g.strokeStyle;g.fill();}
+    if(pc.toLowerCase()==='b'){g.beginPath();g.moveTo(26,13);g.lineTo(21,22);g.stroke();}g.restore();
   }
   t.tex.needsUpdate = true;
   return t.tex;
@@ -8362,6 +8465,7 @@ function drawChess() {
   const status = st === "free" ? "Доска свободна" : st === "wait" ? `${W} ждёт соперника` : st === "over" ? ch.res || "Партия окончена" :
     `${W} (белые) — ${B} (чёрные). Ход ${turn === "w" ? "белых" : "чёрных"}${game?.inCheck() ? ", шах!" : ""}${mine === turn ? " — твой ход" : ""}`;
   const hint=isDev&&chessHint?.fen===fen&&chessHint.boardKey===chessKey?chessHint:null;
+  const review=ensureChessReview(ch,chessKey);
   const b = fenBoard(fen), flip = mine === "b";
   const targets = chessSel && game ? game.moves({ square: chessSel, verbose: true }).map(m => m.to) : [];
   const check = game?.inCheck() ? kingSq(b, turn) : null;
@@ -8369,7 +8473,7 @@ function drawChess() {
   for (let i = 0; i < 64; i++) {
     const r = flip ? 7 - (i >> 3) : i >> 3, f = flip ? 7 - (i & 7) : i & 7, sq = "abcdefgh"[f] + (8 - r), pc = b[r][f];
     const cls = ["sq", (r + f) % 2 ? "d" : "l", sq === chessSel && "sel", targets.includes(sq) && "to", ch.last && st !== "free" && (ch.last.startsWith(sq) || ch.last.slice(2, 4) === sq) && "last", sq === check && "chk", hint && (sq===hint.move.slice(0,2)||sq===hint.move.slice(2,4)) && "besthint"];
-    cells += `<span class="${cls.filter(Boolean).join(" ")}" data-sq="${sq}">${pc === "." ? "" : `<i class="${pc === pc.toLowerCase() ? "pb" : "pw"}">${glyph(pc)}</i>`}</span>`;
+    cells += `<span class="${cls.filter(Boolean).join(" ")}" data-sq="${sq}">${pc === "." ? "" : pieceSvg(pc)}${review?.grade&&ch.last?.slice(2,4)===sq?reviewBadge(review.grade):''}</span>`;
   }
   const absent = id => id && id !== "bot" && id !== me && !others.has(id);
   let btns = "";
@@ -8384,6 +8488,7 @@ function drawChess() {
   if ((st === "play" || st === "wait") && !mine && (absent(ch.w) || absent(ch.b))) btns += gbtn("освободить доску (игрок ушёл)", "ch:free", "warn");
   if (st === "over") btns += gbtn("убрать фигуры", "ch:free");
   chessEl.innerHTML = `<div class="chhead">${gtitle("ШАХМАТЫ")}${isDev?`<button class="act bestmove-button" data-a="ch:best18" ${chessHintLoading?"disabled":""}>${chessHintLoading?"Анализ…":"Лучший ход"}</button>`:""}</div>` + (isDev?`<div class="bestmove-note" role="status">${chessHintLoading?"Stockfish 18: загрузка и анализ…":hint?`Stockfish 18: ${esc(hint.san)} (${hint.move.slice(0,2)} → ${hint.move.slice(2,4)}), глубина ${hint.depth}${hint.score?", оценка "+esc(hint.score)+" для стороны хода":""}`:esc(chessHintError)}</div>`:"") + `<div class="cstat">${esc(status)}</div><div class="cboard">${cells}</div>` +
+    (review?`<div class="move-review" role="status">${review.grade?reviewBadge(review.grade):''}<div>${esc(ch.san||ch.last||'')}: ${review.grade?esc(MOVE_GRADES[review.grade].label):review.error?'Оценка недоступна':'Stockfish 18 оценивает ход…'}${review.grade?`<small>${review.loss>0?`Потеря оценки: ${(review.loss/100).toFixed(2)} пешки · `:''}глубина ${review.depth}</small>`:review.error?'<small>Проверь подключение к интернету</small>':''}</div></div>`:'') +
     (ChessLib ? "" : glabel("загружаю правила шахмат…")) + (chessBusy.size && st === "play" ? glabel("Stockfish думает…") : "") + btns +
     `<div class="gx">${TOUCH ? "" : "Esc — закрыть"}</div>` + xbtnHtml();
   chessThink(e);
@@ -8424,7 +8529,7 @@ function chessMove(be, mv) {
   const ch = be.ch, g = new ChessLib(ch.fen);
   let done = null;
   try { done = g.move(mv); } catch { return; }
-  const next = { ...ch, fen: g.fen(), last: done.from + done.to, n: (ch.n || 0) + 1, t: Date.now() };
+  const next = { ...ch, prevFen:ch.fen, fen: g.fen(), last: done.from + done.to + (done.promotion||''), san:done.san, n: (ch.n || 0) + 1, t: Date.now() };
   if (g.isGameOver()) {
     const winner = g.turn() === "w" ? "b" : "w";
     next.st = "over";
@@ -8530,22 +8635,27 @@ function stockfish18(){
  });
  return sf18Ready;
 }
-async function analyseBestMove18(fen){
+let sf18Queue=Promise.resolve();
+function analyseBestMove18(fen,options={}){
+ const job=sf18Queue.then(()=>runAnalysis18(fen,options));
+ sf18Queue=job.catch(()=>{});return job;
+}
+async function runAnalysis18(fen,{time=1600,depthLimit=22}={}){
  const worker=await stockfish18();
  return new Promise((resolve,reject)=>{
-  let score="",depth=0,pv="";
+  let score="",depth=0,pv="",cp=null,mate=null;
   const timer=setTimeout(()=>{worker.postMessage("stop");worker.terminate();sf18Worker=null;sf18Ready=null;reject(new Error("Анализ занял слишком долго. Повтори запрос."));},15000);
   worker.onmessage=event=>{
     const line=String(event.data),depthMatch=line.match(/\bdepth (\d+)/),scoreMatch=line.match(/\bscore (cp|mate) (-?\d+)/),pvMatch=line.match(/\bpv (.+)/);
     if(depthMatch)depth=+depthMatch[1];if(pvMatch)pv=pvMatch[1];
-    if(scoreMatch)score=scoreMatch[1]==="mate"?`мат ${scoreMatch[2]}`:(+scoreMatch[2]/100).toFixed(2);
+    if(scoreMatch){mate=scoreMatch[1]==="mate"?+scoreMatch[2]:null;cp=scoreMatch[1]==="cp"?+scoreMatch[2]:null;score=mate!==null?`мат ${mate}`:(cp/100).toFixed(2);}
     const best=line.match(/^bestmove ([a-h][1-8][a-h][1-8][qrbn]?|\(none\)|0000)/);
-    if(best){clearTimeout(timer);resolve({move:best[1],score,depth,pv});}
+    if(best){clearTimeout(timer);resolve({move:best[1],score,depth,pv,cp,mate});}
   };
   worker.postMessage("setoption name Skill Level value 20");
   worker.postMessage("setoption name UCI_LimitStrength value false");
   worker.postMessage("position fen "+fen);
-  worker.postMessage("go depth 22 movetime 1600");
+  worker.postMessage(`go depth ${depthLimit} movetime ${time}`);
  });
 }
 async function showBestMove18(){
@@ -8563,6 +8673,46 @@ async function showBestMove18(){
   chessHint={...result,fen,boardKey,san:move.san};
  }catch(error){chessHintError=error.message||"Stockfish 18 недоступен";}
  finally{chessHintLoading=false;if(panel===chessEl)drawChess();}
+}
+const MOVE_GRADES={
+ best:{icon:'★',label:'Лучший ход',color:'#81ad43'},excellent:{icon:'!',label:'Отличный ход',color:'#83a654'},
+ good:{icon:'✓',label:'Хороший ход',color:'#789569'},inaccuracy:{icon:'?!',label:'Неточность',color:'#d6a62c'},
+ mistake:{icon:'?',label:'Ошибка',color:'#df8032'},blunder:{icon:'??',label:'Зевок',color:'#cf4944'},
+ forced:{icon:'□',label:'Вынужденный ход',color:'#7b8794'},mate:{icon:'#',label:'Мат!',color:'#56a6aa'}
+};
+const reviewBadge=grade=>{const g=MOVE_GRADES[grade];return g?`<span class="movebadge" style="--grade:${g.color}" title="${g.label}" aria-label="${g.label}">${g.icon}</span>`:'';};
+const reviewScore=r=>r.mate!==null&&r.mate!==undefined?(r.mate>0?100000:-100000):r.cp;
+function classifyChessMove(before,after,move,{checkmate=false,forced=false}={}){
+ const a=reviewScore(before),b=-reviewScore(after);
+ if(!Number.isFinite(a)||!Number.isFinite(b))throw Error('Движок не вернул оценку');
+ const loss=Math.max(0,a-b),win=cp=>100/(1+Math.exp(-.00368208*cp)),drop=Math.max(0,win(a)-win(b));
+ let grade=checkmate?'mate':forced?'forced':move===before.move?'best':drop>=20?'blunder':drop>=10?'mistake':drop>=5?'inaccuracy':loss<=20?'excellent':'good';
+ return {grade,loss:Math.min(9999,loss),depth:Math.min(before.depth,after.depth)};
+}
+const chessReviews=new Map();
+function ensureChessReview(ch,boardKey){
+ if(!ch.prevFen||!ch.fen||!ch.last||!['play','over'].includes(ch.st))return null;
+ const id=boardKey+'|'+ch.n+'|'+ch.prevFen+'|'+ch.last+'|'+ch.fen;
+ if(chessReviews.has(id))return chessReviews.get(id);
+ const review={};chessReviews.set(id,review);
+ if(chessReviews.size>128)chessReviews.delete(chessReviews.keys().next().value);
+ // Анализ локальный: не задерживает ход и не перезаписывает новую позицию в сетевой партии.
+ (async()=>{
+  try{
+   await loadChess();
+   const previous=new ChessLib(ch.prevFen),position=new ChessLib(ch.fen);
+   const played=previous.move({from:ch.last.slice(0,2),to:ch.last.slice(2,4),promotion:ch.last[4]||'q'});
+   if(!played||previous.fen()!==ch.fen)throw Error('Позиция изменилась');
+   const before=await analyseBestMove18(ch.prevFen,{time:650,depthLimit:18});
+   let after;
+   if(position.isCheckmate())after={mate:0,cp:-100000,depth:before.depth};
+   else if(position.isDraw())after={cp:0,mate:null,depth:before.depth};
+   else after=await analyseBestMove18(ch.fen,{time:650,depthLimit:18});
+   Object.assign(review,classifyChessMove(before,after,ch.last,{checkmate:position.isCheckmate(),forced:new ChessLib(ch.prevFen).moves().length===1}));
+  }catch(error){review.error=true;}
+  finally{if(panel===chessEl&&chessKey===boardKey)drawChess();}
+ })();
+ return review;
 }
 addEventListener("pagehide",()=>sf18Worker?.terminate());
 

@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
+const code=source.slice(source.indexOf('const MOVE_GRADES='),source.indexOf('const chessReviews='));
+const ctx={};vm.createContext(ctx);vm.runInContext(code,ctx);
+const score=cp=>({cp,mate:null,depth:18,move:'e2e4'});
+assert.equal(ctx.classifyChessMove(score(20),score(-20),'e2e4').grade,'best');
+assert.equal(ctx.classifyChessMove(score(20),score(-15),'d2d4').grade,'excellent');
+assert.equal(ctx.classifyChessMove(score(50),score(-20),'d2d4').grade,'good');
+assert.equal(ctx.classifyChessMove(score(50),score(30),'d2d4').grade,'inaccuracy');
+assert.equal(ctx.classifyChessMove(score(50),score(100),'d2d4').grade,'mistake');
+assert.equal(ctx.classifyChessMove(score(50),score(500),'d2d4').grade,'blunder');
+assert.equal(ctx.classifyChessMove(score(50),score(500),'d2d4',{forced:true}).grade,'forced');
+assert.equal(ctx.classifyChessMove({mate:1,depth:18,move:'d8h4'},{mate:0,depth:18},'d8h4',{checkmate:true}).grade,'mate');
+assert.equal(ctx.classifyChessMove(score(-80),score(80),'d2d4').loss,0,'opponent score must be inverted');
+assert.throws(()=>ctx.classifyChessMove({cp:null},score(0),'a2a3'));
+console.log('Chess review: all grades, mate, forced moves and score perspective passed.');
