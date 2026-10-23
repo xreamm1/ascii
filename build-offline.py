@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Собирает ascii-offline.html — игру одним файлом, которая работает без интернета.
-Берёт index.html и подставляет внутрь всё, что он грузит из сети: three.js, шрифт JetBrains Mono, мир для помощников.
+Берёт index.html и подставляет внутрь всё, что он грузит отдельно: three.js, шрифт JetBrains Mono, мир для помощников, QR-библиотеки из lib/ и meme.jpg.
 Нужны python3 и npm (интернет нужен только при сборке)."""
-import base64, glob, json, os, re, subprocess, sys, tempfile
+import base64, glob, json, os, re, shutil, subprocess, sys, tarfile, tempfile
 
 root = os.path.dirname(os.path.abspath(__file__))
 html = open(os.path.join(root, "index.html"), encoding="utf8").read()
 
 with tempfile.TemporaryDirectory() as tmp:
+    # На Windows npm — это npm.cmd, его находит только which; архивы распаковываем самим Python, а не GNU tar
+    npm = shutil.which("npm") or sys.exit("нужен npm (Node.js)")
     for pkg in ("three@0.160.0", "@fontsource/jetbrains-mono@5.3.0"):
-        subprocess.run(["npm", "pack", pkg], cwd=tmp, check=True, capture_output=True)
+        subprocess.run([npm, "pack", pkg], cwd=tmp, check=True, capture_output=True)
     for tgz in glob.glob(os.path.join(tmp, "*.tgz")):
-        subprocess.run(["tar", "xzf", tgz, "-C", tmp, "--one-top-level=" + os.path.basename(tgz)[:-4]], check=True)
+        with tarfile.open(tgz) as t:
+            t.extractall(os.path.join(tmp, os.path.basename(tgz)[:-4]), **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
     three = open(glob.glob(os.path.join(tmp, "three-*", "package", "build", "three.module.min.js"))[0], "rb").read()
     fonts = {}
     for sub in ("latin", "cyrillic"):
@@ -37,9 +40,13 @@ face = "".join('@font-face{font-family:"JetBrains Mono";font-weight:%d;src:url(d
 sub1(r'<link rel="preconnect" href="https://fonts.googleapis.com">\s*<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\s*<link href="https://fonts.googleapis.com/[^"]*" rel="stylesheet">', "<style>" + face + "</style>", True)
 # без Firebase: сетевых лобби нет, остаётся одиночная игра и игра вдвоём напрямую
 sub1(r"const FIREBASE_CONFIG = \{.*?\};", "const FIREBASE_CONFIG = null;  // офлайн-сборка", True)
-# мир для помощников «Вкусно и точка»
+# мир для помощников «Вкусно и точка» и QR-библиотеки (в обычной версии они грузятся из lib/, только когда нужны)
 world = open(os.path.join(root, "worlds", "vkusno-i-tochka-3-etazha.baseAscii"), encoding="utf8").read()
-sub1("<script>\n!function(o,e){", "<script>window.HELPER_WORLD_DATA = %s;</script>\n<script>\n!function(o,e){" % json.dumps(json.loads(world), ensure_ascii=False, separators=(",", ":")))
+libs = "".join("<script>\n%s</script>\n" % open(os.path.join(root, "lib", f), encoding="utf8").read() for f in ("qrcode.js", "jsQR.js"))
+sub1('<script type="module">', '<script>window.HELPER_WORLD_DATA = %s;</script>\n%s<script type="module">' % (json.dumps(json.loads(world), ensure_ascii=False, separators=(",", ":")), libs))
+# картинка-мем внутрь
+meme = base64.b64encode(open(os.path.join(root, "meme.jpg"), "rb").read()).decode()
+sub1('const MEME_SRC = "meme.jpg";', 'const MEME_SRC = "data:image/jpeg;base64,%s";' % meme)
 sub1("<title>ASCII Baseplate</title>", "<title>ASCII Baseplate (офлайн)</title>")
 open(os.path.join(root, "ascii-offline.html"), "w", encoding="utf8").write(html)
 print("готово: ascii-offline.html,", round(len(html) / 1e6, 2), "МБ")

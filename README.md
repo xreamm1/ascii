@@ -44,6 +44,8 @@
 * `index.html` — игра;
 * `sw.js`, `manifest.webmanifest`, `icon-*.png` — установка на телефон и работа без интернета;
 * `build-offline.py` — собирает `ascii-offline.html`;
+* `lib/` — библиотеки QR (грузятся, только когда открываешь игру без интернета), `meme.jpg` — картинка для пасхалки в чате; лицензии — `THIRD_PARTY_NOTICES.md`;
+* `database.rules.json`, `firebase.json` — правила базы Firebase. Выложить: `npm i -g firebase-tools`, `firebase login`, `firebase deploy --only database --project ascii-baseplate`. Сначала проверь их в эмуляторе или в Rules Playground консоли Firebase;
 * `worlds/` — готовые миры `.baseAscii` (импорт: пауза → `[ импорт мира ]`). `mega-labirint.baseAscii` — лабиринт 111×111: бордовые прочные стены высотой 7 (ломает только разработчик). Сверху крыша, пол из блоков (всё прочное). Вход (зелёные неоновые столбы, «ВХОД») в 4 блоках к востоку от точки появления, выход (красные столбы, «ВЫХОД» и золотая башня) в противоположном углу. Около 62 тысяч блоков.
 
 ## Хотбар, инвентарь и редстоун
