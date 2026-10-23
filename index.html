@@ -148,7 +148,7 @@
   .help { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 4px 0; }
   .help b { color: #ffd34d; font-weight: 700; white-space: nowrap; }
   .help span { color: #ddd; }
-  #fps { position: fixed; right: 8px; bottom: 6px; z-index: 30; color: #8f8; font-size: 12px; pointer-events: none; display: none; }
+  #fps { position: fixed; left: 16px; top: 34px; z-index: 31; color: #fff; font-size: 14px; pointer-events: none; display: none; text-shadow: 0 0 3px #000; }
   #mine { position: fixed; left: 50%; top: calc(50% + 14px); transform: translateX(-50%); z-index: 30; color: #fff; pointer-events: none; display: none; font-size: 13px; }
   .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   .gx { margin-top: 8px; border-top: 1px solid #fff; padding-top: 2px; font-size: 0.85em; }
@@ -411,7 +411,7 @@ const saveBar = () => { if (bag) return; try { localStorage.setItem("bar", JSON.
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 // Настройки игрока (пауза → настройки): помним между запусками
-const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false };
+const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false, uncap: false, shadows: true };
 const settings = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem("settings")) || {}; } catch {} return { ...SETTINGS_DEF, ...s }; })();
 const saveSettings = () => { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch {} };
 document.documentElement.style.setProperty("--btnk", settings.btn);
@@ -613,7 +613,7 @@ const stick = { x: 0, y: 0 };  // наклон джойстика на теле�
 
 THREE.ColorManagement.enabled = false;  // цвета как есть, без гамма-преобразований
 
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance" });  // на ноутбуках с двумя видеокартами — мощная
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -727,13 +727,22 @@ const bb = (base, spots = [], frame) => pixelTex(p => {
   if (frame) for (let i = 0; i < 16; i++) { p(i, 0, frame[0]); p(0, i, frame[0]); p(i, 15, frame[1]); p(15, i, frame[1]); }
 });
 const STONE_SPOTS = [[2, 3, 3, 2, "#7f7f7f"], [10, 1, 2, 2, "#999999"], [6, 9, 4, 2, "#7f7f7f"], [12, 11, 3, 2, "#999999"], [1, 12, 2, 2, "#999999"]];
-const ore = (a, b) => bb("#8c8c8c", [...STONE_SPOTS, [3, 3, 2, 2, a], [4, 4, 1, 1, b], [10, 6, 3, 2, a], [11, 6, 1, 1, b], [5, 11, 2, 2, a], [6, 11, 1, 1, b], [12, 12, 2, 2, a]]);
+const ORE_SPOTS = (a, b) => [[3, 3, 2, 2, a], [4, 4, 1, 1, b], [10, 6, 3, 2, a], [11, 6, 1, 1, b], [5, 11, 2, 2, a], [6, 11, 1, 1, b], [12, 12, 2, 2, a]];
+const ore = (a, b) => bb("#8c8c8c", [...STONE_SPOTS, ...ORE_SPOTS(a, b)]);
+// Глубинный сланец: тёмный, с горизонтальными полосами
+const DEEP_SPOTS = [[0, 3, 16, 1, "#3d3d45"], [0, 8, 16, 1, "#525260"], [0, 12, 16, 1, "#3d3d45"], [4, 5, 3, 1, "#525260"], [10, 14, 3, 1, "#525260"]];
+const dsOre = (a, b) => bb("#47474f", [...DEEP_SPOTS, ...ORE_SPOTS(a, b)]);
 const BLOCK_TEX = {
   stone: bb("#8c8c8c", STONE_SPOTS),
   ore_iron: ore("#d9a988", "#f2d2bb"),
   ore_gold: ore("#f5c932", "#fff08a"),
   ore_red: ore("#e02020", "#ff7070"),
   ore_diamond: ore("#3fe0d6", "#b8fff9"),
+  deepslate: bb("#47474f", DEEP_SPOTS),
+  ds_iron: dsOre("#d9a988", "#f2d2bb"),
+  ds_gold: dsOre("#f5c932", "#fff08a"),
+  ds_red: dsOre("#e02020", "#ff7070"),
+  ds_diamond: dsOre("#3fe0d6", "#b8fff9"),
   wood: bb("#8a6235", [[2, 0, 1, 16, "#6f4c28"], [7, 0, 2, 16, "#6f4c28"], [12, 0, 1, 16, "#6f4c28"], [4, 3, 1, 5, "#9b7140"], [10, 9, 1, 5, "#9b7140"]]),
   grass: bb("#6cb350", [[2, 2, 2, 1, "#5fa246"], [9, 5, 3, 1, "#7cc35e"], [4, 10, 2, 1, "#5fa246"], [12, 12, 2, 1, "#7cc35e"], [13, 2, 1, 1, "#5fa246"]]),
   sand: bb("#e6d7a0", [[3, 4, 2, 1, "#d8c88e"], [10, 2, 1, 1, "#d8c88e"], [7, 10, 2, 1, "#efe2b4"], [12, 13, 2, 1, "#d8c88e"]]),
@@ -1004,6 +1013,7 @@ function edit(e, replace = false) {
   }
   if (e.op === "unblock") {
     const m = blocks.get(key(e.x, e.y, e.z));
+    if (m?.userData.edit.k === "obsidian") for (const c of portalCellsNear(e.x, e.y, e.z)) removeSolid(blocks.get(key(...c)));  // рамка сломана — портал гаснет у всех
     if (gen && m?.userData.edit.g) gen.removed.add(key(e.x, e.y, e.z));  // сломали сгенерированный блок — запоминаем, чтобы он не вырос снова
     removeSolid(m);
   }
@@ -1099,6 +1109,7 @@ function edit(e, replace = false) {
     if (!m) {
       const mesh = new THREE.Mesh(cartGeo, vmaterial(plainTex, 0));
       mesh.position.set(e.x, e.y, e.z);
+      mesh.rotation.order = "YXZ";  // курс, потом наклон на подъёме
       mesh.rotation.y = e.yaw || 0;
       addSolid(mesh, e);
       carts.set(e.id, mesh);
@@ -2694,14 +2705,14 @@ function placeCell(hit, item) {
 }
 
 // Клетка, куда встанет новый блок: соседняя с поверхностью под прицелом
-function blockCell(hit) {
+function blockCell(hit, allowSelf = false) {  // allowSelf — плоское (рельсы) можно класть и в свою клетку
   const p = hit.point.clone().addScaledVector(hit.normal, 0.5);
   const [x, y, z] = [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
   if (y < -DEPTH || (y < 0 && !dug.has(`${x},${y},${z}`))) return null;
   // Нельзя ставить блок внутрь себя
   const overlapsPlayer = x < px + RADIUS && x + 1 > px - RADIUS && z < pz + RADIUS && z + 1 > pz - RADIUS &&
                          y < feet + bodyH && y + 1 > feet;
-  return overlapsPlayer ? null : [x, y, z];
+  return overlapsPlayer && !allowSelf ? null : [x, y, z];
 }
 
 function updateGhosts() {
@@ -2776,7 +2787,9 @@ function useInner(action, screen) {
       if (t.op === "animal" && gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 20); drawHp(); addChat("* ты съел животное"); }
       if (bag && !eaten) give(harvest(t));
       burst(hit.point, t.c ?? 11, 10);
+      const portal = t.k === "obsidian" ? portalCellsNear(t.x, t.y, t.z) : [];
       share(undo(hit.object.userData.edit));
+      if (portal.length) online?.sendEdits(portal.map(([x, y, z]) => ({ op: "unblock", x, y, z })));  // и из базы, чтобы новые игроки не увидели старый портал
     }
     drawHotbar();
     return;
@@ -2848,8 +2861,8 @@ function useInner(action, screen) {
   // Вагонетка встаёт на рельсы под прицелом (или на рельсы над блоком, в который целимся)
   if (HOTBAR[slot] === "Вагонетка" && hit) {
     const cell = target && [[target.x, target.y, target.z], [target.x, target.y + 1, target.z]].find(c => isRail(rsRec.get(key(...c))));
-    if (!cell) toast("вагонетку ставят на рельсы");
-    else share({ op: "cart", id: `${myId}-${idCount++}`, x: cell[0] + 0.5, y: cell[1] + 0.06, z: cell[2] + 0.5, yaw: 0, o: myId });
+    if (!cell && hit.normal.y > 0.5) share({ op: "cart", id: `${myId}-${idCount++}`, x: +hit.point.x.toFixed(2), y: +hit.point.y.toFixed(2), z: +hit.point.z.toFixed(2), yaw: +(yaw + Math.PI).toFixed(2), o: myId });
+    else if (cell) share({ op: "cart", id: `${myId}-${idCount++}`, x: cell[0] + 0.5, y: cell[1] + 0.06, z: cell[2] + 0.5, yaw: 0, o: myId });
   }
   // Текст: запоминаем, куда ставить, и спрашиваем, что написать
   if (HOTBAR[slot] === "Текст") {
@@ -2898,8 +2911,16 @@ function selectSlot(n) {
   drawHotbar();
 }
 
+let lastJump = 0;
+function jumpTap() {  // два прыжка подряд (до 0,3 с) — включить или выключить полёт
+  if (gameMode !== "creative" || online || camMode !== "first") return;
+  const now = performance.now();
+  if (now - lastJump < 300) { flying = !flying; vy = 0; lastJump = 0; addChat(flying ? "* полёт: пробел — вверх, Ctrl — вниз, два прыжка — выключить" : "* полёт выключен"); }
+  else lastJump = now;
+}
 addEventListener("keydown", e => {
   if (typing || !inGame) return;
+  if (e.code === "Space" && !e.repeat && !menuOpen) jumpTap();
   if (e.ctrlKey) e.preventDefault();  // Ctrl — присед, а не сочетания браузера вроде Ctrl+S или Ctrl+D
   keys[e.code] = true;
   if (e.code.startsWith("Digit")) {
@@ -2914,7 +2935,8 @@ addEventListener("keydown", e => {
   }
   if (e.code === "KeyT" && !e.repeat && !menuOpen && !typing && (isAdmin() || !online)) { e.preventDefault(); askTeleport(); }
   if (e.code === "KeyR" && !e.repeat) startReload();
-  if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
+  if (e.code === "KeyQ" && !e.repeat && !menuOpen) throwItem(e.ctrlKey);  // Q — выкинуть, как в майнкрафте; Ctrl+Q — всю стопку
+  if (e.code === "KeyX" && !e.repeat) toggleWeaponPage();
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "KeyP" && !e.repeat) toggleAdmin();
   if (e.code === "KeyG" && !e.repeat && !menuOpen) throwItem(e.shiftKey);  // G — выкинуть один, Shift+G — всю стопку
@@ -3088,7 +3110,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
   button.addEventListener("touchstart", e => {
     e.preventDefault();
     button.classList.add("active");
-    if (action === "jump") keys.Space = true;
+    if (action === "jump") { keys.Space = true; jumpTap(); }
     if (action === "crouch") keys.ControlLeft = true;
     if (action === "nitro") keys.ShiftLeft = true;
     if (action === "color") togglePalette();
@@ -4186,25 +4208,27 @@ function showAnnouncement(text, by) {
 }
 
 // ---------- Координаты в углу экрана (админам) и телепорт по ним ----------
+// Высота как в майнкрафте: плита (поверхность) — Y 60, ниже Y 0 — глубинный сланец, дно (бедрок) — Y −41
+const Y_SHOW = 60;
 const coordsEl = Object.assign(document.createElement("pre"), { id: "coords" });
-coordsEl.style.cssText = "position:fixed;left:16px;top:56px;z-index:20;margin:0;display:none;cursor:pointer;color:#fff;background:rgba(0,0,0,.45);padding:2px 6px";
+coordsEl.style.cssText = "position:fixed;left:16px;top:60px;z-index:20;margin:0;display:none;cursor:pointer;color:#fff;background:rgba(0,0,0,.45);padding:2px 6px";
 document.body.append(coordsEl);
 let lastCoords = "";
 function updateCoords() {
   const show = inGame && (isAdmin() || !online) && camMode !== "drone";
-  const text = show ? `X ${px.toFixed(1)}  Y ${feet.toFixed(1)}  Z ${pz.toFixed(1)}\n${TOUCH ? "нажми" : "T"} — телепорт` : "";
+  const text = show ? `X ${px.toFixed(1)}  Y ${(feet + Y_SHOW).toFixed(1)}  Z ${pz.toFixed(1)}\n${TOUCH ? "нажми" : "T"} — телепорт` : "";
   if (text !== lastCoords) { lastCoords = text; coordsEl.textContent = text; coordsEl.style.display = show ? "block" : "none"; }
 }
 // Принимает «x y z» или «x z» (тогда встаём на землю)
 function askTeleport() {
   if (!isAdmin() && online) return;
-  ask("ТЕЛЕПОРТ: x y z", `${Math.round(px)} ${Math.round(feet)} ${Math.round(pz)}`, 40).then(text => {
+  ask("ТЕЛЕПОРТ: x y z", `${Math.round(px)} ${Math.round(feet + Y_SHOW)} ${Math.round(pz)}`, 40).then(text => {
     const n = String(text || "").split(/[\s,;]+/).filter(Boolean).map(Number);
     if (n.length < 2 || n.length > 3 || !n.every(v => Number.isFinite(v) && Math.abs(v) < 5000)) return text && addChat("* не понял координаты: нужно x y z");
     px = n[0]; pz = n[n.length - 1];
-    feet = n.length === 3 ? n[1] : groundHeight(px, 300, pz);
+    feet = n.length === 3 ? n[1] - Y_SHOW : groundHeight(px, 300, pz);
     vy = 0;
-    addChat(`* телепорт: ${px.toFixed(1)} ${feet.toFixed(1)} ${pz.toFixed(1)}`);
+    addChat(`* телепорт: ${px.toFixed(1)} ${(feet + Y_SHOW).toFixed(1)} ${pz.toFixed(1)}`);
   });
 }
 coordsEl.addEventListener("click", askTeleport);
@@ -4851,6 +4875,14 @@ function startGame(code, name, me) {
   yaw = 0;
   hp = MAX_HP; dead = false;
   drawHp();
+  // Выживание в лобби или без интернета — по-настоящему: вещи считаются, блоки ломаются не сразу (раньше там всё было бесконечным)
+  if (code && gameMode === "survival") {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem("bag:" + code)); } catch {}
+    bag = saved?.bag && typeof saved.bag === "object" ? saved.bag : {};
+    HOTBAR.fill(null);
+    if (Array.isArray(saved?.bar)) saved.bar.forEach((n, i) => { if (i < BAR_SIZE && ITEMS.includes(n)) HOTBAR[i] = n; });
+  }
   drawHotbar();
   fpsEl.style.display = settings.fps ? "block" : "none";
   firstHelp();
@@ -5283,27 +5315,50 @@ function updateSelfFigure(dt) {
 let HELL_X = 1500, HELL_BORDER = 1000; const HELL_Z = 1500;  // в бесконечном мире ад уезжает далеко (setInfinite)
 const inHell = () => px > HELL_BORDER;
 let hellBuilt = false, lastOver = { x: SIZE / 2, y: 0, z: SIZE / 2 }, portalT = 0, portalLock = false, wasHell = false;
+// Портал любого размера, как в майнкрафте: внутри пусто от 2×3 до 21×21, вокруг — обсидиан (углы не обязательны).
+// Ищем от клетки рядом с подожжённым обсидианом: заливаем пустоту в плоскости рамки и проверяем, что это ровный прямоугольник
 function findPortal(bx, by, bz) {
   const obs = (x, y, z) => blocks.get(key(x, y, z))?.userData.edit.k === "obsidian";
   for (const axis of ["x", "z"]) {
-    const at = (u, y) => axis === "x" ? [u, y, bz] : [bx, y, u], c = axis === "x" ? bx : bz;
-    for (let u0 = c - 3; u0 <= c + 1; u0++) for (let y0 = by - 4; y0 <= by + 1; y0++) {
-      const frame = [];
-      for (let u = u0; u <= u0 + 1; u++) { frame.push(at(u, y0 - 1), at(u, y0 + 3)); }
-      for (let y = y0; y <= y0 + 2; y++) { frame.push(at(u0 - 1, y), at(u0 + 2, y)); }
-      if (!frame.some(([x, y, z]) => x === bx && y === by && z === bz)) continue;
-      if (!frame.every(([x, y, z]) => obs(x, y, z))) continue;
-      const inner = [];
-      for (let u = u0; u <= u0 + 1; u++) for (let y = y0; y <= y0 + 2; y++) inner.push(at(u, y));
-      if (inner.some(([x, y, z]) => blocks.has(key(x, y, z)))) continue;
-      return { inner, r: axis === "x" ? 0 : 1 };
+    const at = (u, y) => axis === "x" ? [u, y, bz] : [bx, y, u], c0 = axis === "x" ? bx : bz;
+    for (const [du, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {  // и по диагонали: от угла рамки до пустоты только так
+      const seen = new Set(), q = [[c0 + du, by + dy]], cells = [];
+      let ok = true;
+      while (q.length && ok) {
+        const [u, y] = q.pop(), k = u + "," + y;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const [x, yy, z] = at(u, y);
+        if (obs(x, yy, z)) continue;  // рамка
+        if (yy < 0 || blocks.has(key(x, yy, z)) || cells.length >= 441) { ok = false; break; }  // внутри что-то стоит или рамка не замкнута
+        cells.push([u, y]);
+        q.push([u + 1, y], [u - 1, y], [u, y + 1], [u, y - 1]);
+      }
+      if (!ok || !cells.length) continue;
+      const us = cells.map(c => c[0]), ys = cells.map(c => c[1]);
+      const u0 = Math.min(...us), u1 = Math.max(...us), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      if (cells.length !== (u1 - u0 + 1) * (y1 - y0 + 1) || u1 - u0 < 1 || y1 - y0 < 2) continue;  // не прямоугольник или меньше 2×3
+      return { inner: cells.map(([u, y]) => at(u, y)), r: axis === "x" ? 0 : 1 };
     }
   }
   return null;
 }
+// Сломали обсидиан рамки — весь портал рядом гаснет (все клетки портала, связанные друг с другом)
+function portalCellsNear(x, y, z) {
+  const out = [], seen = new Set(), q = FACE_DIR.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz]);
+  while (q.length && out.length < 500) {
+    const c = q.pop(), k = key(...c);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (blocks.get(k)?.userData.edit.k !== "portal") continue;
+    out.push(c);
+    for (const [dx, dy, dz] of FACE_DIR) q.push([c[0] + dx, c[1] + dy, c[2] + dz]);
+  }
+  return out;
+}
 function lightPortal(e) {
   const f = findPortal(e.x, e.y, e.z);
-  if (!f) return addChat("* для портала нужна обсидиановая рамка 4×5 (внутри пусто 2×3)");
+  if (!f) return addChat("* для портала нужна замкнутая обсидиановая рамка от 4×5 (внутри пусто, от 2×3 до 21×21)");
   for (const [x, y, z] of f.inner) share({ op: "block", x, y, z, c: 7, k: "portal", r: f.r });
   addChat("* портал открыт");
 }
@@ -5383,12 +5438,15 @@ function settingsHtml(btn) {
     h += `<div class="gg"><span class="gl">${esc(name)}: ${fmt(settings[k])}</span>${btn("−", "set-:" + k, "small")}${btn("+", "set+:" + k, "small")}</div>`;
   }
   if (!TOUCH) h += btn(`мышь: ${settings.swap ? "левая ломает, правая ставит (как в майнкрафте)" : "левая ставит, правая ломает"}`, "setswap");
-  return h + btn(`показывать FPS: ${settings.fps ? "да" : "нет"}`, "setfps") + btn("назад", "setback");
+  return h + btn(`показывать FPS: ${settings.fps ? "да" : "нет"}`, "setfps") + btn(`FPS: ${settings.uncap ? "без ограничения" : "как у экрана"}`, "setuncap") +
+    btn(`тени: ${settings.shadows ? "да" : "нет (быстрее)"}`, "setshadows") + btn("назад", "setback");
 }
 // Нажали кнопку настроек: меняем, применяем, запоминаем. false — это была не кнопка настроек
 function applySetting(act) {
   if (act === "setswap") settings.swap = !settings.swap;
   else if (act === "setfps") settings.fps = !settings.fps;
+  else if (act === "setuncap") { settings.uncap = !settings.uncap; setFrameLoop(); }
+  else if (act === "setshadows") { settings.shadows = !settings.shadows; applyShadows(); }
   else if (act.startsWith("set-:") || act.startsWith("set+:")) {
     const row = SETTING_ROWS.find(r => r[0] === act.slice(5));
     if (!row) return false;
@@ -5403,10 +5461,10 @@ function applySetting(act) {
   sfx("click");
   return true;
 }
-const HELP_PC = [["W A S D", "ходить"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
+const HELP_PC = [["W A S D", "ходить"], ["Пробел ×2", "летать (творческий, одиночная игра)"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
   ["ЛКМ / ПКМ", "поставить / сломать (поменять — в настройках)"], ["1–9, колесо", "выбрать слот"], ["E", "инвентарь и крафт; рядом с транспортом — сесть"],
-  ["F", "цвет блоков"], ["Q", "следующее оружие"], ["R", "перезарядка"], ["C", "зум (колесо с C — сильнее)"], ["Enter", "чат"], ["T", "телепорт по координатам"],
-  ["G / Shift+G", "выкинуть предмет / всю стопку"], ["H", "это окно"], ["Esc", "пауза"]];
+  ["F", "цвет блоков"], ["Q / Ctrl+Q", "выкинуть предмет / всю стопку"], ["X", "следующее оружие"], ["R", "перезарядка"], ["C", "зум (колесо с C — сильнее)"], ["Enter", "чат"], ["T", "телепорт по координатам"],
+  ["H", "это окно"], ["Esc", "пауза"]];
 const HELP_TOUCH = [["левая половина", "джойстик — ходить"], ["правая половина", "вести пальцем — смотреть"], ["короткое нажатие", "поставить предмет"],
   ["удержание", "сломать (в выживании — держать, пока не сломается)"], ["ИНВ", "инвентарь и крафт"], ["ВЫКИНУТЬ", "выкинуть предмет из руки"], ["доска «Шахматы»", "нажми на неё — партия с игроком или ботом"], ["ЦВЕТ", "цвет блоков"], ["ПРЫЖОК, СЕСТЬ, БЕГ", "движение"],
   ["МЕНЮ", "пауза, настройки, это окно"]];
@@ -6571,7 +6629,7 @@ function rsTick() {
       }
       case "rs_rail": case "rs_prail": {
         s.shape = railShape(e);
-        if (r.k === "rs_prail") s.pw = rsPowered(x, y, z);
+        if (r.k === "rs_prail") s.direct = rsPowered(x, y, z);
         break;
       }
       case "rs_dispenser": {
@@ -6599,6 +6657,21 @@ function rsTick() {
         break;
       }
     }
+  }
+  // Энергорельсы, как в майнкрафте: сигнал идёт по соседним энергорельсам своей линии (и на подъёмах) ещё на 8 штук
+  const prails = [...rsRec.values()].filter(r => r.k === "rs_prail");
+  if (prails.length) {
+    const lit = new Set(), q = prails.filter(r => r.s.direct).map(r => [r, 0]);
+    for (const [r] of q) lit.add(r);
+    for (let i = 0; i < q.length; i++) {
+      const [r, d] = q[i];
+      if (d >= 8) continue;
+      for (const side of railAxis(r.e)) for (const dy of [0, 1, -1]) {
+        const n = rsRec.get(key(r.e.x + RSD[side][0], r.e.y + dy, r.e.z + RSD[side][2]));
+        if (n?.k === "rs_prail" && !lit.has(n) && railAxis(n.e).includes(side)) { lit.add(n); q.push([n, d + 1]); }
+      }
+    }
+    for (const r of prails) r.s.pw = lit.has(r);
   }
   for (const r of rsRec.values()) rsPaint(r);
 }
@@ -6629,7 +6702,7 @@ function rsPress(x, y, z) {
   if (r?.k === "rs_button") r.s.until = rsTickN + 10;
 }
 function rsPlace(item, hit) {
-  const cell = blockCell(hit);
+  const cell = blockCell(hit, item.k === "rs_rail" || item.k === "rs_prail");
   if (!cell) return;
   const [x, y, z] = cell;
   if (blocks.has(key(x, y, z)) || (item.k === "door" && blocks.has(key(x, y + 1, z)))) return;
@@ -7124,11 +7197,15 @@ function saveWorld(manual) {
     .then(() => manual && addChat("* мир сохранён"), err => addChat(`* не удалось сохранить мир: ${err?.message || err}`));
 }
 // Сам: раз в 30 секунд, если что-то изменилось или игрок ушёл с места, и когда вкладку сворачивают или закрывают
+// Вещи в сетевом выживании — у самого игрока (в браузере), по коду лобби
+const saveLobbyBag = () => { if (!currentWorld && lobbyCode && bag) try { localStorage.setItem("bag:" + lobbyCode, JSON.stringify({ bag, bar: HOTBAR })); } catch {} };
+addEventListener("pagehide", saveLobbyBag);
 function autosave(dt) {
-  if (!currentWorld || worldLoading) return;
   saveTimer += dt;
   if (saveTimer < 30) return;
   saveTimer = 0;
+  saveLobbyBag();
+  if (!currentWorld || worldLoading) return;
   if (worldDirty || Math.hypot(px - savedAt[0], feet - savedAt[1], pz - savedAt[2]) > 2) saveWorld();
 }
 document.addEventListener("visibilitychange", () => { if (document.hidden) saveWorld(); });
@@ -7238,7 +7315,8 @@ function dropFor(e) {
 function harvest(e) {
   if (needTier(e) > pickTier()) { toast(pickTier() ? "нужна кирка получше" : "нужна кирка"); return null; }
   if (!isTerr(e)) return dropFor(e);
-  return { ore_iron: "Металл", ore_gold: "Золото", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Камень" }[e.k] ?? digDrop(e.y);
+  return { ore_iron: "Металл", ore_gold: "Золото", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Камень",
+    ds_iron: "Металл", ds_gold: "Золото", ds_diamond: "Алмаз", ds_red: "Редстоун", deepslate: "Камень" }[e.k] ?? digDrop(e.y);
 }
 // Из ямы: сверху земля и песок, глубже камень, ещё глубже руда (для старых миров, где земля без руды)
 function digDrop(y) {
@@ -7251,7 +7329,7 @@ function digDrop(y) {
   return y > -4 ? "Земля" : "Камень";
 }
 // Сколько секунд ломать рукой
-const HARD = { ore_iron: 1.8, ore_red: 1.8, ore_gold: 2, ore_diamond: 2.6, dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
+const HARD = { deepslate: 2, ds_iron: 2.6, ds_red: 2.6, ds_gold: 2.8, ds_diamond: 3.4, ore_iron: 1.8, ore_red: 1.8, ore_gold: 2, ore_diamond: 2.6, dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
   gold: 1.6, diamond: 2.5, obsidian: 6, glass: 0.3, ice: 0.4, netherrack: 0.5, glowstone: 0.4 };
 function hardness(hit) {
   if (hit.object === plate) return 0.5;
@@ -7410,85 +7488,156 @@ function updateSliding(dt) {
 
 // ---------- Рельсы и вагонетка ----------
 const isRail = r => r?.k === "rs_rail" || r?.k === "rs_prail";
-// Куда ведут рельсы в клетке: две стороны из HDIR (0 — +x, 1 — −x, 4 — +z, 5 — −z). Прямо, если можно; энергорельсы не поворачивают
+const railAt = (x, y, z) => { const r = rsRec.get(key(x, y, z)); return isRail(r) ? r : null; };
+const railAxis = e => e.r === 1 ? [0, 1] : [4, 5];  // как поставили: вдоль x (r = 1) или вдоль z
+// Куда ведут рельсы: [один конец, другой, сторона подъёма или −1]. Рельсы лежат так, как их поставили (по взгляду),
+// и сворачивают, только если с одной стороны своя линия, а сбоку — рельсы, которые смотрят прямо сюда.
+// Подъём: на следующей клетке по линии и на блок выше лежат рельсы той же оси
 function railShape(e) {
-  const n = HDIR.filter(d => isRail(rsRec.get(key(e.x + RSD[d][0], e.y, e.z + RSD[d][2]))));
-  if (n.includes(0) && n.includes(1)) return [0, 1];
-  if (n.includes(4) && n.includes(5)) return [4, 5];
-  if (n.length === 0) return e.r === 1 ? [0, 1] : [4, 5];
-  if (n.length === 1 || e.k === "rs_prail") return [n[0], n[0] ^ 1];
-  return [n[0], n[1]];
+  const own = railAxis(e);
+  for (const d of own) { const up = railAt(e.x + RSD[d][0], e.y + 1, e.z + RSD[d][2]); if (up && railAxis(up.e).includes(d)) return [d ^ 1, d, d]; }
+  if (e.k === "rs_prail") return [...own, -1];  // энергорельсы не поворачивают
+  const facing = d => { const n = railAt(e.x + RSD[d][0], e.y, e.z + RSD[d][2]) || railAt(e.x + RSD[d][0], e.y - 1, e.z + RSD[d][2]); return n && railAxis(n.e).includes(d); };
+  const ownConn = own.filter(facing), side = HDIR.filter(d => !own.includes(d) && facing(d));
+  if (ownConn.length === 1 && side.length) return [ownConn[0], side[0], -1];
+  return [...own, -1];
 }
-// Модель: для каждой стороны — половинка пути от центра к краю (шпалы и два рельса). Прямые — две половинки, поворот — уголок
+// Модель: для каждой стороны — половинка пути от центра к краю (шпалы и два рельса). Прямые — две половинки, поворот — уголок.
+// Подъём — прямые рельсы, наклонённые на 45° (вытянуты в √2, чтобы дойти от пола клетки до пола следующей)
 const railGeo = (shape, k, on) => rsGeo(`rail${shape.join("")}${k}${on}`, () => {
   const rail = k === "rs_prail" ? (on ? 0xffd34d : 0xb08a2a) : 0x9a9aa2, parts = [];
-  for (const d of new Set(shape)) {
+  for (const d of new Set(shape.slice(0, 2))) {
     const sx = RSD[d][0], sz = RSD[d][2], ax = sx !== 0;  // ax — путь вдоль x
     for (const t of [0.12, 0.37]) parts.push(...P(0x6b4a22, ax ? box(0.14, 0.05, 0.84, sx * t, -0.47, 0) : box(0.84, 0.05, 0.14, 0, -0.47, sz * t)));  // шпалы
     for (const off of [-0.3, 0.3]) parts.push(...P(rail, ax ? box(0.56, 0.05, 0.07, sx * 0.22, -0.43, off) : box(0.07, 0.05, 0.56, off, -0.43, sz * 0.22)));
     if (k === "rs_prail") parts.push(...P(on ? 0xff3030 : 0x5a1a1a, ax ? box(0.5, 0.02, 0.08, sx * 0.25, -0.44, 0) : box(0.08, 0.02, 0.5, 0, -0.44, sz * 0.25)));
   }
-  return mergeParts(parts);
+  const g = mergeParts(parts), up = shape[2];
+  if (up >= 0) {
+    const sx = RSD[up][0], sz = RSD[up][2];
+    g.translate(0, 0.45, 0);
+    if (sx) g.scale(Math.SQRT2, 1, 1).rotateZ(sx * Math.PI / 4); else g.scale(1, 1, Math.SQRT2).rotateX(-sz * Math.PI / 4);
+  }
+  return g;
 });
 const cartGeo = mergeParts([
   ...P(0x6f7378, box(0.9, 0.08, 1.2, 0, 0.18, 0), box(0.06, 0.5, 1.2, -0.42, 0.45, 0), box(0.06, 0.5, 1.2, 0.42, 0.45, 0), box(0.9, 0.5, 0.06, 0, 0.45, -0.57), box(0.9, 0.5, 0.06, 0, 0.45, 0.57)),
   ...P(0x8d9196, box(0.92, 0.04, 0.08, 0, 0.7, -0.57), box(0.92, 0.04, 0.08, 0, 0.7, 0.57), box(0.08, 0.04, 1.2, -0.42, 0.7, 0), box(0.08, 0.04, 1.2, 0.42, 0.7, 0)),
   ...P(0x2a2a2a, box(0.1, 0.2, 0.2, -0.4, 0.1, -0.35), box(0.1, 0.2, 0.2, 0.4, 0.1, -0.35), box(0.1, 0.2, 0.2, -0.4, 0.1, 0.35), box(0.1, 0.2, 0.2, 0.4, 0.1, 0.35))]);
 const CART_MAX = 10, CART_PUSH = 5;
-// Положение на пути по клетке: от середины входной стороны через центр к середине выходной. t — от 0 до 1
+// Путь по клетке — плавная дуга (квадратичная кривая Безье) от середины входной стороны через центр к середине выходной:
+// на прямых это отрезок, на поворотах вагонетка разворачивается постепенно. t — от 0 до 1. На подъёме высота растёт вдоль пути
 function cartPoint(c, out) {
-  const [x, y, z] = c.cell, a = c.t < 0.5 ? RSD[c.ent] : RSD[c.ex], k = c.t < 0.5 ? 0.5 - c.t : c.t - 0.5;
-  return out.set(x + 0.5 + a[0] * k, y + 0.06, z + 0.5 + a[2] * k);
+  const [x, y, z] = c.cell, E = RSD[c.ent], X = RSD[c.ex], t = c.t, a = (1 - t) * (1 - t) * 0.5, b = t * t * 0.5;
+  const h = c.up === c.ex ? t : c.up === c.ent ? 1 - t : 0;
+  return out.set(x + 0.5 + E[0] * a + X[0] * b, y + 0.06 + h, z + 0.5 + E[2] * a + X[2] * b);
 }
-const cartDir = c => { const a = c.t < 0.5 ? RSD[c.ent] : RSD[c.ex], s = c.t < 0.5 ? -1 : 1; return [a[0] * s, a[2] * s]; };  // куда едем сейчас
+const cartDir = c => {  // касательная к дуге: куда едем сейчас
+  const E = RSD[c.ent], X = RSD[c.ex], dx = -(1 - c.t) * E[0] + c.t * X[0], dz = -(1 - c.t) * E[2] + c.t * X[2], l = Math.hypot(dx, dz) || 1;
+  return [dx / l, dz / l];
+};
+const cartReverse = c => { [c.ent, c.ex] = [c.ex, c.ent]; c.t = 1 - c.t; };
 function cartInit(m) {
   const cell = [Math.floor(m.position.x), Math.floor(m.position.y + 0.2), Math.floor(m.position.z)], r = rsRec.get(key(...cell));
   if (!isRail(r)) return null;
   const sh = r.s.shape || railShape(r.e);
-  return { cell, ent: sh[0], ex: sh[1], t: 0.5, v: 0, send: 0 };
+  return { cell, ent: sh[0], ex: sh[1], up: sh[2], t: 0.5, v: 0, send: 0 };
+}
+// Следующая клетка пути: на подъёме — на блок выше, иначе на том же уровне, а если там пусто — спуск на рельсы ниже
+function cartNext(c) {
+  const dx = RSD[c.ex][0], dz = RSD[c.ex][2], entry = c.ex ^ 1, [x, y, z] = c.cell;
+  for (const ny of c.up === c.ex ? [y + 1] : [y, y - 1]) {
+    const r = railAt(x + dx, ny, z + dz), sh = r && (r.s.shape || railShape(r.e));
+    if (sh && sh.slice(0, 2).includes(entry) && (ny === y || ny === y + 1 || sh[2] === entry)) return { cell: [x + dx, ny, z + dz], sh, entry };
+  }
+  return null;
 }
 const cartTmp = new THREE.Vector3();
+// Без рельсов вагонетка просто стоит на земле: седок может её толкать (медленно), она падает, если под ней пусто
+function stepFreeCart(m, dt) {
+  const u = m.userData, f = u.fv ??= { vx: 0, vz: 0, vy: 0 };
+  if (m === drivingCart) {
+    const push = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+    f.vx += -Math.sin(yaw) * push * 5 * dt; f.vz += -Math.cos(yaw) * push * 5 * dt;
+  }
+  const k = Math.max(0, 1 - dt * 2.5);
+  f.vx *= k; f.vz *= k;
+  const p = m.position, nx = p.x + f.vx * dt, nz = p.z + f.vz * dt;
+  if (!hitsBlock(nx, p.y + 0.1, p.z, 0.7)) p.x = nx; else f.vx = 0;
+  if (!hitsBlock(p.x, p.y + 0.1, nz, 0.7)) p.z = nz; else f.vz = 0;
+  const g = groundHeight(p.x, p.y + 0.4, p.z);
+  if (p.y > g + 0.01) { f.vy -= 20 * dt; p.y = Math.max(g, p.y + f.vy * dt); } else { p.y = g; f.vy = 0; }
+  if (Math.hypot(f.vx, f.vz) > 0.2) m.rotation.y = Math.atan2(f.vx, f.vz);
+  return Math.abs(f.vx) + Math.abs(f.vz) + Math.abs(f.vy) > 0.01;
+}
 function stepCart(m, dt) {
-  const u = m.userData, c = u.cart ??= cartInit(m);
-  if (!c) return false;
-  const r = rsRec.get(key(...c.cell));
-  if (!isRail(r)) { u.cart = null; return false; }  // рельсы под вагонеткой сломали — она стоит
-  if (r.k === "rs_prail" && r.s.pw && c.v < 0.05) {  // трогаемся: туда, куда смотрит седок, но не в тупик
-    const dead = d => !isRail(rsRec.get(key(c.cell[0] + RSD[d][0], c.cell[1], c.cell[2] + RSD[d][2])));
-    const look = d => -Math.sin(yaw) * RSD[d][0] - Math.cos(yaw) * RSD[d][2];
-    let go = m === drivingCart && look(c.ent) > look(c.ex) ? c.ent : c.ex;
-    if (dead(go)) go = go === c.ex ? c.ent : c.ex;
-    if (go !== c.ex) { [c.ent, c.ex] = [c.ex, c.ent]; c.t = 1 - c.t; }
-  }
-  if (r.k === "rs_prail") c.v = r.s.pw ? Math.min(CART_MAX, Math.max(c.v, 1.5) + 14 * dt) : Math.max(0, c.v - 25 * dt);  // разгон или тормоз
-  else c.v = Math.max(0, c.v - 0.5 * dt);  // трение
-  if (m === drivingCart) {  // седок подталкивает: W — вперёд по взгляду, S — назад
-    const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
-    if (f) {
-      const [dx, dz] = cartDir(c), dot = -Math.sin(yaw) * dx - Math.cos(yaw) * dz, push = f * (dot >= 0 ? 1 : -1);
-      if (push > 0) { if (c.v < CART_PUSH) c.v = Math.min(CART_PUSH, c.v + 4 * dt); }
-      else c.v -= 6 * dt;
+  const u = m.userData;
+  let c = u.cart ??= cartInit(m);
+  let moved;
+  if (!c) moved = stepFreeCart(m, dt);
+  else {
+    const r = rsRec.get(key(...c.cell));
+    if (!isRail(r)) { u.cart = null; return false; }  // рельсы под вагонеткой сломали — дальше она без рельсов
+    if (r.k === "rs_prail" && r.s.pw && c.v < 0.05) {  // трогаемся: туда, куда смотрит седок, но не в тупик
+      const look = d => -Math.sin(yaw) * RSD[d][0] - Math.cos(yaw) * RSD[d][2];
+      if (m === drivingCart && look(c.ent) > look(c.ex)) cartReverse(c);
+      if (!cartNext(c)) cartReverse(c);
     }
+    if (r.k === "rs_prail") c.v = r.s.pw ? Math.min(CART_MAX, Math.max(c.v, 1.5) + 14 * dt) : Math.max(0, c.v - 25 * dt);  // разгон или тормоз
+    else c.v = Math.max(0, c.v - 0.5 * dt);  // трение
+    if (c.up >= 0) {  // склон: в горку медленнее, с горки быстрее; стоящая катится вниз
+      if (c.v < 0.05 && c.up === c.ex) cartReverse(c);
+      c.v += (c.up === c.ex ? -6 : 6) * dt;
+    }
+    if (m === drivingCart) {  // седок подталкивает: W — вперёд по взгляду, S — назад
+      const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+      if (f) {
+        const [dx, dz] = cartDir(c), dot = -Math.sin(yaw) * dx - Math.cos(yaw) * dz, push = f * (dot >= 0 ? 1 : -1);
+        if (push > 0) { if (c.v < CART_PUSH) c.v = Math.min(CART_PUSH, c.v + 4 * dt); }
+        else c.v -= 6 * dt;
+      }
+    }
+    if (c.v < 0) { cartReverse(c); c.v = -c.v; }  // поехали в обратную сторону
+    c.t += c.v * dt;
+    while (c.t >= 1) {
+      const n = cartNext(c);
+      if (!n) { c.t = 1; c.v = 0; break; }  // рельсы кончились — вагонетка встаёт у края
+      c.cell = n.cell; c.ent = n.entry; c.ex = n.sh[0] === n.entry ? n.sh[1] : n.sh[0]; c.up = n.sh[2]; c.t -= 1;
+    }
+    cartPoint(c, cartTmp);
+    const [dx, dz] = cartDir(c);
+    moved = cartTmp.distanceToSquared(m.position) > 1e-6;
+    m.position.copy(cartTmp);
+    m.rotation.y = Math.atan2(dx, dz);
+    m.rotation.x = c.up >= 0 ? (c.up === c.ex ? -1 : 1) * Math.PI / 4 : 0;  // наклон на подъёме (порядок поворотов YXZ — сначала курс, потом наклон)
   }
-  if (c.v < 0) { [c.ent, c.ex] = [c.ex, c.ent]; c.t = 1 - c.t; c.v = -c.v; }  // поехали в обратную сторону
-  c.t += c.v * dt;
-  while (c.t >= 1) {
-    const next = [c.cell[0] + RSD[c.ex][0], c.cell[1], c.cell[2] + RSD[c.ex][2]], nr = rsRec.get(key(...next)), entry = c.ex ^ 1;
-    const sh = isRail(nr) && (nr.s.shape || railShape(nr.e));
-    if (!sh || !sh.includes(entry)) { c.t = 1; c.v = 0; break; }  // рельсы кончились — вагонетка встаёт у края
-    c.cell = next; c.ent = entry; c.ex = sh[0] === entry ? sh[1] : sh[0]; c.t -= 1;
-  }
-  cartPoint(c, cartTmp);
-  const [dx, dz] = cartDir(c);
-  const moved = cartTmp.distanceToSquared(m.position) > 1e-6;
-  m.position.copy(cartTmp);
-  if (dx || dz) m.rotation.y = Math.atan2(dx, dz);
   const e = u.edit;
   e.x = +m.position.x.toFixed(2); e.y = +m.position.y.toFixed(2); e.z = +m.position.z.toFixed(2); e.yaw = +m.rotation.y.toFixed(2);
   if (moved) worldDirty = true;
   // Без седока вагонетку по сети ведёт тот, кто её поставил: шлём 4 раза в секунду, пока едет
-  if (online && m !== drivingCart && moved && (c.send -= dt) <= 0) { c.send = 0.25; online.sendEdits([e]); }
+  u.send = (u.send || 0) - dt;
+  if (online && m !== drivingCart && moved && u.send <= 0) { u.send = 0.25; online.sendEdits([e]); }
   return moved;
+}
+// Вагонетки сталкиваются: та, что наехала, отскакивает назад, а стоящую толкает вперёд
+function bumpCarts() {
+  const list = [...carts.values()];
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    if (a.position.distanceToSquared(b.position) > 1.25 * 1.25) continue;
+    for (const [m, o] of [[a, b], [b, a]]) {
+      const c = m.userData.cart;
+      if (!c || c.v < 0.05) continue;
+      const [dx, dz] = cartDir(c), tx = o.position.x - m.position.x, tz = o.position.z - m.position.z;
+      if (dx * tx + dz * tz <= 0) continue;  // едет не в неё
+      const oc = o.userData.cart;
+      if (oc && oc.v < 0.05) { const [ox, oz] = cartDir(oc); if (ox * tx + oz * tz < 0) cartReverse(oc); oc.v = c.v * 0.7; }
+      else if (oc) { cartReverse(oc); oc.v *= 0.8; }
+      cartReverse(c);
+      c.v *= 0.8;
+      sfx("place");
+    }
+  }
 }
 function updateCarts(dt) {
   const k = Math.min(1, dt * 12);
@@ -7502,6 +7651,7 @@ function updateCarts(dt) {
       m.userData.cart = null;
     }
   }
+  if (carts.size > 1) bumpCarts();
 }
 function nearestCart() {
   let best = null, bestD = 2.5;
@@ -7598,12 +7748,13 @@ function caveAt(x, y, z) {
 // Из чего стенка под землёй: сверху земля, глубже камень с рудой (одинаково у всех игроков — считается по координатам)
 function terrKind(x, y, z) {
   if (y > -4) return "dirt";
-  const h = hashN(9137, x, y, z);
-  if (y < -35 && h < 0.004) return "ore_diamond";
-  if (y < -20 && h < 0.012) return "ore_gold";
-  if (y < -12 && h < 0.03) return "ore_red";
-  if (y < -5 && h < 0.055) return "ore_iron";
-  return "stone";
+  const h = hashN(9137, x, y, z), deep = y < -Y_SHOW;  // ниже Y 0 — глубинный сланец (с переходом в пару блоков)
+  const ds = deep || (y < -Y_SHOW + 3 && hashN(77, x, y, z) < 0.5);
+  if (y < -35 && h < 0.004) return ds ? "ds_diamond" : "ore_diamond";
+  if (y < -20 && h < 0.012) return ds ? "ds_gold" : "ore_gold";
+  if (y < -12 && h < 0.03) return ds ? "ds_red" : "ore_red";
+  if (y < -5 && h < 0.055) return ds ? "ds_iron" : "ore_iron";
+  return ds ? "deepslate" : "stone";
 }
 const terrEdit = (x, y, z) => y === -DEPTH - 1 ? { op: "block", x, y, z, c: 13, t: 2 } : { op: "block", x, y, z, c: 0, k: terrKind(x, y, z), t: 1 };
 // Открыли пещеру: обходим её ходы и ставим стенки вокруг — понемногу, до CAVE_STEP клеток за кадр, чтобы игра не дёргалась.
@@ -7767,7 +7918,7 @@ function setInfinite(on, saved, seed, net) {
 const PICKS = { "Деревянная кирка": 1, "Каменная кирка": 2, "Железная кирка": 3, "Алмазная кирка": 4 };
 const PICK_SPEED = [1, 2, 3, 4, 6];
 // Какая кирка нужна, чтобы блок добывался (0 — хватит рук). Без нужной ломается втрое дольше и ничего не даёт
-const NEED = { stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
+const NEED = { deepslate: 1, ds_iron: 2, ds_red: 3, ds_gold: 3, ds_diamond: 3, stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
 const needTier = e => e.op !== "block" || e.t === 2 ? 0 : !e.k ? (e.t ? 0 : 1) : NEED[e.k] || 0;
 const pickTier = () => { const n = HOTBAR[slot]; return PICKS[n] && have(n) ? PICKS[n] : 0; };
 const ARMOR = {  // слот (0 шлем, 1 нагрудник, 2 поножи, 3 ботинки), материал, очки защиты (каждое — минус 4% урона)
@@ -8115,7 +8266,7 @@ function updateDrops(dt) {
 let last = performance.now();
 let refreshMs = 100, refreshN = 0, frameAtPrev = 0;  // самый короткий кадр = частота экрана (на 90 Гц слабым телефонам рисуем через кадр)
 let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
-renderer.setAnimationLoop(now => {
+const frame = now => {
   const dt = Math.max(0, Math.min((now - last) / 1000, 0.1));  // время назад (смена вкладки, часы) не даёт отрицательного шага
   last = now;
   updateTroll(dt);
@@ -8184,7 +8335,28 @@ renderer.setAnimationLoop(now => {
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
   renderer.render(asciiScene, asciiCamera);
-});
+};
+// Без ограничения FPS (настройки): кадры идут не по сигналу экрана (requestAnimationFrame), а сразу друг за другом через MessageChannel.
+// Монитор всё равно покажет столько кадров, сколько умеет, но кадр готов раньше, а счётчик видит настоящую скорость. В свёрнутой вкладке — обычный режим
+const loopCh = new MessageChannel();
+let uncapOn = false;
+loopCh.port1.onmessage = () => { if (!uncapOn) return; frame(performance.now()); loopCh.port2.postMessage(0); };
+function setFrameLoop() {
+  const on = settings.uncap && !document.hidden, was = uncapOn;
+  uncapOn = on;
+  renderer.setAnimationLoop(on ? null : frame);
+  if (on && !was) loopCh.port2.postMessage(0);  // цепочка одна: повторный вызов вторую не запускает
+}
+document.addEventListener("visibilitychange", setFrameLoop);
+setFrameLoop();
+// Тени можно выключить: это самая дорогая часть кадра после самой картинки
+function applyShadows() {
+  renderer.shadowMap.enabled = settings.shadows;
+  sun.castShadow = settings.shadows;
+  scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+}
+if (!settings.shadows) applyShadows();
+
 </script>
 </body>
 </html>
