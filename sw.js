@@ -1,5 +1,5 @@
 // Кэш для игры: после первого захода с интернетом она открывается и без него (установи игру на главный экран)
-const CACHE = "ascii-v5";
+const CACHE = "baseplate-v6";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "worlds/vkusno-i-tochka-3-etazha.baseAscii",
   "lib/qrcode.js", "lib/jsQR.js", "meme.jpg"];
 const LIBS = ["https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js",
@@ -20,7 +20,7 @@ self.addEventListener("install", e => e.waitUntil((async () => {
   await self.skipWaiting();
 })()));
 
-self.addEventListener("activate", e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
+self.addEventListener("activate", e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && (/^ascii-v\d+$/.test(k)||k.startsWith('baseplate-'))).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 
 self.addEventListener("fetch", e => {
   const req = e.request, url = new URL(req.url);
@@ -31,10 +31,11 @@ self.addEventListener("fetch", e => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     if (same) {  // свои файлы: сначала сеть (всегда свежая версия), нет сети или она молчит дольше NET_WAIT — из кэша
-      const net = fetch(req).then(r => { if (r.ok) cache.put(req, r.clone()); return r; });
+      const net = fetch(req).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); e.waitUntil(cache.put(req, r.clone()).catch(()=>{})); return r; });
+      e.waitUntil(net.catch(()=>{}));
       net.catch(() => {});  // сеть отказала позже, чем ответил кэш, — это не ошибка
       try {
-        return await Promise.race([net, new Promise((_, rej) => setTimeout(() => rej(new Error("долго")), NET_WAIT))]);
+        let timer;try{return await Promise.race([net, new Promise((_, rej) => {timer=setTimeout(() => rej(new Error("долго")), NET_WAIT);})]);}finally{clearTimeout(timer);}
       } catch {
         // index.html вместо страницы — только для самой страницы: мир или картинка не должны превращаться в HTML
         const hit = (await cache.match(req, { ignoreSearch: true })) || (req.mode === "navigate" ? await cache.match("index.html") : null);
@@ -42,7 +43,8 @@ self.addEventListener("fetch", e => {
       }
     }
     const hit = await cache.match(req);  // библиотеки и шрифты: из кэша, обновляем фоном
-    const net = fetch(req).then(r => { if (r.ok) cache.put(req, r.clone()); return r; });
+    const net = fetch(req).then(r => { if (r.ok) e.waitUntil(cache.put(req, r.clone()).catch(()=>{})); return r; });
+    e.waitUntil(net.catch(()=>{}));
     if (hit) { net.catch(() => {}); return hit; }
     return net.catch(() => Response.error());
   })());

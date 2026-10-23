@@ -10,12 +10,12 @@ const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
    const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(8,14,6);scene.add(light);
    const camera=new THREE.OrthographicCamera(-10,10,7,-7,.1,100);camera.position.set(16,19,25);camera.lookAt(0,0,0);
    const preview=new THREE.WebGLRenderer({antialias:false});preview.setSize(1400,980);preview.setPixelRatio(1);document.body.appendChild(preview.domElement);
-   const names=['grass','dirt','stone','cobble','mossy','sand','wood','planks','crafting','furnace','leaves','snow','ore_coal','ore_iron','ore_gold','ore_diamond','deepslate','ds_diamond','obsidian','netherrack','glowstone','lava','wool','clay'];
+   const names=['grass','dirt','stone','cobble','mossy','sand','wood','planks','crafting','furnace','leaves','snow','ore_coal','ore_iron','ore_gold','ore_diamond','deepslate','ds_diamond','obsidian','netherrack','glowstone','lava','wool','clay','metal','gold','diamond','ice','slime','marble'];
    const pixels={};
    names.forEach((kind,i)=>{
      const mesh=new THREE.Mesh(boxGeo, i%2 ? shadedMaterial(BLOCK_TEX[kind],0):blockMaterial(kind,0));
      if(i%2){const geo=boxGeo.clone();geo.setAttribute('color',new THREE.Float32BufferAttribute(new Array(geo.attributes.position.count*3).fill(1),3));mesh.geometry=geo;}
-     mesh.position.set((i%6-2.5)*2.45,.65,(Math.floor(i/6)-1.5)*2.65);scene.add(mesh);
+     mesh.position.set((i%6-2.5)*2.35,.65,(Math.floor(i/6)-2)*2.3);scene.add(mesh);
      const tex=BLOCK_TEX[kind],ctx=tex.image.getContext('2d'),data=ctx.getImageData(0,0,16,16).data;
      const colors=new Set();for(let p=0;p<data.length;p+=4)colors.add(data[p]+','+data[p+1]+','+data[p+2]);pixels[kind]={width:tex.image.width,height:tex.image.height,colors:colors.size};
      const point=mesh.position.clone().add(new THREE.Vector3(0,-.9,0)).project(camera);

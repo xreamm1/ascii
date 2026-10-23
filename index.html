@@ -450,7 +450,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
   "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка",
-  "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
+  "Булыжник", "Мшистый булыжник", "Глубинный сланец", "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
   "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы", "Тотем бессмертия", "Доски", "Верстак", "Печь", "Уголь", "Кремень", "Железная руда", "Золотая руда", "Рулетка"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
@@ -465,8 +465,13 @@ const saveBar = () => { if (bag) return; try { localStorage.setItem("bar", JSON.
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 // Настройки игрока (пауза → настройки): помним между запусками
-const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false, uncap: false, shadows: true };
-const settings = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem("settings")) || {}; } catch {} return { ...SETTINGS_DEF, ...s }; })();
+const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false, uncap: false, shadows: false };
+function sanitizeSettings(raw){
+ const out={...SETTINGS_DEF},limits={mouse:[.2,3],touch:[.2,3],fov:[50,110],vol:[0,1],btn:[.6,1.6]};
+ for(const k of Object.keys(out)){if(typeof out[k]==='boolean'){if(typeof raw?.[k]==='boolean')out[k]=raw[k];}else if(Number.isFinite(raw?.[k]))out[k]=Math.min(limits[k][1],Math.max(limits[k][0],raw[k]));}
+ return out;
+}
+const settings = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem("settings")) || {}; } catch {} return sanitizeSettings(s); })();
 const saveSettings = () => { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch {} };
 document.documentElement.style.setProperty("--btnk", settings.btn);
 
@@ -854,7 +859,7 @@ function grainTex(base, amount=12, seed=0, pattern) {
   });
 }
 const replaceTex=(kind,tex)=>{BLOCK_TEX[kind]?.dispose();BLOCK_TEX[kind]=tex;return tex;};
-replaceTex('stone',grainTex('808080',14,1));
+replaceTex('stone',grainTex('7e7e7a',9,1,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const v=texHash(x>>1,y>>1,33);if(v>.73)p(x,y,texHash(x,y,34)>.5?'#989992':'#898b85');else if(v<.13)p(x,y,texHash(x,y,35)>.5?'#6b6d67':'#73756e');}}));
 replaceTex('dirt',grainTex('866044',20,2,(p)=>{for(let i=0;i<14;i++){const x=Math.floor(texHash(i,1)*16),y=Math.floor(texHash(i,2)*16);p(x,y,'#a0a09a');p((x+1)%16,y,'#655044');}}));
 replaceTex('grass',grainTex('779c46',18,3));
 replaceTex('sand',grainTex('dfd3a1',9,4));
@@ -871,8 +876,9 @@ function cobbleTex(moss=false){return grainTex('777775',18,16,(p)=>{
   for(let y=0;y<16;y++)for(let x=0;x<16;x++){
     const distances=cells.map(([a,b],i)=>({i,d:Math.min(Math.abs(x-a),16-Math.abs(x-a))**2+Math.min(Math.abs(y-b),16-Math.abs(y-b))**2})).sort((a,b)=>a.d-b.d);
     if(distances[1].d-distances[0].d<5)p(x,y,'#414343');
-    else if(distances[1].d-distances[0].d<11)p(x,y,'#a1a2a0');
+    else if(distances[1].d-distances[0].d<11)p(x,y,'#999d94');
     else if(moss&&texHash(x>>1,y>>1,17)>.56)p(x,y,texHash(x,y)>.5?'#526d35':'#657c40');
+    else {const v=102+Math.floor(texHash(distances[0].i,0,37)*38)+Math.floor(texHash(x,y,38)*12);p(x,y,`rgb(${v},${v+2},${v-3})`);}
   }
 });}
 replaceTex('cobble',cobbleTex());replaceTex('mossy',cobbleTex(true));
@@ -892,6 +898,13 @@ for(const [name,a,b] of [['coal','#242424','#454545'],['iron','#b68468','#dfb59a
 }
 replaceTex('glowstone',grainTex('a47739',24,23,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,24)>.4)p(x,y,texHash(x,y)>.4?'#f4db91':'#d4b766');}));
 replaceTex('lava',grainTex('ce4c0b',28,25,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(texHash(x>>1,y>>1,26)>.5)p(x,y,texHash(x,y)>.5?'#ffb52c':'#f08012');}));
+for(const [kind,base,light,dark] of [['metal','c1c5c5','#eff3ee','#878e90'],['gold','dfb62d','#fff1a0','#ab7e16'],['diamond','48c1be','#b9f1e7','#238b8f']]){
+ replaceTex(kind,grainTex(base,6,51,(p)=>{for(let i=0;i<16;i++){p(i,0,light);p(0,i,light);p(i,15,dark);p(15,i,dark);}for(let x=2;x<14;x++){p(x,2,light);if(x>3)p(x,12,dark);}for(let y=3;y<11;y++)p(2,y,light);}));
+}
+replaceTex('ice',grainTex('8eb8da',7,52,(p)=>{for(let i=0;i<16;i++){p(i,(18-i)%16,'#c2e0ed');if(i<10)p(i,(20-i)%16,'#afcedf');}for(let i=6;i<13;i++)p(i,15-i,'#e0f0f3');}));
+replaceTex('slime',grainTex('79b65a',9,53,(p,c)=>{c.fillStyle='#a4d47b';c.fillRect(1,1,14,1);c.fillRect(1,1,1,14);c.fillStyle='#588e3e';c.fillRect(2,14,13,1);c.fillRect(14,2,1,12);c.fillStyle='#609b45';c.fillRect(4,5,3,3);c.fillRect(10,5,3,3);c.fillRect(7,10,3,2);}));
+replaceTex('marble',grainTex('dedfd8',5,54,(p)=>{for(let y=0;y<16;y++){const x=(Math.floor(y*.65)+Math.floor(texHash(y>>2,0,55)*3))%16;p(x,y,'#aaaea4');p((x+1)%16,y,'#c4c8bc');}}));
+replaceTex('tiles',grainTex('e3e0d5',3,56,(p)=>{for(let i=0;i<16;i++){p(i,0,'#9c9e94');p(0,i,'#9c9e94');p(i,8,'#b9b9ad');p(8,i,'#b9b9ad');}}));
 const grassSide=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.dirt.image,0,0);for(let x=0;x<16;x++)for(let y=0;y<3+Math.floor(texHash(x,0,27)*4);y++)p(x,y,y<2?'#769c43':texHash(x,y)>.5?'#668b39':'#567d31');});
 const logEnd=grainTex('ad8952',10,28,(p)=>{for(let y=0;y<16;y++)for(let x=0;x<16;x++){const r=Math.max(Math.abs(x-7.5),Math.abs(y-7.5));if(r>6.5)p(x,y,'#58452a');else if(Math.floor(r)%3===0)p(x,y,'#806139');}});
 const craftTop=pixelTex((p,c)=>{c.drawImage(BLOCK_TEX.planks.image,0,0);c.fillStyle='#654126';c.fillRect(1,1,14,14);c.fillStyle='#b38751';for(let y=0;y<3;y++)for(let x=0;x<3;x++)c.fillRect(2+x*4,2+y*4,3,3);});
@@ -978,9 +991,10 @@ const woodTex = canvasTexture(32, 128, ctx => {
 });
 
 // Стекло: почти прозрачное, только с рамкой по краю — так его видно и в ASCII
-const glassTex = canvasTexture(64, 64, ctx => {
-  ctx.fillStyle = "rgba(210, 235, 255, 0.18)"; ctx.fillRect(0, 0, 64, 64);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)"; ctx.lineWidth = 5; ctx.strokeRect(0, 0, 64, 64);
+const glassTex = pixelTex((p,ctx) => {
+  ctx.fillStyle = 'rgba(182,218,229,.07)';ctx.fillRect(0,0,16,16);
+  for(let i=0;i<16;i++){p(i,0,'#c3dce0');p(0,i,'#c3dce0');p(i,15,'#98b8c2');p(15,i,'#98b8c2');}
+  for(const [x,y] of [[3,11],[4,10],[5,9],[10,5],[11,4],[12,3]])p(x,y,'rgba(219,239,244,.8)');
 });
 const glassMats = {};
 function glassMaterial(c) {
@@ -1047,9 +1061,10 @@ const tvs = new Set();       // телевизоры: их экран обнов
 const barriers = new Set();  // шлагбаумы: у них играет анимация
 const lampLights = Array.from({ length: LOWEND ? 1 : 3 }, () => new THREE.PointLight(0xfff2cc, 24 * Math.PI, 24));  // свет ламп сильный, иначе его не видно на фоне дня
 function updateLamps() {
-  const near = [...lamps].sort((a, b) => a.position.distanceToSquared(camera.position) - b.position.distanceToSquared(camera.position));
+  const near=[];
+  for(const lamp of lamps){const d=lamp.position.distanceToSquared(camera.position);let i=0;while(i<near.length&&near[i].d<=d)i++;if(i<lampLights.length){near.splice(i,0,{lamp,d});if(near.length>lampLights.length)near.pop();}}
   lampLights.forEach((light, i) => {
-    const lamp = near[i];
+    const lamp = near[i]?.lamp;
     // Число источников света в сцене меняется только когда ламп нет совсем или появилась первая
     if (lamps.size && !light.parent) scene.add(light);
     if (!lamps.size && light.parent) scene.remove(light);
@@ -1137,6 +1152,7 @@ function edit(e, replace = false) {
   worldDirty = true;
   // Шлагбаум при открытии/закрытии не прыгает: новая модель продолжает с того угла, где стояла старая
   const old = replace && e.op === "block" ? blocks.get(key(e.x, e.y, e.z)) : null;
+  if(old&&[old.userData.edit.x,old.userData.edit.y,old.userData.edit.z].some((v,i)=>v!==[e.x,e.y,e.z][i]))return;
   const step = old?.userData.step;
   if (old) removeSolid(old);
   if (e.op === "text" && !texts.has(e.id)) {
@@ -1382,6 +1398,7 @@ function rebuildChunks(budget = LOWEND ? 2.5 : 5) {
       let mesh = c.meshes.get(col);
       if (!mesh) {
         mesh = new THREE.Mesh(g, shadedMaterial(list[0].userData.tex ?? brickTex, list[0].userData.edit.c));
+        mesh.castShadow=mesh.receiveShadow=true;
         mesh.matrixAutoUpdate = false;
         scene.add(mesh);
         c.meshes.set(col, mesh);
@@ -1408,6 +1425,7 @@ function addSolid(mesh, e) {
 
 function removeSolid(mesh) {
   if (!mesh) return;
+  if(solids[mesh.userData.si]!==mesh)return;
   scene.remove(mesh);
   chunkRemove(mesh);
   gridRemove(mesh);
@@ -1425,7 +1443,7 @@ function removeSolid(mesh) {
   for (const c of extraCells(e)) blocks.delete(key(...c));
   if (e.op === "block") { rsRemove(e); if (rsRec.size) rsChanged(e.x, e.y, e.z); }
   if (e.op === "plank") planks.delete(e.id);
-  if (e.op === "text") texts.delete(e.id);
+  if (e.op === "text") {texts.delete(e.id);mesh.material.map?.dispose();mesh.material.dispose();}
   if (e.op === "car") { cars.delete(e.id); if (mesh === drivingCar) exitCar(); }
   if (e.op === "ball") balls.delete(e.id);
   if (e.op === "animal") animals.delete(e.id);
@@ -2910,7 +2928,7 @@ function updateGhosts() {
 // Действие предметом: "place" — ЛКМ или касание, "remove" — ПКМ или удержание пальца.
 // screen — точка экрана, куда нажали (на компьютере — центр, где прицел)
 // Какой предмет хотбара какой "вид" блока ставит
-const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
+const KINDS = { "Булыжник":"cobble", "Мшистый булыжник":"mossy", "Глубинный сланец":"deepslate", "Блок": undefined, "Стекло": "glass", "Палка": "stick", "Дверь": "door", "Рампа": "ramp", "Стул": "chair", "Стол": "table", "Ступеньки": "stairs",
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
@@ -2937,13 +2955,13 @@ function useInner(action, screen) {
       // Копаем пол: клетка под плитой
       const dx = Math.floor(hit.point.x), dz = Math.floor(hit.point.z);
       if (!inDigArea(dx, dz)) addChat("* здесь копать нельзя: слишком далеко от старта");
-      else { share({ op: "dig", x: dx, y: -1, z: dz }); if (bag) give(digDrop(-1)); burst(hit.point, 10, 8); }
+      else { share({ op: "dig", x: dx, y: -1, z: dz }); if (bag) give(digDrop(-1)); burst(hit.point, 0, 16,{k:gen&&genColumn(dx,dz).desert?'sand':'dirt'}); }
     } else if (hit) {
       const t = hit.object.userData.edit;
       if (isTerr(t)) {  // земля: ломаем — значит копаем
         if (t.t === 2) addChat("* дальше бедрок, его не сломать");
         else if (t.t === 3) addChat("* в аду это не сломать");
-        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(harvest(t)); burst(hit.point, t.c, 8); }
+        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(harvest(t)); burst(hit.point, t.c, 18,t); }
         drawHotbar();
         return;
       }
@@ -2956,7 +2974,7 @@ function useInner(action, screen) {
       }
       if (t.op === "animal" && gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 20); drawHp(); addChat("* ты съел животное"); }
       if (bag && !eaten) give(harvest(t),t.dim?Math.ceil(t.dim.reduce((v,x)=>v*x,1)):1);
-      burst(hit.point, t.c ?? 11, 10);
+      burst(hit.point, t.c ?? 0, 20,t);
       const portal = t.k === "obsidian" ? portalCellsNear(t.x, t.y, t.z) : [];
       share(undo(hit.object.userData.edit));
       if (portal.length) online?.sendEdits(portal.map(([x, y, z]) => ({ op: "unblock", x, y, z })));  // и из базы, чтобы новые игроки не увидели старый портал
@@ -3090,6 +3108,7 @@ function jumpTap() {  // два быстрых нажатия переключа
 }
 addEventListener("keydown", e => {
   if (typing || !inGame) return;
+  if(menuOpen&&['KeyW','KeyA','KeyS','KeyD','Space','ControlLeft','ControlRight','ShiftLeft','ShiftRight'].includes(e.code))return;
   if (e.code === "Space" && !menuOpen) { e.preventDefault(); if (!e.repeat) jumpTap(); }
   if (e.ctrlKey) e.preventDefault();  // Ctrl — присед, а не сочетания браузера вроде Ctrl+S или Ctrl+D
   keys[e.code] = true;
@@ -3126,6 +3145,17 @@ addEventListener("keyup", e => {
   keys[e.code] = false;
   if (e.code.startsWith("Digit")) flatUp();
 });
+// Смена окна или открытие меню не должна оставлять зажатые клавиши и касания.
+function resetInput() {
+  for(const k in keys)keys[k]=false;
+  stick.x=stick.y=0; firing=false; lastJump=-Infinity; flatUp(); stopBreak();
+  if(press)clearTimeout(press.timer);
+  press=null;moveTouch=null;lookTouch=null;
+  stickEl.style.display=knobEl.style.display='none';
+  for(const b of document.querySelectorAll('#touch .active'))b.classList.remove('active');
+}
+addEventListener('blur',resetInput);
+document.addEventListener('visibilitychange',()=>{if(document.hidden){resetInput();saveLobbyBag();}});
 
 // Захват клавиатуры: в полноэкранном режиме Chrome и Edge отдают игре даже Ctrl+W,
 // поэтому присед на Ctrl не закрывает вкладку. Выйти из полного экрана — зажать Esc
@@ -3186,8 +3216,10 @@ addEventListener("touchstart", e => {
     if (!press) {
       const screen = screenPoint(t);
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
+      const heldPress=press;
       press.timer = setTimeout(() => {
-        press.held = true;
+        if(press!==heldPress||menuOpen||!inGame)return;
+        heldPress.held = true;
         startBreak(screen);
         navigator.vibrate?.(30);
       }, HOLD_TIME);
@@ -3279,6 +3311,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
   const action = button.dataset.action;
   button.addEventListener("touchstart", e => {
     e.preventDefault();
+    if(menuOpen&&['jump','crouch','nitro','fire','car','drop','reload','scope','zoom'].includes(action))return;
     button.classList.add("active");
     if (action === "jump") { keys.Space = true; jumpTap(); }
     if (action === "crouch") keys.ControlLeft = true;
@@ -3301,13 +3334,15 @@ for (const button of document.querySelectorAll("#touch .button")) {
       button.classList.toggle("active", !!next);
     }
   });
-  button.addEventListener("touchend", () => {
+  const releaseButton=() => {
     if (action !== "zoom") button.classList.remove("active");
     if (action === "jump") keys.Space = false;
     if (action === "crouch") keys.ControlLeft = false;
     if (action === "nitro") keys.ShiftLeft = false;
     if (action === "fire") firing = false;
-  });
+  };
+  button.addEventListener("touchend",releaseButton);
+  button.addEventListener("touchcancel",releaseButton);
 }
 
 // ---------- ASCII-интерфейс: панель предметов и палитра ----------
@@ -3356,10 +3391,7 @@ function iconModel(name, c) {
   else if (name === "Бот-боец" || name === "Бот-строитель") {
     m = new THREE.Group();
     const [r, g, b] = COLORS[name === "Бот-боец" ? 1 : 6].rgb;
-    m.add(new THREE.Mesh(avatarGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, g / 255, b / 255) })));
-    const eyes = new THREE.Mesh(avatarEyes, eyesMat);
-    eyes.position.set(0, 1.5, -0.205);
-    m.add(eyes);
+    m.add(new THREE.Mesh(avatarGeo, figureMaterial(new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, g / 255, b / 255) }))));
     m.rotation.y = Math.PI * 0.8;
   }
   else if (name === "Вагонетка") m = new THREE.Mesh(cartGeo, plain());
@@ -3528,7 +3560,7 @@ function smelt(name) {
   if (!bag || !SMELTING[name]) return;
   const k=Math.min(8,bag[name]||0), fuel=(bag["Уголь"]||0)>=1?"Уголь":(bag["Доски"]||0)>=2?"Доски":null;
   if (!k || !fuel || (name===fuel && (bag[name]||0)<k+(fuel==="Уголь"?1:2))) return toast("Нужны материал и топливо");
-  if (furnaceJobs.size) return toast("Дождись окончания плавки");
+  if (pendingSmelting().length) return toast("Дождись окончания плавки");
   inventoryBatch=true; take(name,k); take(fuel,fuel==="Уголь"?1:2); inventoryBatch=false; drawHotbar();
   const owner=bag, id=Date.now(), out=SMELTING[name];
   furnaceJobs.set(id,{n:out,k,owner,readyAt:Date.now()+10000});
@@ -3544,13 +3576,16 @@ let craftGrid = Array(9).fill(null), craftSize = 2, cursorItem = null, bookOpen 
 const TAB_ICON = { "Все": "Блок", "Блоки": "Камень", "Мебель": "Стул", "Оружие": "Меч", "Живое": "Свинья", "Транспорт": "Машина", "Инструменты": "Железная кирка", "Прочные": "Прочный блок", "Редстоун": "Редстоун" };
 // Вернуть то, что лежит в сетке, обратно в вещи (окно закрыли)
 function returnGrid() {
+  const changed=craftGrid.some(Boolean);
   inventoryBatch = true;
   for (let i = 0; i < 9; i++) if (craftGrid[i]) { const c = craftGrid[i]; craftGrid[i] = null; give(c.n, c.k, true); }
   inventoryBatch = false;
   cursorItem = null;
+  if(changed)drawHotbar();
 }
 function openCrafting(size) {
   if (!bag) return toast("крафт — в выживании");
+  if(size!==craftSize)returnGrid();
   craftSize = size;
   if (panel !== inv) togglePanel(inv, drawInventory); else drawInventory();
 }
@@ -3582,7 +3617,7 @@ function craftGridOut(all) {
   let made = 0, name = gridMatch()?.out;
   inventoryBatch = true;
   for (let rc = gridMatch(); rc && made < 64; rc = all ? gridMatch() : null) {
-    for (let i = 0; i < 9; i++) if (craftGrid[i]) { craftGrid[i].k--; if (!craftGrid[i].k) craftGrid[i] = null; }
+    for (let r=0;r<craftSize;r++)for(let c=0;c<craftSize;c++){const i=r*3+c;if(craftGrid[i]){craftGrid[i].k--;if(!craftGrid[i].k)craftGrid[i]=null;}}
     give(rc.out, rc.n, true);
     made += rc.n;
   }
@@ -3621,8 +3656,7 @@ function playerPic() {
   const k = color + armorCode();
   if (playerPics.has(k)) return playerPics.get(k);
   const g = new THREE.Group(), [r, gg, b] = COLORS[color].rgb;
-  g.add(new THREE.Mesh(avatarGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, gg / 255, b / 255) })));
-  const eyes = new THREE.Mesh(avatarEyes, eyesMat); eyes.position.set(0, 1.5, -0.205); g.add(eyes);
+  g.add(new THREE.Mesh(avatarGeo, figureMaterial(new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, gg / 255, b / 255) }))));
   [...armorCode()].forEach((c, i) => { if (armorMats[c]) g.add(new THREE.Mesh(ARMOR_GEO[i], armorMats[c])); });
   g.rotation.y = 0.1;
   const url = iconRender(g, true);
@@ -3694,6 +3728,7 @@ palette.addEventListener("mouseover", e => { const o = e.target.closest(".option
 // Палитра и админ-меню открываются одинаково: мышь освобождается, игра ждёт
 let panel = null;  // какая панель открыта
 function togglePanel(el, draw) {
+  resetInput();
   if (panel === inv) returnGrid();
   if (panel) panel.style.display = "none";
   panel = panel === el ? null : el;
@@ -3778,6 +3813,7 @@ let askDone = null;
 
 // Показывает окошко с заголовком и ждёт: вернёт введённую строку или null, если отменили
 function ask(title, value = "", maxLength = 40, secret = false) {
+  resetInput();
   typing = true;
   for (const k in keys) keys[k] = false;  // чтобы игрок не продолжил идти сам
   if (document.pointerLockElement) document.exitPointerLock();  // лишний вызов вызывает ложное событие
@@ -3950,7 +3986,8 @@ const asciiCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // Смена качества: пересчитываем сетку, а на грубых ступенях выключаем тени
 function setQuality() {
   resize();
-  sun.castShadow = false;  // тени выключены везде: картинка на ПК и телефоне одинаковая, а игра быстрее
+  sun.castShadow = !!settings.shadows && quality<=1;
+  renderer.shadowMap.enabled=!!settings.shadows;
 }
 function toggleGfx() {
   gfxMode = { ascii: "sharp", sharp: "ultra", ultra: "3d", "3d": "ascii" }[gfxMode];
@@ -4196,7 +4233,7 @@ async function signIn() {
   }
   await auth.authStateReady();
   let user = auth.currentUser;
-  if (user && !!user.email !== wantDev) { await signOut(auth); user = null; }
+  if (user && (!!user.email !== wantDev || (user.email&&user.email.toLowerCase()!==DEV_EMAIL))) { await signOut(auth); user = null; }
   if (!user && wantDev) {
     const pass = await ask("ПАРОЛЬ РАЗРАБОТЧИКА", "", 64, true);
     if (!pass) throw new Error("этот ник только для разработчика");
@@ -4207,30 +4244,56 @@ async function signIn() {
     }
   }
   if (!user) user = (await signInAnonymously(auth)).user;
-  isDev = !!user.email;
+  isDev = user.email?.toLowerCase()===DEV_EMAIL;
   return user.uid;
 }
 
-const avatarGeo = mergeParts([
-  box(0.19, 0.55, 0.22, -0.13, 0.275, 0), box(0.19, 0.55, 0.22, 0.13, 0.275, 0), box(0.22, 0.1, 0.3, -0.13, 0.05, -0.03), box(0.22, 0.1, 0.3, 0.13, 0.05, -0.03),   // ноги и ботинки
-  box(0.5, 0.1, 0.27, 0, 0.6, 0), box(0.52, 0.52, 0.28, 0, 0.91, 0), box(0.56, 0.08, 0.3, 0, 1.15, 0),                                                              // пояс, торс, плечи
-  box(0.14, 0.34, 0.16, -0.35, 0.9, 0), box(0.14, 0.34, 0.16, 0.35, 0.9, 0), box(0.13, 0.26, 0.14, -0.35, 0.62, -0.02), box(0.13, 0.26, 0.14, 0.35, 0.62, -0.02),    // руки
-  ball(0.08, -0.35, 0.47, -0.04, 0), ball(0.08, 0.35, 0.47, -0.04, 0), box(0.12, 0.1, 0.12, 0, 1.24, 0),                                                            // кисти и шея
-  box(0.4, 0.4, 0.4, 0, 1.46, 0), box(0.42, 0.13, 0.42, 0, 1.64, 0), box(0.42, 0.2, 0.1, 0, 1.54, 0.16),                                                            // голова, причёска
-  box(0.07, 0.09, 0.07, 0, 1.43, -0.22), box(0.05, 0.12, 0.1, -0.22, 1.46, 0), box(0.05, 0.12, 0.1, 0.22, 1.46, 0)]);                                               // нос и уши
-const avatarEyes = new THREE.BoxGeometry(0.28, 0.07, 0.02);
-const eyesMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const FIGURE_PIVOTS=[[0,0,0],[0,1.3,0],[.35,1.27,0],[-.35,1.27,0],[.13,.68,0],[-.13,.68,0]];
+// Геометрия общая для всех игроков. Шесть костей оживляют модель за один вызов отрисовки.
+const figureParts=[
+ [0,null,.5,.62,.27,0,.99,0],[0,0x343943,.5,.055,.28,0,.7,0],
+ [1,0xc69672,.46,.43,.44,0,1.505,0],[1,0x43352b,.475,.12,.455,0,1.68,0],
+ [1,0x43352b,.475,.29,.09,0,1.55,.19],[1,0x43352b,.08,.18,.45,-.2,1.61,0],[1,0x43352b,.08,.12,.45,.2,1.64,0],
+ [1,0xf4f1e5,.12,.065,.014,-.115,1.52,-.227],[1,0xf4f1e5,.12,.065,.014,.115,1.52,-.227],
+ [1,0x34586b,.048,.065,.02,-.094,1.52,-.237],[1,0x34586b,.048,.065,.02,.094,1.52,-.237],
+ [1,0xad7959,.09,.075,.065,0,1.445,-.235],[1,0x704b39,.14,.035,.014,0,1.37,-.228],
+ [2,null,.19,.27,.27,.35,1.145,0],[2,0xc69672,.18,.34,.25,.35,.85,0],
+ [3,null,.19,.27,.27,-.35,1.145,0],[3,0xc69672,.18,.34,.25,-.35,.85,0],
+ [4,0x405574,.235,.57,.27,.13,.385,0],[4,0x303742,.24,.12,.31,.13,.06,-.02],
+ [5,0x405574,.235,.57,.27,-.13,.385,0],[5,0x303742,.24,.12,.31,-.13,.06,-.02]
+];
+const avatarGeo=(()=>{
+ const pieces=[],indices=[],weights=[];
+ for(const [bone,paint,w,h,d,x,y,z] of figureParts){const item=box(w,h,d,x,y,z);pieces.push(paint===null?item:P(paint,item)[0]);for(let i=0;i<36;i++){indices.push(bone,0,0,0);weights.push(1,0,0,0);}}
+ const g=mergeParts(pieces);g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));return g;
+})();
+const figureFabric=grainTex('ffffff',4,91);
+function figureMaterial(mat){
+ mat.vertexColors=true;mat.map=figureFabric;
+ mat.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>','diffuseColor.rgb = vColor.a > 0.5 ? vColor.rgb : diffuseColor.rgb * vColor.rgb;');};
+ mat.customProgramCacheKey=()=> 'player-skin-v1';return mat;
+}
 const labels = document.getElementById("labels");
 
 // Фигурка другого игрока: туловище и голова его цвета, глаза показывают, куда он смотрит
 function makeFigure(mat) {
-  const body = new THREE.Mesh(avatarGeo, mat);
-  const eyes = new THREE.Mesh(avatarEyes, eyesMat);
-  eyes.position.set(0, 1.5, -0.205);
+  const body = new THREE.SkinnedMesh(avatarGeo, figureMaterial(mat));
+  const bones=FIGURE_PIVOTS.map(p=>{const b=new THREE.Bone();b.position.set(...p);return b;});
+  for(let i=1;i<bones.length;i++)bones[0].add(bones[i]);
+  body.add(bones[0]);body.bind(new THREE.Skeleton(bones));body.frustumCulled=false;
   const group = new THREE.Group();
-  for (const m of [body, eyes]) { m.castShadow = true; group.add(m); }
+  body.castShadow=true;group.add(body);group.userData.figure={body,bones,phase:0,stride:0};
   scene.add(group);
   return group;
+}
+function animateFigure(group,dx,dz,dt){
+ const f=group.userData.figure;if(!f||!group.visible||group.userData.look||group.userData.cull?.hidden)return;
+ const distance=Math.hypot(dx,dz)/Math.max(.25,group.scale.x),moving=distance>.0001&&distance<2;
+ f.phase+=moving?distance*8:0;f.stride+=(Number(moving)-f.stride)*Math.min(1,dt*12);
+ const swing=Math.sin(f.phase)*.65*f.stride;
+ f.bones[2].rotation.x=group.userData.hand?-.6+swing*.15:swing;f.bones[3].rotation.x=-swing;
+ f.bones[4].rotation.x=-swing;f.bones[5].rotation.x=swing;
+ f.bones[1].rotation.y=Math.sin(f.phase*.5)*.025*f.stride;
 }
 
 // Облик шарика: фигурка прячется, вместо неё жёлтый шарик, который катится, когда игрок идёт
@@ -4264,6 +4327,7 @@ function avatar(id) {
 }
 
 function updateAvatar(id, p) {
+  if(!p||![p.x,p.f,p.z,p.yaw].every(v=>Number.isFinite(v)&&Math.abs(v)<1e6))return;
   const dev = p.dev === true;
   const a = avatar(id);
   a.target.set(p.x, p.f, p.z);
@@ -4301,6 +4365,7 @@ function removeAvatar(id) {
   const a = others.get(id);
   if (!a) return;
   scene.remove(a.group);
+  a.group.userData.figure?.body.skeleton.dispose();a.mat.dispose();
   if (a.drone) scene.remove(a.drone);
   a.label.remove();
   others.delete(id);
@@ -4314,7 +4379,7 @@ const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op.en
 const undo = e => e.op === "block" && e.g ? { op: "mined", x: e.x, y: e.y, z: e.z } : e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
-  const { db, ref, get, set, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp, goOffline, goOnline } = await loadFirebase();
+  const { db, ref, get, set, push, remove, update, runTransaction, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp, goOffline, goOnline } = await loadFirebase();
   // Часы на устройствах расходятся, поэтому время сообщений берём у сервера:
   // serverOffset — насколько часы этого устройства отстают от часов сервера
   let serverOffset = 0;
@@ -4445,6 +4510,19 @@ async function joinLobby(code, me) {
 
   const helperSeen = new Set(), botSeen = new Set();
   online = {
+    claimItem: async id => {
+      if(idle)return false;
+      const result=await runTransaction(ref(db,`world/${code}/${id}`),current=>current?.op==='item'?null:undefined,{applyLocally:false});
+      return result.committed;
+    },
+    chessUpdate: async (e,ch) => {
+      if(idle)throw Error('Нет соединения с лобби');
+      const result=await runTransaction(ref(db,`world/${code}/${worldKey(e)}`),current=>{
+        if(!current||current.k!=='chess'||!sameChessState(current.ch,e.ch))return;
+        return {...current,ch};
+      },{applyLocally:false});
+      if(!result.committed)throw Error('Доска уже изменилась — повтори действие');
+    },
     // Несколько изменений уходят одним запросом (взрывы, воронки, импорт), а не сотней отдельных
     sendEdits: list => {
       if (idle) return;  // отключились за бездействием: копить запросы до возвращения незачем
@@ -4902,15 +4980,19 @@ adminEl.addEventListener("click", e => {
 // и 8 раз в секунду шлём свою позицию
 // Ник над головой фигурки: точка над головой → координаты на экране.
 // За спиной, за краем экрана или далеко ник прячем
+let labelScreen=null;
+const labelPoint=new THREE.Vector3();
 function placeLabel(label, pos, visible, h = 2) {
-  const p = pos.clone();
+  const p = labelPoint.copy(pos);
   p.y += h;
   const far = p.distanceTo(camera.position) > 40;
   p.project(camera);
-  const screen = renderer.domElement.getBoundingClientRect();
-  label.style.display = !visible || far || p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1 ? "none" : "block";
-  label.style.left = screen.left + (p.x + 1) / 2 * screen.width + "px";
-  label.style.top = screen.top + (1 - p.y) / 2 * screen.height + "px";
+  const screen = labelScreen||renderer.domElement.getBoundingClientRect();
+  const show=visible&&!far&&p.z>=-1&&p.z<=1&&Math.abs(p.x)<=1&&Math.abs(p.y)<=1;
+  const display=show?'block':'none';if(label.style.display!==display)label.style.display=display;
+  if(!show)return;
+  const left=Math.round(screen.left+(p.x+1)/2*screen.width)+'px',top=Math.round(screen.top+(1-p.y)/2*screen.height)+'px';
+  if(label.style.left!==left)label.style.left=left;if(label.style.top!==top)label.style.top=top;
 }
 
 function updateOnline(dt) {
@@ -4919,6 +5001,7 @@ function updateOnline(dt) {
     const bx = a.group.position.x, bz = a.group.position.z;
     a.group.position.lerp(a.target, k);
     rollFigure(a.group, a.group.position.x - bx, a.group.position.z - bz);
+    animateFigure(a.group,a.group.position.x-bx,a.group.position.z-bz,dt);
     if (a.drone?.visible) a.drone.position.lerp(a.droneTarget, k);
     const turn = Math.atan2(Math.sin(a.yaw - a.group.rotation.y), Math.cos(a.yaw - a.group.rotation.y));
     a.group.rotation.y += turn * k;
@@ -5220,6 +5303,9 @@ function drawLobbyLabel() {
 const showAdminButton = () => document.querySelector('[data-action="admin"]').style.display = isAdmin() ? "" : "none";
 
 function startGame(code, name, me) {
+  resetInput();
+  furnaceJobs.clear();
+  craftGrid.fill(null);cursorItem=null;
   flying = false;
   lastJump = -Infinity;
   inGame = true;
@@ -5232,10 +5318,11 @@ function startGame(code, name, me) {
   hp = MAX_HP; dead = false;
   drawHp();
   // Выживание в лобби или без интернета — по-настоящему: вещи считаются, блоки ломаются не сразу (раньше там всё было бесконечным)
+  if (code && gameMode === "creative") { bag=null;armor=[null,null,null,null]; }
   if (code && gameMode === "survival") {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem("bag:" + code)); } catch {}
-    bag = saved?.bag && typeof saved.bag === "object" ? saved.bag : {};
+    bag = sanitizeBag(saved?.bag);
     restoreSmelting(saved?.smelting);
     armor=Array.isArray(saved?.armor)?Array.from({length:4},(_,i)=>ARMOR[saved.armor[i]]?saved.armor[i]:null):[null,null,null,null];
     HOTBAR.fill(null);
@@ -5612,7 +5699,7 @@ function p2pAddPeer(link, fixedId) {
     const send = (type, list) => { for (let i = 0; i < list.length; i += 150) p2pSendTo(peer, { t: type, l: list.slice(i, i + 150) }); };
     p2pSendTo(peer, { t: "hello", mode: gameMode, id, ...(gen ? { seed: gen.seed } : {}) });
     if (banned.size) p2pSendTo(peer, { t: "ban", l: [...banned] });
-    const list = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+    const list = worldEdits();  // природа уже известна из seed: передаём изменения и предметы, а не все деревья
     send("edits", list);  // мир хозяина — только новому другу
     poseSent.clear();
     p2pOut({ t: "needfull" });  // остальные пришлют позы целиком, чтобы новичок увидел всех
@@ -5656,6 +5743,7 @@ function updateSelfFigure(dt) {
   setHand(selfFigure, currentWeapon());
   setBallLook(selfFigure, asBall);
   rollFigure(selfFigure, px - selfPx, pz - selfPz);
+  animateFigure(selfFigure,px-selfPx,pz-selfPz,dt);
   selfPx = px; selfPz = pz;
   const [r, g, b] = COLORS[color].rgb;
   selfMat.color.setRGB(r / 255, g / 255, b / 255);
@@ -5688,14 +5776,14 @@ function findPortal(bx, by, bz) {
         seen.add(k);
         const [x, yy, z] = at(u, y);
         if (obs(x, yy, z)) continue;  // рамка
-        if (yy < 0 || blocks.has(key(x, yy, z)) || cells.length >= 441) { ok = false; break; }  // внутри что-то стоит или рамка не замкнута
+        if (yy < -DEPTH || blocks.has(key(x, yy, z)) || cells.length >= 441) { ok = false; break; }  // внутри что-то стоит или рамка не замкнута
         cells.push([u, y]);
         q.push([u + 1, y], [u - 1, y], [u, y + 1], [u, y - 1]);
       }
       if (!ok || !cells.length) continue;
       const us = cells.map(c => c[0]), ys = cells.map(c => c[1]);
       const u0 = Math.min(...us), u1 = Math.max(...us), y0 = Math.min(...ys), y1 = Math.max(...ys);
-      if (cells.length !== (u1 - u0 + 1) * (y1 - y0 + 1) || u1 - u0 < 1 || y1 - y0 < 2) continue;  // не прямоугольник или меньше 2×3
+      if (cells.length !== (u1 - u0 + 1) * (y1 - y0 + 1) || u1 - u0 < 1 || y1 - y0 < 2 || u1-u0>=21 || y1-y0>=21) continue;
       return { inner: cells.map(([u, y]) => at(u, y)), r: axis === "x" ? 0 : 1 };
     }
   }
@@ -5819,7 +5907,7 @@ function applySetting(act) {
   sfx("click");
   return true;
 }
-const HELP_PC = [["W A S D", "ходить"], ["Пробел ×2", "летать (творческий, одиночная игра)"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
+const HELP_PC = [["W A S D", "ходить"], ["Пробел ×2", "включить/выключить полёт в творческом"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
   ["ЛКМ / ПКМ", "поставить / сломать (поменять — в настройках)"], ["1–9, колесо", "выбрать слот"], ["E", "инвентарь и крафт; рядом с транспортом — сесть"],
   ["F", "цвет блоков"], ["Q / Ctrl+Q", "выкинуть предмет / всю стопку"], ["X", "следующее оружие"], ["R", "перезарядка"], ["C", "зум (колесо с C — сильнее)"], ["Enter", "чат"], ["T", "телепорт по координатам"],
   ["H", "это окно"], ["Esc", "пауза"]];
@@ -5877,8 +5965,19 @@ function exportWorld() {
 }
 
 // Проверяем каждую запись из файла: берём только известные поля, id заводим свои, чтобы не пересеклись с чужими
-const KIND_SET = new Set([...Object.values(KINDS).filter(Boolean), "flat", "portal", ...Object.values(RS_ITEMS).map(i => i.k)]);
-const num = (...v) => v.every(Number.isFinite);
+const KIND_SET = new Set([...Object.values(KINDS).filter(Boolean), ...Object.keys(BLOCK_TEX), "flat", "portal", ...Object.values(RS_ITEMS).map(i => i.k)]);
+const num = (...v) => v.every(v=>Number.isFinite(v)&&Math.abs(v)<1e6);
+function validChessState(ch){
+ if(ch===undefined)return true;
+ if(!ch||typeof ch!=='object'||!['free','wait','play','over'].includes(ch.st))return false;
+ if(!['play','over'].includes(ch.st))return true;
+ if(typeof ch.fen!=='string'||ch.fen.length>160)return false;
+ const fields=ch.fen.split(' '),rows=fields[0].split('/');
+ const shape=fields.length===6&&['w','b'].includes(fields[1])&&rows.length===8&&rows.every(r=>/^[prnbqkPRNBQK1-8]+$/.test(r)&&[...r].reduce((n,c)=>n+(/\d/.test(c)?+c:1),0)===8)&&(!ch.positions||Array.isArray(ch.positions)&&ch.positions.length<=160&&ch.positions.every(p=>typeof p==='string'&&p.length<=160));
+ if(!shape||(fields[0].match(/k/g)||[]).length!==1||(fields[0].match(/K/g)||[]).length!==1||!/^(-|K?Q?k?q?)$/.test(fields[2])||!/^(-|[a-h][36])$/.test(fields[3])||!/^\d+$/.test(fields[4])||!/^\d+$/.test(fields[5])||+fields[5]<1)return false;
+ if(ChessLib)try{new ChessLib(ch.fen);}catch{return false;}
+ return true;
+}
 
 // Правка из сети (Firebase или друг без интернета): проверяем форму, чтобы кривая или подделанная запись
 // не ломала мир (NaN в координатах, чужие поля не того типа). Лишние поля не вырезаем — только отбрасываем негодное
@@ -5890,15 +5989,18 @@ function validEdit(e) {
   if (!e || typeof e !== "object" || !NET_OPS.has(e.op)) return false;
   if (!dimsValid(e)) return false;
   if (e.c !== undefined && !(Number.isInteger(e.c) && e.c >= 0 && e.c < COLORS.length)) return false;
+  for(const f of ['a','f'])if(e[f]!==undefined&&(!Number.isInteger(e[f])||e[f]<0||e[f]>5))return false;
   switch (e.op) {
-    case "block": return [e.x, e.y, e.z].every(netCell) && (e.k === undefined || KIND_SET.has(e.k)) && (e.r === undefined || (Number.isInteger(e.r) && e.r >= 0 && e.r < 4));
+    case "block": return [e.x, e.y, e.z].every(netCell) && (e.k === undefined || KIND_SET.has(e.k)) && (e.r === undefined || (Number.isInteger(e.r) && e.r >= 0 && e.r < 4)) && (e.k!=='chess'||validChessState(e.ch));
     case "unblock": case "dig": case "undig": case "mined": return [e.x, e.y, e.z].every(netCell);
     case "text": return netId(e.id) && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q);
-    case "plank": return netId(e.id) && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends);
+    case "plank": return netId(e.id) && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends) && Math.hypot(e.ends[0]-e.ends[3],e.ends[1]-e.ends[4],e.ends[2]-e.ends[5])<=512;
     case "car": return netId(e.id) && num(e.x, e.y, e.z, e.yaw);
     case "plane": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.pt, e.rl);
     case "tank": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.tu, e.bp);
-    case "animal": case "ball": case "cart": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw);
+    case "animal": return netId(e.id)&&num(e.x,e.y,e.z)&&optNum(e.yaw)&&Object.hasOwn(ANIMALS,e.t);
+    case "ball": return netId(e.id)&&num(e.x,e.y,e.z)&&optNum(e.yaw)&&Object.hasOwn(BALL_TYPES,e.t);
+    case "cart": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw);
     case "item": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.vx, e.vy, e.vz) && ITEMS.includes(e.n) && (e.k === undefined || (Number.isInteger(e.k) && e.k > 0 && e.k < 10000));
     default: return netId(e.id);  // un… — убрать предмет по id
   }
@@ -5913,7 +6015,7 @@ function cleanEdit(e) {
   if (!e || typeof e !== "object") return null;
   const c = Number.isInteger(e.c) && e.c >= 0 && e.c < COLORS.length ? e.c : 0;
   if (e.op === "block") {
-    if (![e.x, e.y, e.z].every(v => Number.isInteger(v) && Math.abs(v) < 5000) || e.y < 0) return null;
+    if (![e.x,e.y,e.z].every(netCell)||e.y< -DEPTH-2) return null;
     const out = { op: "block", x: e.x, y: e.y, z: e.z, c };
     if (e.k !== undefined) { if (!KIND_SET.has(e.k)) return null; out.k = e.k; }
     if (Number.isInteger(e.r) && e.r >= 0 && e.r < 4) out.r = e.r;
@@ -5925,18 +6027,22 @@ function cleanEdit(e) {
     if (e.m === 1) out.m = 1;
     if (Number.isInteger(e.n) && e.n >= 0 && e.n < 25) out.n = e.n;
     if (e.dim !== undefined) { if(!dimsValid(e))return null; out.dim=[...e.dim]; }
-    if (typeof e.by === "string" && e.by.length<=128) out.by=e.by;
+    out.by=meId||myId;
+    if(e.k==='chess'&&e.ch!==undefined){if(!validChessState(e.ch))return null;out.ch=structuredClone(e.ch);}
     if (e.p === true && (!online || isDev)) out.p = true;  // прочный блок в сети ставит только разработчик: иначе база отклонит весь кусок импорта
     return out;
   }
   if (e.op === "dig" && [e.x, e.y, e.z].every(Number.isInteger) && e.y >= -DEPTH && e.y <= -1 && inDigArea(e.x, e.z)) return { op: "dig", x: e.x, y: e.y, z: e.z };
-  if (e.op === "plank" && Array.isArray(e.ends) && e.ends.length === 6 && num(...e.ends)) return { op: "plank", id: newId(), ends: e.ends, c };
+  if(e.op==='mined'&&[e.x,e.y,e.z].every(netCell))return {op:'mined',x:e.x,y:e.y,z:e.z};
+  if (e.op === "plank" && validEdit({...e,id:'import'})) return { op: "plank", id: newId(), ends: [...e.ends], c };
   if (e.op === "text" && typeof e.text === "string" && Array.isArray(e.p) && e.p.length === 3 && num(...e.p) && Array.isArray(e.q) && e.q.length === 4 && num(...e.q))
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
   if (e.op === "animal" && ANIMALS[e.t] && num(e.x, e.y, e.z)) return { op: "animal", id: newId(), t: e.t, x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), t: BALL_TYPES[e.t] ? e.t : "verity", x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "cart" && num(e.x, e.y, e.z)) return { op: "cart", id: newId(), x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c, ...(e.bus === 1 ? { bus: 1 } : {}) };
+  if(['tank','plane'].includes(e.op)&&num(e.x,e.y,e.z)&&optNum(e.yaw,e.pt,e.rl,e.tu,e.bp))return {op:e.op,id:newId(),x:e.x,y:e.y,z:e.z,yaw:e.yaw||0,pt:e.pt||0,rl:e.rl||0,tu:e.tu||0,bp:e.bp||0};
+  if(e.op==='item'&&ITEMS.includes(e.n)&&num(e.x,e.y,e.z)&&Number.isSafeInteger(e.k)&&e.k>0&&e.k<10000)return {op:'item',id:newId(),n:e.n,k:e.k,x:e.x,y:e.y,z:e.z};
   return null;
 }
 
@@ -5980,11 +6086,13 @@ const ROT_DIR = { 0: 4, 4: 1, 1: 5, 5: 0 };  // поворот на 90°: +x →
 function schemCells() {
   const src = schem.list;
   if (!src.length) return [];
-  const minx = Math.min(...src.map(e => e.x)), miny = Math.min(...src.map(e => e.y)), minz = Math.min(...src.map(e => e.z));
+  let minx=Infinity,miny=Infinity,minz=Infinity;
+  for(const e of src){minx=Math.min(minx,e.x);miny=Math.min(miny,e.y);minz=Math.min(minz,e.z);}
   const rot = (x, z) => { for (let i = 0; i < schem.rot; i++) [x, z] = [-z, x]; return [x, z]; };
   const moved = src.map(e => { const [x, z] = rot(e.x - minx, e.z - minz); return { e, x, y: e.y - miny, z }; });
-  const mx = Math.min(...moved.map(m => m.x)), mz = Math.min(...moved.map(m => m.z));
-  schem.h = Math.max(...moved.map(m => m.y)) + 1;
+  let mx=Infinity,mz=Infinity,highest=-Infinity;
+  for(const m of moved){mx=Math.min(mx,m.x);mz=Math.min(mz,m.z);highest=Math.max(highest,m.y);}
+  schem.h = highest+1;
   return moved.map(({ e, x, y, z }) => {
     const n = { ...e, x: schem.ox + x - mx, y: schem.oy + y, z: schem.oz + z - mz };
     for (let i = 0; i < schem.rot; i++) { if (n.r !== undefined) n.r = (n.r + 1) % 4; for (const f of ["f", "a"]) if (n[f] !== undefined && n[f] in ROT_DIR) n[f] = ROT_DIR[n[f]]; }
@@ -6336,15 +6444,17 @@ const HAND_UP = new Set(["Меч", "Топор", "Бита"]);  // клинок 
 function setHand(group, name) {
   let hand = group.userData.hand;
   if (hand && hand.userData.w === name) return;
-  if (hand) { group.remove(hand); group.userData.hand = hand = null; }
+  if (hand) { hand.removeFromParent(); group.userData.hand = hand = null; }
   if (!name || !(name in WEAPON_GEO)) return;
   hand = new THREE.Mesh(WEAPON_GEO[name], weaponMats);
   hand.userData.w = name;
   hand.position.set(0.36, 1.0, -0.1);
+  const parent=group.userData.figure?.bones[2]||group;
+  if(parent!==group)hand.position.sub(parent.position);
   hand.rotation.set(HAND_UP.has(name) ? 0.9 : 0, -0.08, 0);
   hand.scale.setScalar(name === "Нож" || name === "Пистолет" || name === "Граната" ? 1.2 : 0.75);
   hand.castShadow = true;
-  group.add(hand);
+  parent.add(hand);
   group.userData.hand = hand;
 }
 
@@ -7516,7 +7626,7 @@ function updateWeapons(dt) {
   updateRegen(dt);
   updateCulling(dt);
   const carBtn = document.querySelector('#touch [data-action="car"]');
-  const canCar = !!(drivingCar || drivingPlane || drivingTank || (inGame && camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
+  const canCar = !!(drivingCar || drivingPlane || drivingTank || drivingCart || (inGame && camMode === "first" && (nearestCart() || nearestCar() || nearestTank() || nearestPlane()))) ? "" : "none";
   if (carBtn.style.display !== canCar) carBtn.style.display = canCar;
   // Кнопка бега: за рулём она включает нитро
   const nitroBtn = document.querySelector('#touch [data-action="nitro"]'), nitroText = drivingCar ? "НИТРО" : "БЕГ";
@@ -7549,23 +7659,26 @@ const listWorlds = () => idb("meta", "readonly", s => s.getAll()).then(l => l.so
 // Всё, что построено в мире (как экспорт .baseAscii): земля под плитой восстанавливается из ям сама
 // В бесконечном мире сгенерированное (g) и входы в пещеры не храним: они получатся из зерна снова
 const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr && !e.g)), ...[...drops.values()].map(d => d.e),
+  ...[...(gen?.removed||[])].map(k=>{const [x,y,z]=k.split(',').map(Number);return {op:'mined',x,y,z};}),
   ...[...dug].filter(k => !gen?.mouths.has(k)).map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
 function saveWorld(manual) {
-  if (typeof craftGrid !== "undefined" && craftGrid.some(Boolean)) returnGrid();
   if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
   const edits = worldEdits();
-  const data = { edits, smelting: pendingSmelting(), player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
+  const data = { edits, smelting: pendingSmelting(), player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag:inventorySnapshot(), color, armor: [...armor],
     gen: gen && { removed: [...gen.removed], animals: [...gen.animals], store: Object.fromEntries(gen.store), looted: [...gen.looted] } };
   Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
   worldDirty = false;
   savedAt = [px, feet, pz];
-  return idb("data", "readwrite", s => s.put(data, currentWorld.id))
-    .then(() => idb("meta", "readwrite", s => s.put({ ...currentWorld })))
-    .then(() => manual && addChat("* мир сохранён"), err => addChat(`* не удалось сохранить мир: ${err?.message || err}`));
+  const meta={...currentWorld};
+  return worldDB().then(db=>new Promise((ok,fail)=>{
+    const tx=db.transaction(['meta','data'],'readwrite');
+    tx.objectStore('data').put(data,meta.id);tx.objectStore('meta').put(meta);
+    tx.oncomplete=ok;tx.onerror=tx.onabort=()=>fail(tx.error);
+  })).then(() => manual && addChat("* мир сохранён"), err => {worldDirty=true;addChat(`* не удалось сохранить мир: ${err?.message || err}`);});
 }
 // Сам: раз в 30 секунд, если что-то изменилось или игрок ушёл с места, и когда вкладку сворачивают или закрывают
 // Вещи в сетевом выживании — у самого игрока (в браузере), по коду лобби
-const saveLobbyBag = () => { if(panel===inv&&craftGrid.some(Boolean))returnGrid(); if (!currentWorld && lobbyCode && bag) try { localStorage.setItem("bag:" + lobbyCode, JSON.stringify({ bag, bar: HOTBAR, armor:[...armor], smelting:pendingSmelting() })); } catch {} };
+const saveLobbyBag = () => { if (!currentWorld && lobbyCode && bag) try { localStorage.setItem("bag:" + lobbyCode, JSON.stringify({ bag:inventorySnapshot(), bar: HOTBAR, armor:[...armor], smelting:pendingSmelting() })); } catch { worldDirty=true; } };
 addEventListener("pagehide", saveLobbyBag);
 function autosave(dt) {
   saveTimer += dt;
@@ -7596,12 +7709,12 @@ async function playWorld(meta) {
   try { data = await idb("data", "readonly", s => s.get(meta.id)); } catch { return showNote("не удалось открыть мир"); }
   currentWorld = meta;
   gameMode = meta.mode;
-  bag = meta.res ? { ...(data?.bag || {}) } : null;
-  if(bag)restoreSmelting(data?.smelting);
+  bag = meta.res ? sanitizeBag(data?.bag) : null;
   if (Array.isArray(data?.bar)) data.bar.forEach((n, i) => { if (i < BAR_SIZE) HOTBAR[i] = n && ITEMS.includes(n) ? n : null; });
   if (Number.isInteger(data?.color) && COLORS[data.color]) color = data.color;
-  if (Array.isArray(data?.armor)) armor = data.armor.map(n => ARMOR[n] ? n : null);
+  armor=Array.from({length:4},(_,i)=>ARMOR[data?.armor?.[i]]?.[0]===i?data.armor[i]:null);
   startGame();
+  if(bag)restoreSmelting(data?.smelting);
   setInfinite(!!meta.inf, data?.gen);
   const list = data?.edits || [];
   if (list.length > 3000) addChat(`* загрузка мира: ${list.length} предметов…`);
@@ -7643,6 +7756,8 @@ const renameWorld = (meta, name) => idb("meta", "readwrite", s => s.put({ ...met
 
 // ---------- Выживание: вещи считаются, блоки добываются и ломаются не сразу, остальное крафтится ----------
 const have = name => !bag || (bag[name] || 0) > 0;
+function sanitizeBag(raw){const out={};if(raw&&typeof raw==='object'&&!Array.isArray(raw))for(const n of ITEMS)if(Number.isSafeInteger(raw[n])&&raw[n]>0)out[n]=Math.min(raw[n],1000000);return out;}
+function inventorySnapshot(){if(!bag)return null;const out={...bag};for(const c of craftGrid)if(c)out[c.n]=(out[c.n]||0)+c.k;return out;}
 const NON_CONSUMABLE = new Set(["Огниво", "Рулетка"]);
 function give(name, n = 1, quiet) {
   if (!bag || !name || !ITEMS.includes(name)) return;
@@ -7676,6 +7791,8 @@ function dropFor(e) {
   if (e.k === "door") return e.i ? "Железная дверь" : "Дверь";
   if (e.k === "sand" && Math.random()<0.1) return "Кремень";
   if (e.k === "stone") return "Булыжник";
+  const oreDrop={ore_coal:'Уголь',ore_red:'Редстоун',ore_diamond:'Алмаз',ds_iron:'Железная руда',ds_gold:'Золотая руда',ds_red:'Редстоун',ds_diamond:'Алмаз'}[e.k];
+  if(oreDrop)return oreDrop;
   if (e.k === "grass") return "Земля";
   if (e.k === "leaves") return Math.random() < 0.2 ? "Палка" : Math.random() < 0.35 ? "Листва" : null;
   if (["glass", "ice", "window", "portal", "rs_head"].includes(e.k)) return null;  // стекло бьётся
@@ -7730,7 +7847,7 @@ function updateBreaking(dt) {
   // Кирка ускоряет камень и руду; без нужной кирки — втрое дольше (и ничего не выпадет)
   const e = hit.object.userData.edit, need = e ? needTier(e) : 0, tier = pickTier();
   breaking.prog += dt / hardness(hit) * (!need ? 1 : tier >= need ? PICK_SPEED[tier] : 0.33);
-  if ((breaking.tick += dt) > 0.22) { breaking.tick = 0; sfx("mine"); burst(hit.point, hit.object.userData.edit?.c ?? 10, 2); }
+  if ((breaking.tick += dt) > 0.22) { breaking.tick = 0; sfx("mine"); burst(hit.point, hit.object.userData.edit?.c ?? 0, 3,hit.object.userData.edit); }
   if (breaking.prog >= 1) { use("remove", breaking.screen); breaking.prog = 0; breaking.id = null; }
   const n = Math.min(10, Math.floor(breaking.prog * 10));
   mineEl.textContent = "█".repeat(n) + "░".repeat(10 - n);
@@ -7808,29 +7925,44 @@ function toast(t) {
 }
 
 // ---------- Частицы: осколки сломанного блока ----------
-const partGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12), partMats = new Map(), parts = [];
-function burst(p, c, n = 10) {
-  let mat = partMats.get(c);
-  if (!mat) { const [r, g, b] = (COLORS[c] || COLORS[10]).rgb; partMats.set(c, mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, g / 255, b / 255) })); }
-  for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(partGeo, mat);
-    m.position.set(p.x + (Math.random() - 0.5) * 0.5, p.y + Math.random() * 0.4, p.z + (Math.random() - 0.5) * 0.5);
-    m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4);
-    m.userData.life = 0.45 + Math.random() * 0.4;
-    scene.add(m);
-    parts.push(m);
-  }
-  while (parts.length > 160) scene.remove(parts.shift());
+const PART_LIMIT=LOWEND?96:256,parts=[];
+const particleKinds=[...Object.keys(BLOCK_TEX),'brick','flat','glass'];
+const particleAtlas=canvasTexture(128,128,c=>{particleKinds.forEach((k,i)=>c.drawImage(k==='brick'?brickTex.image:k==='flat'?plainTex.image:k==='glass'?glassTex.image:BLOCK_TEX[k].image,(i%8)*16,(7-Math.floor(i/8))*16,16,16));});
+particleAtlas.magFilter=THREE.NearestFilter;particleAtlas.minFilter=THREE.NearestFilter;particleAtlas.generateMipmaps=false;
+const partGeo=new THREE.BoxGeometry(1,1,1),partUv=new THREE.InstancedBufferAttribute(new Float32Array(PART_LIMIT*4),4).setUsage(THREE.DynamicDrawUsage);
+partGeo.setAttribute('shardUv',partUv);
+const partMaterial=new THREE.MeshLambertMaterial({map:particleAtlas});
+partMaterial.onBeforeCompile=sh=>{sh.vertexShader='attribute vec4 shardUv;\n'+sh.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\nvMapUv = shardUv.xy + vMapUv * shardUv.zw;');};
+const particleMesh=new THREE.InstancedMesh(partGeo,partMaterial,PART_LIMIT);
+particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);particleMesh.frustumCulled=false;particleMesh.count=0;scene.add(particleMesh);
+const partDummy=new THREE.Object3D(),partTint=new THREE.Color();
+function burst(p, c, n = 10, source) {
+  if(!p||![p.x,p.y,p.z].every(Number.isFinite))return;
+  const kind=source?.k||((source?.t||p.y<0)?'dirt':'brick');
+  const tile=Math.max(0,particleKinds.indexOf(kind)),floor=groundHeight(p.x,source?.op==='block'?source.y-.6:p.y,p.z)+.035;
+  const count=Math.min(PART_LIMIT,Math.max(0,Math.floor(n*(LOWEND ? .75 : 1))));
+  if(parts.length+count>PART_LIMIT)parts.splice(0,parts.length+count-PART_LIMIT);
+  const rgb=(COLORS[c]||COLORS[0]).rgb,r=rgb[0]/255,g=rgb[1]/255,b=rgb[2]/255;
+  for(let i=0;i<count;i++)parts.push({x:p.x+(Math.random()-.5)*.45,y:p.y+(Math.random()-.3)*.4,z:p.z+(Math.random()-.5)*.45,
+   vx:(Math.random()-.5)*4.5,vy:1.5+Math.random()*3,vz:(Math.random()-.5)*4.5,
+   life:.7+Math.random()*.5,max:1.2,size:.055+Math.random()*.09,rx:Math.random()*6,ry:Math.random()*6,spin:(Math.random()-.5)*12,floor,
+   u:((tile%8)*16+Math.floor(Math.random()*12))/128,v:(Math.floor(tile/8)*16+Math.floor(Math.random()*12))/128,r,g,b});
+  updateParticles(0);
 }
 function updateParticles(dt) {
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const m = parts[i], u = m.userData;
-    u.life -= dt;
-    u.v.y -= 16 * dt;
-    m.position.addScaledVector(u.v, dt);
-    m.rotation.x += dt * 6; m.rotation.y += dt * 4;
-    if (u.life <= 0) { scene.remove(m); parts.splice(i, 1); }
+  let kept=0;
+  for(let i=0;i<parts.length;i++){
+    const p=parts[i];p.life-=dt;if(p.life<=0)continue;
+    p.vy-=15*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+    if(p.y<p.floor&&p.vy<0){p.y=p.floor;p.vy*=-.25;p.vx*=.65;p.vz*=.65;}
+    p.rx+=p.spin*dt;p.ry+=dt*4;
+    const scale=p.size*Math.min(1,p.life/.25);
+    partDummy.position.set(p.x,p.y,p.z);partDummy.rotation.set(p.rx,p.ry,0);partDummy.scale.setScalar(scale);partDummy.updateMatrix();
+    particleMesh.setMatrixAt(kept,partDummy.matrix);partTint.setRGB(p.r,p.g,p.b);particleMesh.setColorAt(kept,partTint);
+    partUv.setXYZW(kept,p.u,p.v,4/128,4/128);parts[kept++]=p;
   }
+  const changed=particleMesh.count!==kept||dt>0||kept>0;parts.length=kept;particleMesh.count=kept;
+  if(changed){particleMesh.instanceMatrix.needsUpdate=true;partUv.needsUpdate=true;if(particleMesh.instanceColor)particleMesh.instanceColor.needsUpdate=true;}
 }
 
 // ---------- Шаги и приземление ----------
@@ -8007,9 +8139,13 @@ function stepCart(m, dt) {
 }
 // Вагонетки сталкиваются: та, что наехала, отскакивает назад, а стоящую толкает вперёд
 function bumpCarts() {
-  const list = [...carts.values()];
-  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-    const a = list[i], b = list[j];
+  const bins=new Map(),pairs=[];
+  for(const a of carts.values()){
+    const x=Math.floor(a.position.x/1.25),z=Math.floor(a.position.z/1.25);
+    for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(const b of bins.get((x+dx)+','+(z+dz))||[])pairs.push([a,b]);
+    const key=x+','+z;if(!bins.has(key))bins.set(key,[]);bins.get(key).push(a);
+  }
+  for(const [a,b] of pairs){
     if (a.position.distanceToSquared(b.position) > 1.25 * 1.25) continue;
     for (const [m, o] of [[a, b], [b, a]]) {
       const c = m.userData.cart;
@@ -8325,6 +8461,7 @@ const ARMOR_SLOTS = ["шлем", "нагрудник", "поножи", "боти
 const armorPoints = () => armor.reduce((s, n) => s + (ARMOR[n]?.[2] || 0), 0);
 const armorCode = () => armor.map(n => ARMOR[n]?.[1] || "0").join("");
 function wear(name) {
+  if(!ARMOR[name]||!have(name))return;
   const [i] = ARMOR[name];
   if (armor[i]) give(armor[i], 1, true);  // снятое возвращается в вещи
   armor[i] = name;
@@ -8348,6 +8485,11 @@ const ARMOR_GEO = [
   mergeParts([box(0.54, 0.14, 0.3, 0, 0.6, 0), box(0.22, 0.42, 0.26, -0.13, 0.36, 0), box(0.22, 0.42, 0.26, 0.13, 0.36, 0)]),
   mergeParts([box(0.24, 0.16, 0.34, -0.13, 0.08, -0.03), box(0.24, 0.16, 0.34, 0.13, 0.08, -0.03)]),
 ];
+const ARMOR_SKIN_GEO=ARMOR_GEO.map((geo,slot)=>{
+ const g=geo.clone(),p=g.attributes.position,indices=[],weights=[];
+ for(let i=0;i<p.count;i++){const bone=slot===0?1:slot===1||slot===2&&p.getY(i)>.56?0:p.getX(i)>0?4:5;indices.push(bone,0,0,0);weights.push(1,0,0,0);}
+ g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));return g;
+});
 // Броня на фигурке: code — 4 буквы (0 — ничего, i — железо, d — алмаз)
 function setArmorLook(group, code) {
   if (group.userData.armorCode === code) return;
@@ -8356,7 +8498,9 @@ function setArmorLook(group, code) {
   group.userData.armorMeshes = [];
   [...(code || "")].forEach((c, i) => {
     if (!armorMats[c]) return;
-    const m = new THREE.Mesh(ARMOR_GEO[i], armorMats[c]);
+    const figure=group.userData.figure;
+    const m = figure?new THREE.SkinnedMesh(ARMOR_SKIN_GEO[i],armorMats[c]):new THREE.Mesh(ARMOR_GEO[i],armorMats[c]);
+    if(figure){m.bind(figure.body.skeleton,figure.body.bindMatrix);m.frustumCulled=false;}
     m.castShadow = true;
     group.add(m);
     group.userData.armorMeshes.push(m);
@@ -8438,10 +8582,20 @@ const loadChess = () => ChessLib ? Promise.resolve(ChessLib) : import("chess.js"
 const chessMe = () => meId || myId;
 let chessKey = null, chessSel = null, chessLvl = 3;
 const chessBusy = new Set();
+const chessPending=new Set();
 const LEVEL_NAME = ["", "новичок", "лёгкий", "простой", "средний", "крепкий", "сильный", "мастер", "максимум"];
 const chessEdit = () => blocks.get(chessKey)?.userData.edit;
 const chessName = (id, saved, lvl) => id === "bot" ? `Stockfish, ур. ${lvl || 3}` : id === chessMe() ? nick : others.get(id)?.nick || saved || "игрок";
-const setChess = (e, ch) => share({ ...e, ch }, true);
+const sameChessState=(a,b)=>['st','fen','n','t','w','b'].every(k=>a?.[k]===b?.[k]);
+function setChess(e,ch){
+ if(!online?.chessUpdate)return share({...e,ch},true);
+ const k=key(e.x,e.y,e.z);if(chessPending.has(k))return;
+ chessPending.add(k);if(panel===chessEl&&chessKey===k)drawChess();
+ online.chessUpdate(e,ch).catch(error=>toast(error.message||'Не удалось сохранить ход')).finally(()=>{
+  chessPending.delete(k);if(panel===chessEl&&chessKey===k)drawChess();
+  else {const cur=blocks.get(k)?.userData.edit;if(cur)chessThink(cur);}
+ });
+}
 function openChess(e) {
   chessKey = key(e.x, e.y, e.z);
   chessSel = null;
@@ -8489,13 +8643,14 @@ function drawChess() {
   if (st === "over") btns += gbtn("убрать фигуры", "ch:free");
   chessEl.innerHTML = `<div class="chhead">${gtitle("ШАХМАТЫ")}${isDev?`<button class="act bestmove-button" data-a="ch:best18" ${chessHintLoading?"disabled":""}>${chessHintLoading?"Анализ…":"Лучший ход"}</button>`:""}</div>` + (isDev?`<div class="bestmove-note" role="status">${chessHintLoading?"Stockfish 18: загрузка и анализ…":hint?`Stockfish 18: ${esc(hint.san)} (${hint.move.slice(0,2)} → ${hint.move.slice(2,4)}), глубина ${hint.depth}${hint.score?", оценка "+esc(hint.score)+" для стороны хода":""}`:esc(chessHintError)}</div>`:"") + `<div class="cstat">${esc(status)}</div><div class="cboard">${cells}</div>` +
     (review?`<div class="move-review" role="status">${review.grade?reviewBadge(review.grade):''}<div>${esc(ch.san||ch.last||'')}: ${review.grade?esc(MOVE_GRADES[review.grade].label):review.error?'Оценка недоступна':'Stockfish 18 оценивает ход…'}${review.grade?`<small>${review.loss>0?`Потеря оценки: ${(review.loss/100).toFixed(2)} пешки · `:''}глубина ${review.depth}</small>`:review.error?'<small>Проверь подключение к интернету</small>':''}</div></div>`:'') +
-    (ChessLib ? "" : glabel("загружаю правила шахмат…")) + (chessBusy.size && st === "play" ? glabel("Stockfish думает…") : "") + btns +
+    (ChessLib ? "" : glabel("загружаю правила шахмат…")) + (chessPending.has(chessKey)?glabel('Сохраняю ход…'):chessBusy.size && st === "play" ? glabel("Stockfish думает…") : "") + btns +
     `<div class="gx">${TOUCH ? "" : "Esc — закрыть"}</div>` + xbtnHtml();
   chessThink(e);
 }
 chessEl.addEventListener("click", e => {
   const be = chessEdit();
   if (be?.k !== "chess") return;
+  if(chessPending.has(chessKey))return;
   const sqEl = e.target.closest("[data-sq]");
   if (sqEl) return chessClick(be, sqEl.dataset.sq);
   const a = e.target.closest(".act")?.dataset.a;
@@ -8526,21 +8681,27 @@ function chessClick(be, sq) {
   chessMove(be, { from: mv.from, to: mv.to, promotion: mv.promotion ? "q" : undefined });
 }
 function chessMove(be, mv) {
+  if(!ChessLib||be?.ch?.st!=='play')return;
   const ch = be.ch, g = new ChessLib(ch.fen);
   let done = null;
   try { done = g.move(mv); } catch { return; }
   const next = { ...ch, prevFen:ch.fen, fen: g.fen(), last: done.from + done.to + (done.promotion||''), san:done.san, n: (ch.n || 0) + 1, t: Date.now() };
-  if (g.isGameOver()) {
+  const positionKey=fen=>fen.split(' ').slice(0,4).join(' ');
+  const previous=Array.isArray(ch.positions)?ch.positions:[positionKey(ch.fen)];
+  next.positions=(done.piece==='p'||done.captured?[]:previous).concat(positionKey(next.fen)).slice(-150);
+  const repeated=next.positions.filter(p=>p===positionKey(next.fen)).length>=3;
+  if (g.isGameOver()||repeated) {
     const winner = g.turn() === "w" ? "b" : "w";
     next.st = "over";
     next.res = g.isCheckmate() ? `Мат! Победил${winner === "w" ? "и белые" : "и чёрные"}: ${chessName(ch[winner], ch[winner + "n"], ch.lvl)}` :
-      g.isStalemate() ? "Пат — ничья" : g.isThreefoldRepetition() ? "Троекратное повторение — ничья" : g.isInsufficientMaterial() ? "Мало фигур для мата — ничья" : "Ничья";
+      g.isStalemate() ? "Пат — ничья" : repeated ? "Троекратное повторение — ничья" : g.isInsufficientMaterial() ? "Мало фигур для мата — ничья" : "Ничья";
   }
   sfx(done.captured ? "break" : "place");
   setChess(be, next);
 }
 // Ход бота считает тот, кто с ним играет (у остальных партия просто обновляется по сети)
 function chessThink(be) {
+  if(be&&chessPending.has(key(be.x,be.y,be.z)))return;
   const ch = be?.ch;
   if (!ch || ch.st !== "play" || !ChessLib) return;
   const turn = ch.fen.split(" ")[1];
@@ -8551,7 +8712,7 @@ function chessThink(be) {
   engineMove(ch.fen, ch.lvl || 3).then(mv => {
     chessBusy.delete(k);
     const cur = blocks.get(key(be.x, be.y, be.z))?.userData.edit;
-    if (mv && cur?.ch?.fen === ch.fen && cur.ch.st === "play") chessMove(cur, mv);  // пока бот думал, партию могли сбросить
+    if (mv && cur?.ch?.fen === ch.fen && cur.ch.n===ch.n && cur.ch.t===ch.t && cur.ch.st === "play") chessMove(cur, mv);  // пока бот думал, партию могли сбросить
     else if (panel === chessEl) drawChess();
   });
 }
@@ -8559,25 +8720,30 @@ function chessThink(be) {
 // Уровни 1–8: «Skill Level» движка 0–20, глубина и время на ход
 const SF_URL = "https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js";
 const SF_SKILL = [0, 0, 3, 6, 9, 12, 15, 18, 20], SF_DEPTH = [0, 1, 2, 4, 6, 8, 11, 14, 18], SF_TIME = [0, 150, 250, 400, 600, 800, 1200, 1800, 2500];
-let sfReady = null;
+let sfReady = null,sfBotWorker=null,sfBotQueue=Promise.resolve();
 function stockfish() {
   return sfReady ??= (async () => {
-    const src = await (await fetch(SF_URL)).text();
-    const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    const response=await fetch(SF_URL,{signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Stockfish: '+response.status);
+    const src = await response.text(),url=URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    const w = sfBotWorker=new Worker(url);URL.revokeObjectURL(url);
     await new Promise((ok, fail) => {
-      const t = setTimeout(() => fail(new Error("Stockfish не ответил")), 20000);
+      const t = setTimeout(() => {w.terminate();fail(new Error("Stockfish не ответил"));}, 20000);
       w.onmessage = m => { if (String(m.data).includes("uciok")) { clearTimeout(t); ok(); } };
-      w.onerror = err => { clearTimeout(t); fail(err); };
+      w.onerror = err => { clearTimeout(t);w.terminate();fail(err); };
       w.postMessage("uci");
     });
     return w;
   })().catch(err => { sfReady = null; throw err; });
 }
-async function engineMove(fen, lvl) {
+function engineMove(fen,lvl){const job=sfBotQueue.then(()=>runBotMove(fen,lvl));sfBotQueue=job.catch(()=>{});return job;}
+async function runBotMove(fen, lvl) {
+  lvl=Math.max(1,Math.min(8,Math.round(lvl)||3));
   try {
     const w = await stockfish();
-    const uci = await new Promise(ok => {
-      w.onmessage = m => { const r = String(m.data).match(/^bestmove (\S+)/); if (r) ok(r[1]); };
+    const uci = await new Promise((ok,fail) => {
+      const timer=setTimeout(()=>{w.terminate();sfReady=null;sfBotWorker=null;fail(Error('Stockfish: время ожидания истекло'));},10000);
+      w.onerror=()=>{clearTimeout(timer);w.terminate();sfReady=null;sfBotWorker=null;fail(Error('Stockfish: ошибка движка'));};
+      w.onmessage = m => { const r = String(m.data).match(/^bestmove (\S+)/); if (r){clearTimeout(timer);ok(r[1]);} };
       w.postMessage(`setoption name Skill Level value ${SF_SKILL[lvl]}`);
       w.postMessage(`position fen ${fen}`);
       w.postMessage(`go depth ${SF_DEPTH[lvl]} movetime ${SF_TIME[lvl]}`);
@@ -8714,7 +8880,7 @@ function ensureChessReview(ch,boardKey){
  })();
  return review;
 }
-addEventListener("pagehide",()=>sf18Worker?.terminate());
+addEventListener("pagehide",()=>{sf18Worker?.terminate();sfBotWorker?.terminate();});
 
 // ---------- Выкинутые предметы: G — один, Shift+G — вся стопка. Лежат на земле, подошёл — подобрал ----------
 const drops = new Map();  // id → { e, sprite, vy, born }
@@ -8758,6 +8924,16 @@ function throwItem(all) {
     vx: +(fx * 4).toFixed(2), vy: +(Math.sin(pitch) * 4 + 2).toFixed(2), vz: +(fz * 4).toFixed(2), by: myId });
   sfx("click");
 }
+async function collectDrop(id,d){
+ if(d.claiming||performance.now()<(d.claimRetry||0))return;
+ const owner=bag;d.claiming=true;
+ try{
+  if(online?.claimItem){if(!await online.claimItem(id))return;removeDrop(id);}
+  else share({op:'unitem',id});
+  if(bag===owner){if(bag)give(d.e.n,d.e.k||1);else sfx('pickup');}
+ }catch{d.claimRetry=performance.now()+2000;}
+ finally{d.claiming=false;}
+}
 function updateDrops(dt) {
   const now = performance.now();
   for (const [id, d] of drops) {
@@ -8774,9 +8950,7 @@ function updateDrops(dt) {
     // Подбор: своё — не сразу (иначе подберёшь, едва выкинув), чужое — сразу
     if (dead || !inGame || camMode !== "first") continue;
     if (Math.hypot(s.position.x - px, s.position.z - pz) < 1.3 && s.position.y > feet - 0.6 && s.position.y < feet + 2.2 && (d.e.by !== myId || now - d.born > 1500)) {
-      if (bag) give(d.e.n, d.e.k || 1);
-      else sfx("pickup");
-      share({ op: "unitem", id });
+      collectDrop(id,d);
     }
   }
 }
@@ -8785,8 +8959,10 @@ function updateDrops(dt) {
 // Подземная комната: одна на область 48×48 (не во всех), внутри 7×4×7 пусто, стены из мшистого булыжника; пещеры могут её прорезать
 function dungeonInfo(x, z) {
   const rx = Math.floor(x / 48), rz = Math.floor(z / 48), s = gen.seed + 20;
-  if (hashN(s, rx, 0, rz) > 0.55) return null;
-  return { cx: rx * 48 + 8 + Math.floor(hashN(s + 1, rx, 0, rz) * 32), cy: -18 - Math.floor(hashN(s + 2, rx, 0, rz) * 26), cz: rz * 48 + 8 + Math.floor(hashN(s + 3, rx, 0, rz) * 32), id: `d${rx},${rz}` };
+  const cache=gen.dungeonCache??=new Map(),key=rx+','+rz;
+  if(cache.has(key))return cache.get(key);
+  const value=hashN(s,rx,0,rz)>.55?null:{cx:rx*48+8+Math.floor(hashN(s+1,rx,0,rz)*32),cy:-18-Math.floor(hashN(s+2,rx,0,rz)*26),cz:rz*48+8+Math.floor(hashN(s+3,rx,0,rz)*32),id:`d${rx},${rz}`};
+  if(cache.size>=512)cache.delete(cache.keys().next().value);cache.set(key,value);return value;
 }
 function dungeonAt(x, y, z) {  // 0 — не данж, 1 — пустота внутри, 2 — стена
   const d = dungeonInfo(x, z);
@@ -8889,7 +9065,7 @@ function rulerHtml(){
  gbtn(`шаг: ${rulerStep}`,"ruler:step")+gbtn("сдвинуть −1 по оси","ruler:move:-1")+gbtn("сдвинуть +1 по оси","ruler:move:1")+gbtn("повернуть X ↔ Z","ruler:turn")+gbtn("назад","setback");
 }
 function rulerTransform(next) {
- const e=rulerEdit();if(!scalable(e)||!dimsValid(next))return false;
+ const e=rulerEdit();if(!scalable(e)||!dimsValid(next)||![next.x,next.y,next.z].every(netCell))return false;
  if(online&&!isDev&&e.by!==(meId||myId))return false;
  const coords=[[next.x,next.y,next.z],...extraCells(next)];
  const old=blocks.get(key(e.x,e.y,e.z));
@@ -8941,6 +9117,7 @@ let last = performance.now();
 let refreshMs = 100, refreshN = 0, frameAtPrev = 0;  // самый короткий кадр = частота экрана (на 90 Гц слабым телефонам рисуем через кадр)
 let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
 const frame = now => {
+  labelScreen=renderer.domElement.getBoundingClientRect();
   const dt = Math.max(0, Math.min((now - last) / 1000, 0.1));  // время назад (смена вкладки, часы) не даёт отрицательного шага
   last = now;
   updateTroll(dt);
@@ -9027,7 +9204,7 @@ setFrameLoop();
 // Тени можно выключить: это самая дорогая часть кадра после самой картинки
 function applyShadows() {
   renderer.shadowMap.enabled = settings.shadows;
-  sun.castShadow = settings.shadows;
+  sun.castShadow = settings.shadows && quality<=1;
   scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
 }
 if (!settings.shadows) applyShadows();
