@@ -1,6 +1,6 @@
 {
-  "name": "ASCII Baseplate",
-  "short_name": "ASCII",
+  "name": "Baseplate",
+  "short_name": "Baseplate",
   "start_url": "./",
   "display": "fullscreen",
   "orientation": "landscape",

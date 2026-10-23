@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>ASCII Baseplate (офлайн)</title>
+<title>Baseplate (офлайн)</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <meta name="theme-color" content="#000000">
@@ -96,7 +96,7 @@
   #menu { width: min(94vw, 420px); } #game { width: min(94vw, 400px); } #admin { width: min(96vw, 440px); } #palette { width: min(94vw, 340px); }
   .xbtn { display: none; position: absolute; top: 2px; right: 8px; cursor: pointer; padding: 2px 8px; z-index: 2; border: 1px solid #fff; background: #000; }
   @media (pointer: coarse) { .xbtn { display: block; } }
-  body.panel-open #touch, body.panel-open #lobby, body.panel-open #coords, body.panel-open #hotbar, body.panel-open #hp, body.panel-open #ammo, body.panel-open #chat { display: none !important; }
+  body.panel-open #hint, body.panel-open #touch, body.panel-open #lobby, body.panel-open #coords, body.panel-open #hotbar, body.panel-open #hp, body.panel-open #ammo, body.panel-open #chat { display: none !important; }
   /* Низкий экран (телефон лёжа): окна сжимаем, лишние подписи убираем */
   @media (max-height: 520px) {
     #menu, #game, #admin, #palette, #inv, #schem, #ask { padding: 6px 10px; border-width: 3px; }
@@ -122,6 +122,19 @@
   .gb.warn { text-decoration: underline; }
   .gg { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center; margin: 2px 0; }
   .gg .gl { margin: 0 8px 0 0; }
+  .slot i, .cell i { position: absolute; right: 2px; bottom: 0; font-style: normal; font-size: 11px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; pointer-events: none; }
+  .slot.empty img { opacity: 0.3; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--slot, 44px) + 70px); transform: translateX(-50%); z-index: 30; color: #ffd34d; text-align: center; pointer-events: none; display: none; text-shadow: 0 0 3px #000; }
+  .crafts { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow: auto; text-align: left; }
+  .craft { display: flex; align-items: center; gap: 8px; padding: 2px 4px; opacity: 0.5; cursor: pointer; line-height: 1.25; }
+  .craft.ok { opacity: 1; } .craft.ok:hover { background: #333; }
+  .craft img, .craft .ph { width: 30px; height: 30px; flex-shrink: 0; }
+  .craft .miss { color: #f77; }
+  .help { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 4px 0; }
+  .help b { color: #ffd34d; font-weight: 700; white-space: nowrap; }
+  .help span { color: #ddd; }
+  #fps { position: fixed; right: 8px; bottom: 6px; z-index: 30; color: #8f8; font-size: 12px; pointer-events: none; display: none; }
+  #mine { position: fixed; left: 50%; top: calc(50% + 14px); transform: translateX(-50%); z-index: 30; color: #fff; pointer-events: none; display: none; font-size: 13px; }
   .gcols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   .gx { margin-top: 8px; border-top: 1px solid #fff; padding-top: 2px; font-size: 0.85em; }
   .lobbyrow { display: flex; gap: 4px; align-items: center; }
@@ -244,6 +257,7 @@
     font-size: var(--fs, 14px);
   }
   #touch .button.big { padding: 0.9em 1.1em; }
+  #touch .button { zoom: var(--btnk, 1); }  /* размер кнопок — из настроек */
   #touch .button.active { color: #000; background: #fff; }
   #lobby { max-width: 40vw; white-space: pre-wrap; }
   #stick, #knob {
@@ -357,7 +371,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Самолёт", "Вывеска", "Адский камень", "Светокамень", "Свинья",
   "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель", null, null, null, null,  // обычные страницы кончились; дальше — скрытая страница прочных блоков
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
-  "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"].filter(Boolean);
+  "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
 const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
@@ -365,9 +379,70 @@ const HOTBAR = (() => {  // что лежит в слотах: помним ме
   try { saved = JSON.parse(localStorage.getItem("bar")); } catch {}
   return Array.from({ length: BAR_SIZE }, (_, i) => Array.isArray(saved) ? (ITEMS.includes(saved[i]) ? saved[i] : null) : DEFAULT_BAR[i]);
 })();
-const saveBar = () => { try { localStorage.setItem("bar", JSON.stringify(HOTBAR)); } catch {} };
+// В выживании хотбар свой у каждого мира и сохраняется вместе с ним
+const saveBar = () => { if (bag) return; try { localStorage.setItem("bar", JSON.stringify(HOTBAR)); } catch {} };
 
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
+
+// Настройки игрока (пауза → настройки): помним между запусками
+const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false };
+const settings = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem("settings")) || {}; } catch {} return { ...SETTINGS_DEF, ...s }; })();
+const saveSettings = () => { try { localStorage.setItem("settings", JSON.stringify(settings)); } catch {} };
+document.documentElement.style.setProperty("--btnk", settings.btn);
+
+// ---------- Звук: всё синтезируется на лету, файлов нет. Громкость — из настроек ----------
+let audioCtx = null, audioOut = null;
+function audio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioOut = audioCtx.createGain();
+    audioOut.connect(audioCtx.destination);
+  }
+  audioOut.gain.value = settings.vol;
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+let noiseBuf = null;
+// Шорох: белый шум через полосовой фильтр — удары, шаги, ломание
+function noiseHit(dur, freq, vol, q = 1.2) {
+  const ac = audio(), t = ac.currentTime;
+  if (!noiseBuf) {
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  src.buffer = noiseBuf;
+  f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(f).connect(g).connect(audioOut);
+  src.start(t, Math.random() * 0.3, dur);
+}
+// Тон, который скользит от f0 к f1
+function tone(f0, f1, dur, type, vol) {
+  const ac = audio(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audioOut);
+  o.start(t);
+  o.stop(t + dur);
+}
+const SFX = {
+  place: () => noiseHit(0.09, 700 + Math.random() * 300, 0.5),
+  break: () => { noiseHit(0.18, 380 + Math.random() * 200, 0.7); noiseHit(0.1, 1500, 0.2); },
+  step: () => noiseHit(0.06, 260 + Math.random() * 160, 0.12, 0.8),
+  click: () => tone(1400, 900, 0.04, "square", 0.08),
+  hurt: () => { tone(320, 140, 0.16, "sawtooth", 0.18); noiseHit(0.08, 900, 0.25); },
+  pickup: () => tone(600 + Math.random() * 100, 1300, 0.09, "sine", 0.18),
+  craft: () => { tone(500, 700, 0.07, "triangle", 0.2); setTimeout(() => tone(700, 1000, 0.09, "triangle", 0.2), 70); },
+  land: () => noiseHit(0.1, 200, 0.25, 0.7),
+  mine: () => noiseHit(0.05, 600 + Math.random() * 400, 0.18),
+};
+const sfx = name => { if (settings.vol > 0) try { SFX[name](); } catch {} };
 // Слабые телефоны: определяем по видеочипу (его имя отдаёт браузер) и по модели. Данные из характеристик:
 // Realme C55 — Helio G88 / Mali-G52 MC2, 90 Гц, 1080×2400; Huawei nova 14i — Snapdragon 680 / Adreno 610, 90 Гц, 1080×2376;
 // Huawei nova Y61 — Kirin 710A / Mali-G51, 60 Гц, 720×1600. У всех слабый видеочип и много пикселей — главное для них снижать разрешение сцены
@@ -488,6 +563,11 @@ let prefixes = {};         // выданные разработчиком пре
 let meId = "";             // мой id в лобби
 const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
+let currentWorld = null;  // свой мир одиночной игры, который сохраняется (null — сетевая игра)
+let worldDirty = false;    // мир менялся с последнего сохранения
+let bag = null;            // выживание: { "Камень": 12, … } — вещи считаются; null — всё бесконечно (творческий и сеть)
+let shareN = 0, shareMade = 0;  // сколько правок мира ушло и сколько из них — новые предметы (их тратим из вещей)
+let drivingCart = null;    // меш вагонетки, в которой едет игрок
 let drivingTank = null;  // меш танка, которым управляет игрок
 let drivingPlane = null;  // меш самолёта, которым управляет игрок
 let drivingCar = null;  // меш машины, в которой сидит игрок
@@ -516,7 +596,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.Fog(0x000000, FOG_NEAR, FOG_FAR);
 
-const FOV = 70, ZOOM_FOV = 25;  // зум — пока держишь C; колесо мыши меняет его силу
+let FOV = settings.fov; const ZOOM_FOV = 25;  // зум — пока держишь C; колесо мыши меняет его силу
 let zoomFov = ZOOM_FOV;
 addEventListener("wheel", e => {
   if (!keys.KeyC || typing || !inGame) return;
@@ -733,13 +813,15 @@ const RS_ITEMS = {
   "Компаратор": { k: "rs_comparator", mode: "dir4" }, "Блок редстоуна": { k: "rs_block" }, "Лампа редстоуна": { k: "rs_lamp" },
   "Поршень": { k: "rs_piston", mode: "face" }, "Липкий поршень": { k: "rs_sticky", mode: "face" }, "Наблюдатель": { k: "rs_observer", mode: "face" },
   "Раздатчик": { k: "rs_dispenser", mode: "face" }, "Нотный блок": { k: "rs_note" }, "Железная дверь": { k: "door", mode: "iron" },
+  "Рельсы": { k: "rs_rail", mode: "floor" }, "Энергорельсы": { k: "rs_prail", mode: "floor" },
 };
-const RS_ACTIVE = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator", "rs_block", "rs_lamp", "rs_piston", "rs_sticky", "rs_observer", "rs_dispenser", "rs_note", "door", "tnt"]);
+const RS_ACTIVE = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator", "rs_block", "rs_lamp", "rs_piston", "rs_sticky", "rs_observer", "rs_dispenser", "rs_note", "door", "tnt", "rs_rail", "rs_prail"]);
 const rsRec = new Map();   // "x,y,z" → { e, m, s } — всё, что умеет работать с сигналом
 const rsStash = new Map(); // состояние убранного блока: нужно, когда рычаг или повторитель заменяют на себя же
 let rsTickN = 0, rsAcc = 0;
 const planks = new Map();  // id доски → её меш
 const cars = new Map();    // id машины → её меш
+const carts = new Map();   // id вагонетки → её меш
 // Свет дают только 3 ближайшие лампы: каждый источник замедляет отрисовку всего мира
 const lamps = new Set();
 const tvs = new Set();       // телевизоры: их экран обновляется
@@ -833,6 +915,7 @@ let idCount = 0;
 // У блока может быть вид k: "glass" — стекло, "stick" — палка, "door" — дверь высотой 2
 // (r — куда повёрнута, open — открыта ли). replace — заменить стоящий предмет (дверь открыли)
 function edit(e, replace = false) {
+  worldDirty = true;
   // Шлагбаум при открытии/закрытии не прыгает: новая модель продолжает с того угла, где стояла старая
   const old = replace && e.op === "block" ? blocks.get(key(e.x, e.y, e.z)) : null;
   const step = old?.userData.step;
@@ -952,11 +1035,24 @@ function edit(e, replace = false) {
     } else if (e.o !== myId) { m.userData.edit = m.userData.target = e; m.userData.sim.owned = false; }  // мяч двигает тот, кто его последним толкнул
   }
   if (e.op === "unball") removeSolid(balls.get(e.id));
+  if (e.op === "cart") {
+    const m = carts.get(e.id);
+    if (!m) {
+      const mesh = new THREE.Mesh(cartGeo, vmaterial(plainTex, 0));
+      mesh.position.set(e.x, e.y, e.z);
+      mesh.rotation.y = e.yaw || 0;
+      addSolid(mesh, e);
+      carts.set(e.id, mesh);
+    } else if (m !== drivingCart) m.userData.edit = m.userData.target = e;  // чужая вагонетка плавно доезжает
+  }
+  if (e.op === "uncart") removeSolid(carts.get(e.id));
   if (e.op === "unplank") removeSolid(planks.get(e.id));
 }
 
 // Своё изменение: применяем у себя и рассылаем остальным игрокам
 function share(e, replace = false) {
+  shareN++;
+  if (!replace && !e.op.startsWith("un") && e.op !== "dig") shareMade++;
   edit(e, replace);
   online?.sendEdits([e]);
 }
@@ -997,6 +1093,7 @@ function rebuildChunks(limit = 24) {
     dirtyChunks.delete(c);
     const byColor = new Map();
     for (const m of c.blocks) {
+      if (m.userData.slide) continue;  // едет за поршнем — рисуется сам
       const col = m.userData.chunkKey ?? "b|" + m.userData.edit.c;
       if (!byColor.has(col)) byColor.set(col, []);
       byColor.get(col).push(m);
@@ -1084,6 +1181,7 @@ function removeSolid(mesh) {
   if (e.op === "animal") animals.delete(e.id);
   if (e.op === "plane") { planes.delete(e.id); if (mesh === drivingPlane) exitPlane(); }
   if (e.op === "tank") { tanks.delete(e.id); if (mesh === drivingTank) exitTank(); }
+  if (e.op === "cart") { carts.delete(e.id); if (mesh === drivingCart) exitCart(); }
   lamps.delete(mesh);
   tvs.delete(mesh);
   barriers.delete(mesh);
@@ -1538,7 +1636,7 @@ const DECOR = { lamp: [lampGeo, ""], burger: [burgerGeo, "съел бургер"
 
 // Высота поверхности низкого предмета (рампа, стол, стул) в клетке над точкой (x, z);
 // null — в клетке такого предмета нет
-const RS_THIN = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator"]);  // редстоун-мелочь: через неё проходят
+const RS_THIN = new Set(["rs_dust", "rs_torch", "rs_lever", "rs_button", "rs_plate", "rs_repeater", "rs_comparator", "rs_rail", "rs_prail"]);  // редстоун-мелочь: через неё проходят
 const LOW_TOP = { table: 0.75, chair: 0.45, bed: 0.5, sofa: 0.45, bench: 0.45 };
 let onIce = false, iceVx = 0, iceVz = 0;  // лёд: игрок скользит
 let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
@@ -1811,6 +1909,7 @@ function drawHp() {
 function damage(n, by) {
   if (gameMode !== "survival" || dead || isGod() || performance.now() < invulnUntil || n <= 0) return;
   hp -= n;
+  sfx("hurt");
   lastHurt = performance.now();
   flashEl.style.transition = "none"; flashEl.style.opacity = 0.35;
   requestAnimationFrame(() => { flashEl.style.transition = "opacity 0.4s"; flashEl.style.opacity = 0; });
@@ -1829,6 +1928,7 @@ function updateRegen(dt) {
 function die(by) {
   hp = 0; dead = true;
   exitCar();
+  exitCart();
   endDrone();
   for (const k in keys) keys[k] = false;
   respawnAt = performance.now() + 3000;
@@ -1927,10 +2027,13 @@ function nearestTank() {
   return best;
 }
 function toggleCar() {
+  if (drivingCart) return exitCart();
   if (drivingTank) return exitTank();
   if (drivingPlane) return exitPlane();
   if (drivingCar) return exitCar();
   if (camMode !== "first" || !inGame) return;
+  const cart = nearestCart();
+  if (cart) return enterCart(cart);
   const tank = nearestTank();
   if (tank) return enterTank(tank);
   const plane = nearestPlane();
@@ -2371,7 +2474,7 @@ function update(dt) {
     if (left <= 0) respawn();
     return;
   }
-  if (camMode === "car") return drivingTank ? updateTank(dt) : drivingPlane ? updatePlane(dt) : updateCar(dt);
+  if (camMode === "car") return drivingCart ? updateCartRide() : drivingTank ? updateTank(dt) : drivingPlane ? updatePlane(dt) : updateCar(dt);
   if (camMode === "drone") return updateDrone(dt);
 
   // Свободная камера разработчика летает сама по себе, а игрок стоит на месте:
@@ -2552,7 +2655,14 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
   "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
+// Действие игрока: поставить или сломать. Звук и расход вещей (в выживании) — по тому, что реально ушло в мир
 function use(action, screen) {
+  const n0 = shareN, m0 = shareMade, item = HOTBAR[slot];
+  useInner(action, screen);
+  if (shareMade > m0) { sfx("place"); if (bag && item && !NON_CONSUMABLE.has(item)) take(item); }
+  else if (shareN > n0) sfx(action === "remove" ? "break" : "click");
+}
+function useInner(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
   const hit = aim(screen);
 
@@ -2563,13 +2673,13 @@ function use(action, screen) {
       // Копаем пол: клетка под плитой
       const dx = Math.floor(hit.point.x), dz = Math.floor(hit.point.z);
       if (!inDigArea(dx, dz)) addChat("* здесь копать нельзя: слишком далеко от старта");
-      else share({ op: "dig", x: dx, y: -1, z: dz });
+      else { share({ op: "dig", x: dx, y: -1, z: dz }); if (bag) give(digDrop(-1)); burst(hit.point, 10, 8); }
     } else if (hit) {
       const t = hit.object.userData.edit;
       if (isTerr(t)) {  // земля: ломаем — значит копаем
         if (t.t === 2) addChat("* дальше бедрок, его не сломать");
         else if (t.t === 3) addChat("* в аду это не сломать");
-        else share({ op: "dig", x: t.x, y: t.y, z: t.z });
+        else { share({ op: "dig", x: t.x, y: t.y, z: t.z }); if (bag) give(digDrop(t.y)); burst(hit.point, t.c, 8); }
         drawHotbar();
         return;
       }
@@ -2581,6 +2691,8 @@ function use(action, screen) {
         if (gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 25); drawHp(); }  // еда лечит
       }
       if (t.op === "animal" && gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 20); drawHp(); addChat("* ты съел животное"); }
+      if (bag && !eaten) give(dropFor(t));
+      burst(hit.point, t.c ?? 11, 10);
       share(undo(hit.object.userData.edit));
     }
     drawHotbar();
@@ -2594,6 +2706,7 @@ function use(action, screen) {
     return;
   }
   if (target && rsInteract(target)) return;  // рычаг, кнопка, повторитель, нота
+  if (bag && !have(HOTBAR[slot])) { if (HOTBAR[slot]) toast(`нет: ${HOTBAR[slot]}`); return; }  // выживание: ставить нечего
   if (itemBanned(HOTBAR[slot])) return;
   if (RS_ITEMS[HOTBAR[slot]] && hit) { rsPlace(RS_ITEMS[HOTBAR[slot]], hit); return; }
   if (HOTBAR[slot] === "Огниво") {  // поджигаем ТНТ под прицелом
@@ -2647,12 +2760,18 @@ function use(action, screen) {
     const [x, y, z] = hit.point.toArray().map(v => +v.toFixed(2));
     share({ op: "car", id: `${myId}-${idCount++}`, x, y, z, yaw: +yaw.toFixed(2), c: color });
   }
+  // Вагонетка встаёт на рельсы под прицелом (или на рельсы над блоком, в который целимся)
+  if (HOTBAR[slot] === "Вагонетка" && hit) {
+    const cell = target && [[target.x, target.y, target.z], [target.x, target.y + 1, target.z]].find(c => isRail(rsRec.get(key(...c))));
+    if (!cell) toast("вагонетку ставят на рельсы");
+    else share({ op: "cart", id: `${myId}-${idCount++}`, x: cell[0] + 0.5, y: cell[1] + 0.06, z: cell[2] + 0.5, yaw: 0, o: myId });
+  }
   // Текст: запоминаем, куда ставить, и спрашиваем, что написать
   if (HOTBAR[slot] === "Текст") {
     const place = textPlacement(hit);
     const c = color;
     ask("ТЕКСТ", "", 40).then(text => {
-      if (text) share({ op: "text", id: `${myId}-${idCount++}`, ...place, text, c });
+      if (text) { share({ op: "text", id: `${myId}-${idCount++}`, ...place, text, c }); sfx("place"); if (bag) take("Текст"); }
     });
   }
   // Доска: первое нажатие — начало, второе — конец
@@ -2706,13 +2825,17 @@ addEventListener("keydown", e => {
   if (e.code === "KeyM" && !e.repeat && (!menuOpen || panel === schemEl)) toggleSchem();
   if (e.code === "KeyE" && !e.repeat) {  // E: сесть в машину, если рядом есть; иначе инвентарь
     if (panel === inv) toggleInventory();
-    else if (!menuOpen) { if (drivingCar || drivingPlane || drivingTank || (camMode === "first" && (nearestCar() || nearestTank() || nearestPlane()))) toggleCar(); else toggleInventory(); }
+    else if (!menuOpen) { if (drivingCar || drivingPlane || drivingTank || drivingCart || (camMode === "first" && (nearestCart() || nearestCar() || nearestTank() || nearestPlane()))) toggleCar(); else toggleInventory(); }
   }
   if (e.code === "KeyT" && !e.repeat && !menuOpen && !typing && (isAdmin() || !online)) { e.preventDefault(); askTeleport(); }
   if (e.code === "KeyR" && !e.repeat) startReload();
   if (e.code === "KeyQ" && !e.repeat) toggleWeaponPage();
   if (e.code === "KeyF" && !e.repeat) togglePalette();
   if (e.code === "KeyP" && !e.repeat) toggleAdmin();
+  if (e.code === "KeyH" && !e.repeat && (!menuOpen || panel === gameEl)) {  // H — окно «Управление»
+    if (panel === gameEl && gameScreen === "help") toggleGameMenu();
+    else { gameScreen = "help"; if (panel === gameEl) drawGameMenu(); else togglePanel(gameEl, drawGameMenu); }
+  }
   if (e.code === "Enter" && !menuOpen) openChat();
   // Esc — пауза: открытое меню закрывает, а в игре отпускает мышь (пауза откроется сама, см. ниже)
   if (e.code === "Escape" && !e.repeat) {
@@ -2750,14 +2873,18 @@ function turn(dx, dy, speed) {
 }
 
 addEventListener("mousemove", e => {
-  if (document.pointerLockElement) turn(e.movementX, e.movementY, MOUSE_SPEED * camera.fov / FOV);
+  if (document.pointerLockElement) turn(e.movementX, e.movementY, MOUSE_SPEED * settings.mouse * camera.fov / FOV);
 });
 addEventListener("mousedown", e => {
   if (!document.pointerLockElement) return;
-  if (e.button === 0) { if (drivingTank) fireTank(); else if (currentWeapon()) { firing = true; tryFire(); } else use("place"); }
-  if (e.button === 2) { if (currentWeapon()) toggleScope(); else use("remove"); }
+  // Обычно левая кнопка ставит, правая ломает; в настройках можно как в майнкрафте (левая ломает)
+  const placeBtn = settings.swap ? 2 : 0, breakBtn = settings.swap ? 0 : 2;
+  if (e.button === 0 && (drivingTank || currentWeapon())) { if (drivingTank) fireTank(); else { firing = true; tryFire(); } return; }
+  if (e.button === 2 && currentWeapon()) return toggleScope();
+  if (e.button === placeBtn) use("place");
+  if (e.button === breakBtn) startBreak();
 });
-addEventListener("mouseup", e => { if (e.button === 0) firing = false; });
+addEventListener("mouseup", e => { if (e.button === 0) firing = false; if (e.button === (settings.swap ? 0 : 2)) stopBreak(); });
 addEventListener("contextmenu", e => e.preventDefault());
 
 // ---------- Управление на телефоне ----------
@@ -2783,7 +2910,7 @@ addEventListener("touchstart", e => {
       press = { id: t.identifier, x: t.clientX, y: t.clientY, screen, held: false };
       press.timer = setTimeout(() => {
         press.held = true;
-        use("remove", screen);
+        startBreak(screen);
         navigator.vibrate?.(30);
       }, HOLD_TIME);
     }
@@ -2819,7 +2946,7 @@ addEventListener("touchmove", e => {
       knobEl.style.top = moveTouch.y + dy + "px";
     }
     if (lookTouch && t.identifier === lookTouch.id) {
-      turn(t.clientX - lookTouch.x, t.clientY - lookTouch.y, TOUCH_SPEED);
+      turn(t.clientX - lookTouch.x, t.clientY - lookTouch.y, TOUCH_SPEED * settings.touch);
       lookTouch.x = t.clientX;
       lookTouch.y = t.clientY;
     }
@@ -2830,6 +2957,7 @@ function touchEnd(e) {
   for (const t of e.changedTouches) {
     if (press && t.identifier === press.id) {
       clearTimeout(press.timer);
+      if (press.held) stopBreak();
       if (!press.moved && !press.held && e.type === "touchend") use("place", press.screen);
       press = null;
     }
@@ -2907,7 +3035,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -2955,6 +3083,7 @@ function iconModel(name, c) {
     m.add(eyes);
     m.rotation.y = Math.PI * 0.8;
   }
+  else if (name === "Вагонетка") m = new THREE.Mesh(cartGeo, plain());
   else if (WEAPON_GEO[name]) { m = new THREE.Mesh(WEAPON_GEO[name], weaponMats); m.rotation.y = -Math.PI / 2; }
   return m;
 }
@@ -3016,8 +3145,8 @@ function wantIcons(names) {
 }
 
 const slotHtml = i => {
-  const item = HOTBAR[i];
-  return `<span class="slot${i === slot ? " sel" : ""}" data-slot="${i}" title="${item || ""}">${item ? iconImg(item) : ""}<b>${i + 1}</b></span>`;
+  const item = HOTBAR[i], n = bag && item ? bag[item] || 0 : null;  // в выживании видно, сколько осталось
+  return `<span class="slot${i === slot ? " sel" : ""}${n === 0 ? " empty" : ""}" data-slot="${i}" title="${item || ""}">${item ? iconImg(item) : ""}<b>${i + 1}</b>${n ? `<i>${n}</i>` : ""}</span>`;
 };
 function drawHotbar() {
   let label = (HOTBAR[slot] || "—") + (HOTBAR[slot] === "Блок" && flatBlock ? " (без текстуры)" : "");
@@ -3061,7 +3190,7 @@ const INV_TABS = {
   "Транспорт": ["Машина", "Автобус", "Танк", "Самолёт"],
   "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель"],
 };
-const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь"];
+const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка"];
 let invTab = "Блоки", invHover = "", invQuery = "";
 // Что разработчик запретил ставить обычным игрокам: названия вкладок инвентаря
 const BAN_TABS = ["Блоки", "Мебель", "Оружие", "Живое", "Транспорт", "Редстоун"];
@@ -3084,20 +3213,21 @@ const invTabs = () => {
 };
 // Что показывать в сетке: при поиске — всё подходящее по названию из всех вкладок, иначе текущая вкладка
 function invList() {
-  const q = invQuery.trim().toLowerCase();
-  if (!q) return invTabs()[invTab] ?? [];
-  return invTabs()["Все"].filter(n => `${n} ${KINDS[n] ?? RS_ITEMS[n]?.k ?? ""}`.toLowerCase().includes(q));
+  const q = invQuery.trim().toLowerCase(), tabs = bag ? survTabs() : invTabs();
+  if (!q) return tabs[invTab] ?? [];
+  return (bag ? tabs["Вещи"] : tabs["Все"]).filter(n => `${n} ${KINDS[n] ?? RS_ITEMS[n]?.k ?? ""}`.toLowerCase().includes(q));
 }
-const invGridHtml = list => list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("") || `<span class="none">ничего не найдено</span>`;
+const invGridHtml = list => list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}${bag ? `<i>${bag[n] || 0}</i>` : ""}</span>`).join("") ||
+  `<span class="none">${bag && !invQuery.trim() ? "пусто — ломай блоки и копай землю" : "ничего не найдено"}</span>`;
 function drawInventory() {
-  const tabs = invTabs(), q = invQuery.trim();
-  if (!tabs[invTab]) invTab = "Блоки";
+  const tabs = bag ? survTabs() : invTabs(), q = invQuery.trim();
+  if (!tabs[invTab]) invTab = bag ? "Вещи" : "Блоки";
   const list = invList(), focused = document.activeElement?.id === "invq", caret = focused ? document.activeElement.selectionStart : 0;
   wantIcons(list);
   inv.innerHTML = `<div class="invt">ИНВЕНТАРЬ</div>
 <input id="invq" class="invq" placeholder="поиск по названию…" autocomplete="off" spellcheck="false" value="${invQuery.replace(/"/g, "&quot;")}">
 <div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${!q && n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
-<div class="grid">${invGridHtml(list)}</div>
+${bag && invTab === "Крафт" && !q ? craftHtml() : `<div class="grid">${invGridHtml(list)}</div>`}
 <div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
 <div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
 <div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div><span class="xbtn">✕</span>`;
@@ -3107,6 +3237,7 @@ function drawInventory() {
   input.addEventListener("input", () => {
     invQuery = input.value;
     const grid = inv.querySelector(".grid"), l = invList();
+    if (!grid) return drawInventory();  // была вкладка «Крафт» — перерисовываем окно целиком
     wantIcons(l);
     grid.innerHTML = invGridHtml(l);
     for (const t of inv.querySelectorAll(".tab")) t.classList.toggle("on", !invQuery.trim() && t.dataset.tab === invTab);
@@ -3139,6 +3270,8 @@ function togglePalette() { togglePanel(palette, drawPalette); }
 function toggleInventory() { togglePanel(inv, drawInventory); }
 document.addEventListener("click", e => { if (e.target.closest(".xbtn") && panel) togglePanel(panel, () => {}); });  // ✕ в углу окна (на телефоне)
 inv.addEventListener("click", e => {
+  const cr = e.target.closest("[data-craft]");
+  if (cr) return craft(Number(cr.dataset.craft));
   const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
   if (tab) { invTab = tab.dataset.tab; invQuery = ""; drawInventory(); }
   else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
@@ -3562,7 +3695,7 @@ resize();
 
 let online = null;          // появится, когда войдём в лобби
 const others = new Map();   // id игрока → его фигурка
-let poseTimer = 0, lastPose = "";
+let poseTimer = 0, sentPose = {};  // sentPose — какую позу база уже знает
 // Моя поза для других игроков
 function buildPose() {
   const p = { x: +px.toFixed(2), f: +feet.toFixed(2), z: +pz.toFixed(2), yaw: +yaw.toFixed(2), c: color, nick, cr: crouching, dev: isDev, s: size, dd: dead ? 1 : 0, ...(asBall ? { v: asBall } : {}), ...(asInvis ? { i: 1 } : {}), ...(currentWeapon() ? { w: currentWeapon() } : {}) };
@@ -3709,7 +3842,7 @@ const worldKey = e => e.op.endsWith("block") ? `b${e.x}_${e.y}_${e.z}` : e.op.en
 const undo = e => e.op === "block" ? { op: "unblock", x: e.x, y: e.y, z: e.z } : e.op === "dig" ? { op: "undig", x: e.x, y: e.y, z: e.z } : { op: "un" + e.op, id: e.id };
 
 async function joinLobby(code, me) {
-  const { db, ref, get, set, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp } = await loadFirebase();
+  const { db, ref, get, set, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, onDisconnect, query, limitToLast, serverTimestamp, goOffline, goOnline } = await loadFirebase();
   // Часы на устройствах расходятся, поэтому время сообщений берём у сервера:
   // serverOffset — насколько часы этого устройства отстают от часов сервера
   let serverOffset = 0;
@@ -3842,6 +3975,7 @@ async function joinLobby(code, me) {
   online = {
     // Несколько изменений уходят одним запросом (взрывы, воронки, импорт), а не сотней отдельных
     sendEdits: list => {
+      if (idle) return;  // отключились за бездействием: копить запросы до возвращения незачем
       if (list.length <= 2) {
         for (const e of list) { const r = ref(db, `world/${code}/${worldKey(e)}`); if (e.op.startsWith("un")) remove(r); else set(r, e); }
         return;
@@ -3852,11 +3986,26 @@ async function joinLobby(code, me) {
         update(ref(db, `world/${code}`), up).catch(() => {});
       }
     },
-    // Позицию шлём, только если она изменилась: так меньше трафика
+    // Позицию шлём, только если она изменилась, и только изменившиеся поля: ник, цвет и прочее почти не меняются,
+    // а база рассылает остальным игрокам тоже только изменения. Первый раз (и после возвращения из «сна») — целиком
     sendPose: () => {
-      const p = buildPose();
-      const json = JSON.stringify(p);
-      if (json !== lastPose) { lastPose = json; set(myPlayer, p); }
+      const p = buildPose(), diff = {};
+      for (const k in p) if (JSON.stringify(p[k]) !== JSON.stringify(sentPose[k])) diff[k] = p[k];
+      for (const k in sentPose) if (!(k in p)) diff[k] = null;  // поле пропало (убрал оружие, вышел из дрона)
+      if (!Object.keys(diff).length) return;
+      (sentPose.nick === undefined ? set(myPlayer, p) : update(myPlayer, diff)).catch(() => {});
+      sentPose = p;
+    },
+    // Неактивный игрок (5 минут без действий или свёрнутая вкладка) отключается от базы: сервер сам убирает
+    // его из лобби, трафик не тратится. Вернулся — подключаемся снова и заново отмечаемся в лобби
+    sleep: () => { goOffline(db); },
+    wake: () => {
+      goOnline(db);
+      onDisconnect(myPlayer).remove();
+      onDisconnect(presence).remove();
+      set(presence, true);
+      sentPose = {};
+      helperSeen.clear(); botSeen.clear();  // их onDisconnect тоже сработал — зарегистрируем заново при следующей отправке
     },
     sendChat: text => push(ref(db, `chat/${code}`), { nick, text, t: serverTimestamp(), dev: isDev, pre: prefixes[me] || null }),
     // Только для разработчика: правила базы не дадут сделать это никому другому
@@ -3978,7 +4127,7 @@ const trollMove = () => trollOn("freeze") ? 0 : trollOn("reverse") ? -1 : trollO
 const trollEl = Object.assign(document.createElement("pre"), { id: "troll" });
 trollEl.style.cssText = "position:fixed;inset:0;z-index:60;display:none;margin:0;align-items:center;justify-content:center;pointer-events:none;white-space:pre;text-align:center;overflow:hidden;line-height:1.05";
 document.body.append(trollEl);
-let trollTimer = 0, audioCtx = null;
+let trollTimer = 0;
 const trollFx = document.createElement("div");  // затемнение «фонарик» и красная виньетка сердцебиения
 trollFx.style.cssText = "position:fixed;inset:0;z-index:55;display:none;pointer-events:none";
 document.body.append(trollFx);
@@ -3991,12 +4140,12 @@ function trollScreen(text, bg, color, size, ms) {
 }
 function scream() {
   try {
-    const ac = audioCtx ??= new AudioContext();
+    const ac = audio();
     ac.resume();
     const t = ac.currentTime, g = ac.createGain();
     g.gain.setValueAtTime(0.35, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
-    g.connect(ac.destination);
+    g.connect(audioOut);
     for (const f of [180, 233, 700]) {
       const o = ac.createOscillator();
       o.type = "sawtooth";
@@ -4055,12 +4204,12 @@ function runTroll(type, text) {
   if (type === "heart") {
     trollUntil.heart = now + 8000;
     try {
-      const ac = audioCtx ??= new AudioContext();
+      const ac = audio();
       ac.resume();
       for (let i = 0; i < 10; i++) for (const d of [0, 0.22]) {
         const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + i * 0.8 + d;
         o.frequency.value = 55; g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-        o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.2);
+        o.connect(g); g.connect(audioOut); o.start(t); o.stop(t + 0.2);
       }
     } catch {}
   }
@@ -4087,9 +4236,9 @@ function runTroll(type, text) {
   }
   if (type === "siren") {
     try {
-      const ac = audioCtx ??= new AudioContext(), o = ac.createOscillator(), g = ac.createGain();
+      const ac = audio(), o = ac.createOscillator(), g = ac.createGain();
       ac.resume();
-      o.type = "square"; g.gain.value = 0.12; o.connect(g); g.connect(ac.destination);
+      o.type = "square"; g.gain.value = 0.12; o.connect(g); g.connect(audioOut);
       for (let i = 0; i < 8; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 880, ac.currentTime + i * 0.5);
       o.start(); o.stop(ac.currentTime + 4);
     } catch {}
@@ -4325,20 +4474,49 @@ function updateOnline(dt) {
     m.userData.barrel.rotation.x += ((t.bp || 0) - m.userData.barrel.rotation.x) * k;
   }
   poseTimer += dt;
-  if (online && poseTimer > (online.poseEvery || 1 / 8)) {
+  if (online && !idle && poseTimer > (online.poseEvery || 1 / 8)) {
     poseTimer = 0;
     online.sendPose();
-    if (drivingCar) online.sendEdits([drivingCar.userData.edit]);
-    if (drivingPlane) online.sendEdits([drivingPlane.userData.edit]);
-    if (drivingTank) online.sendEdits([drivingTank.userData.edit]);
+    // Транспорт под тобой: шлём, только если он сдвинулся (стоящая машина ничего не отправляет)
+    for (const v of [drivingCar, drivingPlane, drivingTank, drivingCart]) {
+      if (!v) continue;
+      const json = JSON.stringify(v.userData.edit);
+      if (json !== v.userData.sent) { v.userData.sent = json; online.sendEdits([v.userData.edit]); }
+    }
   }
 }
+
+// ---------- Неактивный игрок: 5 минут без действий (свернул вкладку или отошёл) — отключаемся от Firebase ----------
+// Место в лобби освобождается (сервер сам убирает отключившегося), трафик не тратится. Любое действие — подключаемся снова
+const IDLE_MS = 5 * 60 * 1000;
+let idle = false, lastInput = Date.now();
+function markActive() {
+  lastInput = Date.now();
+  if (!idle) return;
+  idle = false;
+  online?.wake?.();
+  addChat("* снова в сети");
+}
+for (const ev of ["keydown", "pointerdown", "mousemove", "touchstart", "wheel"]) addEventListener(ev, markActive, { passive: true, capture: true });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) markActive(); });
+// В свёрнутой вкладке браузер редко будит таймеры (раз в минуту), поэтому проверяем по часам, а не считаем тики
+setInterval(() => {
+  if (idle || !inGame || !online?.sleep || Date.now() - lastInput < IDLE_MS) return;
+  idle = true;
+  online.sleep();
+  addChat(TOUCH ? "* 5 минут без действий — отключились от сервера. Коснись экрана, чтобы вернуться" : "* 5 минут без действий — отключились от сервера. Шевельни мышью, чтобы вернуться");
+}, 10000);
 
 // ---------- Главное меню: одиночная игра или сетевая с лобби ----------
 
 const menuEl = document.getElementById("menu");
 const lobbyEl = document.getElementById("lobby");
-let menuScreen = "main";   // "main", "online" или "mode" (выбор режима)
+let menuScreen = "main";   // "main", "online", "mode" (выбор режима), "worlds", "newworld", "settings", "help"
+let worldList = null, wdelArmed = null;  // свои миры (null — ещё грузятся) и какой мир ждёт второго нажатия «удалить»
+function refreshWorlds() {
+  worldList = null;
+  listWorlds().then(l => { worldList = l; if (menuScreen === "worlds") drawMenu(); }, () => { worldList = []; showNote("хранилище миров недоступно"); });
+}
 let pendingMode = null;    // что делаем после выбора режима: "single" — одиночная игра, "create" — создаём лобби
 let lobbyList = [];        // [{ code, name, players }]
 let stopLobbyList = null;  // отписка от обновлений списка лобби
@@ -4359,8 +4537,27 @@ function drawMenu() {
   let h = "";
   const note = menuNote ? `<div class="gl note">${esc(menuNote)}</div>` : "";
   if (menuScreen === "main") {
-    h = gtitle("ASCII BASEPLATE", "big") + mbtn("ОДИНОЧНАЯ ИГРА", "single", "big") + mbtn("СЕТЕВАЯ ИГРА", "online", "big") + mbtn("ИГРА БЕЗ ИНТЕРНЕТА", "p2p", "big") +
-      mbtn(`ГРАФИКА: ${gfxName()}`, "gfx") + (requestFullscreen ? mbtn("ПОЛНЫЙ ЭКРАН", "fullscreen") : "") + note;
+    h = gtitle("BASEPLATE", "big") + mbtn("ОДИНОЧНАЯ ИГРА", "single", "big") + mbtn("СЕТЕВАЯ ИГРА", "online", "big") + mbtn("ИГРА БЕЗ ИНТЕРНЕТА", "p2p", "big") +
+      mbtn(`ГРАФИКА: ${gfxName()}`, "gfx") + (requestFullscreen ? mbtn("ПОЛНЫЙ ЭКРАН", "fullscreen") : "") + mbtn("НАСТРОЙКИ", "settings") + mbtn("УПРАВЛЕНИЕ", "help") + note;
+  } else if (menuScreen === "settings") {
+    h = settingsHtml(mbtn);
+  } else if (menuScreen === "help") {
+    h = helpHtml(mbtn);
+  } else if (menuScreen === "worlds") {
+    h = gtitle("МОИ МИРЫ") + mbtn("НОВЫЙ МИР", "newworld", "big");
+    if (!worldList) h += glabel("загрузка…");
+    else if (!worldList.length) h += glabel("миров пока нет — создай первый");
+    for (const w of worldList || []) {
+      const kind = w.res ? "выживание" : w.mode === "survival" ? "HP" : "творческий";
+      const text = `${String(w.name).slice(0, 18)} · ${kind} · ${new Date(w.updated).toLocaleDateString()}`;
+      h += `<div class="lobbyrow">${mbtn(text, "play:" + w.id)}${mbtn("имя", "wren:" + w.id, "small")}${mbtn(wdelArmed === w.id ? "точно?" : "×", "wdel:" + w.id, "small warn")}</div>`;
+    }
+    h += note + mbtn("НАЗАД", "back");
+  } else if (menuScreen === "newworld") {
+    h = gtitle("НОВЫЙ МИР") + mbtn("ВЫЖИВАНИЕ", "nw:survival", "big") + glabel("природа, добыча, крафт, HP: всё надо добыть самому") +
+      mbtn("ТВОРЧЕСКИЙ", "nw:creative", "big") + glabel("плоский мир, все предметы, урона нет") +
+      mbtn("ТВОРЧЕСКИЙ С ПРИРОДОЙ", "nw:creative-nature") + glabel("холмы, деревья, животные и все предметы") +
+      mbtn("ОБЫЧНЫЙ (ТОЛЬКО HP)", "nw:hp") + glabel("плоский мир, все предметы, можно погибнуть") + mbtn("НАЗАД", "worlds");
   } else if (menuScreen === "p2p") {
     h = gtitle("БЕЗ ИНТЕРНЕТА") + glabel("Игра вдвоём и больше напрямую, интернет не нужен (можно в самолёте).") + mbtn("СОЗДАТЬ ИГРУ", "p2phost", "big") + mbtn("ПОДКЛЮЧИТЬСЯ К ДРУГУ", "p2pjoin", "big") +
       glabel("Нужна общая сеть: хотспот одного телефона или его Bluetooth-модем. Подробнее в README.") + note + mbtn("НАЗАД", "back");
@@ -4386,7 +4583,20 @@ function drawMenu() {
 menuEl.addEventListener("click", e => {
   const act = e.target.closest(".item")?.dataset.act;
   if (!act || typing) return;
-  if (act === "single") { menuScreen = "mode"; pendingMode = "single"; }
+  if (act === "single" || act === "worlds") { menuScreen = "worlds"; menuNote = ""; refreshWorlds(); }
+  if (act === "newworld") menuScreen = "newworld";
+  if (act.startsWith("nw:")) createWorld(act.slice(3)).catch(() => showNote("не удалось создать мир"));
+  const world = worldList?.find(w => w.id === act.slice(5));
+  if (act.startsWith("play:") && world) playWorld(world);
+  if (act.startsWith("wren:") && world) ask("НАЗВАНИЕ МИРА", world.name, 24).then(n => n && renameWorld(world, n).then(refreshWorlds));
+  if (act.startsWith("wdel:")) {  // удаление — по второму нажатию
+    const id = act.slice(5);
+    if (wdelArmed === id) { wdelArmed = null; deleteWorld(id).then(refreshWorlds, () => showNote("не удалось удалить мир")); }
+    else { wdelArmed = id; setTimeout(() => { if (wdelArmed === id) { wdelArmed = null; drawMenu(); } }, 4000); }
+  }
+  if (act === "settings" || act === "help") menuScreen = act;
+  if (act === "setback" || act === "helpclose") menuScreen = "main";
+  applySetting(act);
   if (act === "backmode") menuScreen = pendingMode === "create" ? "online" : pendingMode === "p2phost" ? "p2p" : "main";
   if (act === "p2p") { menuScreen = "p2p"; menuNote = ""; }
   if (act === "p2phost") { menuScreen = "mode"; pendingMode = "p2phost"; }
@@ -4538,6 +4748,9 @@ function startGame(code, name, me) {
   yaw = 0;
   hp = MAX_HP; dead = false;
   drawHp();
+  drawHotbar();
+  fpsEl.style.display = settings.fps ? "block" : "none";
+  firstHelp();
   if (code) {
     // Код видно, чтобы позвать друзей
     lobbyName = name;
@@ -5047,12 +5260,75 @@ function updateWorld(dt) {
   sun.position.set(cx + 30, 50, cz + 15);
 }
 
+// ---------- Настройки и экран «Управление» (в паузе и в главном меню) ----------
+// [ключ, название, минимум, максимум, шаг, как показать]
+const SETTING_ROWS = [
+  ["mouse", "чувствительность мыши", 0.2, 3, 0.1, v => "x" + v.toFixed(1)],
+  ["touch", "чувствительность пальца", 0.2, 3, 0.1, v => "x" + v.toFixed(1)],
+  ["fov", "угол обзора", 50, 110, 5, v => v + "°"],
+  ["vol", "громкость", 0, 1, 0.1, v => Math.round(v * 100) + "%"],
+  ["btn", "размер кнопок", 0.6, 1.6, 0.1, v => "x" + v.toFixed(1)],
+];
+// btn — как рисовать кнопку в этом окне: gbtn в паузе, mbtn в главном меню
+function settingsHtml(btn) {
+  let h = gtitle("НАСТРОЙКИ");
+  for (const [k, name, , , , fmt] of SETTING_ROWS) {
+    if ((k === "touch" || k === "btn") && !TOUCH || k === "mouse" && TOUCH) continue;
+    h += `<div class="gg"><span class="gl">${esc(name)}: ${fmt(settings[k])}</span>${btn("−", "set-:" + k, "small")}${btn("+", "set+:" + k, "small")}</div>`;
+  }
+  if (!TOUCH) h += btn(`мышь: ${settings.swap ? "левая ломает, правая ставит (как в майнкрафте)" : "левая ставит, правая ломает"}`, "setswap");
+  return h + btn(`показывать FPS: ${settings.fps ? "да" : "нет"}`, "setfps") + btn("назад", "setback");
+}
+// Нажали кнопку настроек: меняем, применяем, запоминаем. false — это была не кнопка настроек
+function applySetting(act) {
+  if (act === "setswap") settings.swap = !settings.swap;
+  else if (act === "setfps") settings.fps = !settings.fps;
+  else if (act.startsWith("set-:") || act.startsWith("set+:")) {
+    const row = SETTING_ROWS.find(r => r[0] === act.slice(5));
+    if (!row) return false;
+    const [k, , min, max, step] = row;
+    settings[k] = +Math.min(max, Math.max(min, settings[k] + (act[3] === "+" ? step : -step))).toFixed(2);
+  } else return false;
+  FOV = settings.fov;
+  document.documentElement.style.setProperty("--btnk", settings.btn);
+  if (audioOut) audioOut.gain.value = settings.vol;
+  fpsEl.style.display = settings.fps && inGame ? "block" : "none";
+  saveSettings();
+  sfx("click");
+  return true;
+}
+const HELP_PC = [["W A S D", "ходить"], ["мышь", "смотреть"], ["Пробел", "прыжок (в полёте — вверх)"], ["Ctrl", "присесть (в полёте — вниз)"], ["Shift", "бег"],
+  ["ЛКМ / ПКМ", "поставить / сломать (поменять — в настройках)"], ["1–9, колесо", "выбрать слот"], ["E", "инвентарь и крафт; рядом с транспортом — сесть"],
+  ["F", "цвет блоков"], ["Q", "следующее оружие"], ["R", "перезарядка"], ["C", "зум (колесо с C — сильнее)"], ["Enter", "чат"], ["T", "телепорт по координатам"],
+  ["H", "это окно"], ["Esc", "пауза"]];
+const HELP_TOUCH = [["левая половина", "джойстик — ходить"], ["правая половина", "вести пальцем — смотреть"], ["короткое нажатие", "поставить предмет"],
+  ["удержание", "сломать (в выживании — держать, пока не сломается)"], ["ИНВ", "инвентарь и крафт"], ["ЦВЕТ", "цвет блоков"], ["ПРЫЖОК, СЕСТЬ, БЕГ", "движение"],
+  ["МЕНЮ", "пауза, настройки, это окно"]];
+function helpHtml(btn) {
+  const rows = (TOUCH ? HELP_TOUCH : HELP_PC).map(([k, v]) => `<b>${esc(k)}</b><span>${esc(v)}</span>`).join("");
+  const tip = gameMode === "survival" && bag ? "Выживание: ломай блоки и копай землю — так появляются материалы. В инвентаре есть вкладка «Крафт». Еда и животные лечат." :
+    "Творческий режим: все предметы бесплатно, урона нет.";
+  return gtitle("УПРАВЛЕНИЕ") + `<div class="help">${rows}</div>` + glabel(tip) + btn("понятно", "helpclose", "big");
+}
+// Первый запуск: показываем управление сами (один раз)
+function firstHelp() {
+  try { if (localStorage.getItem("seenHelp")) return; localStorage.setItem("seenHelp", "1"); } catch { return; }
+  setTimeout(() => { if (inGame && !panel) { gameScreen = "help"; togglePanel(gameEl, drawGameMenu); } }, 600);
+}
+const fpsEl = Object.assign(document.createElement("pre"), { id: "fps" });
+document.body.append(fpsEl);
+
 // ---------- Пауза (Esc или кнопка МЕНЮ) ----------
 
 const gameEl = document.getElementById("game");
 
+let gameScreen = "main";  // что показывает пауза: "main", "settings" или "help"
+const xbtnHtml = () => `<span class="xbtn">✕</span>`;
 function drawGameMenu() {
-  gameEl.innerHTML = gtitle("ПАУЗА") + gbtn("продолжить", "resume", "big") + gbtn(`графика: ${gfxName()}`, "gfx") + gbtn("экспорт мира", "export") +
+  if (gameScreen === "settings") return gameEl.innerHTML = settingsHtml(gbtn) + xbtnHtml();
+  if (gameScreen === "help") return gameEl.innerHTML = helpHtml(gbtn) + xbtnHtml();
+  gameEl.innerHTML = gtitle("ПАУЗА") + gbtn("продолжить", "resume", "big") + gbtn("настройки", "settings") + gbtn("управление", "help") +
+    (currentWorld ? gbtn("сохранить мир", "saveworld") : "") + gbtn(`графика: ${gfxName()}`, "gfx") + gbtn("экспорт мира", "export") +
     (!online || isDev ? gbtn("импорт мира", "import") : "") +
     (online && lobbyCode !== "P2P" ? gbtn("ссылка-приглашение", "invite") : "") +
     (online && lobbyCode === "P2P" && p2p.role === "host" && p2p.peers.size < 3 ? gbtn("добавить друга", "addfriend") : "") +
@@ -5068,7 +5344,7 @@ document.body.append(worldFileEl);
 
 function exportWorld() {
   // Каждый предмет мира хранит запись, из которой он создан (userData.edit)
-  const edits = [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+  const edits = worldEdits();
   const blob = new Blob([JSON.stringify({ format: "baseAscii", version: 1, edits })], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "world" + WORLD_EXT });
   a.click();
@@ -5082,7 +5358,7 @@ const num = (...v) => v.every(Number.isFinite);
 
 // Правка из сети (Firebase или друг без интернета): проверяем форму, чтобы кривая или подделанная запись
 // не ломала мир (NaN в координатах, чужие поля не того типа). Лишние поля не вырезаем — только отбрасываем негодное
-const NET_OPS = new Set(["block", "unblock", "dig", "undig", "text", "untext", "plank", "unplank", "car", "uncar", "plane", "unplane", "tank", "untank", "animal", "unanimal", "ball", "unball"]);
+const NET_OPS = new Set(["block", "unblock", "dig", "undig", "text", "untext", "plank", "unplank", "car", "uncar", "plane", "unplane", "tank", "untank", "animal", "unanimal", "ball", "unball", "cart", "uncart"]);
 const netCell = v => Number.isInteger(v) && Math.abs(v) < 1e6;
 const netId = v => typeof v === "string" && v.length > 0 && v.length <= 64;
 const optNum = (...v) => v.every(x => x === undefined || Number.isFinite(x));
@@ -5097,7 +5373,7 @@ function validEdit(e) {
     case "car": return netId(e.id) && num(e.x, e.y, e.z, e.yaw);
     case "plane": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.pt, e.rl);
     case "tank": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw, e.tu, e.bp);
-    case "animal": case "ball": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw);
+    case "animal": case "ball": case "cart": return netId(e.id) && num(e.x, e.y, e.z) && optNum(e.yaw);
     default: return netId(e.id);  // un… — убрать предмет по id
   }
 }
@@ -5131,6 +5407,7 @@ function cleanEdit(e) {
     return { op: "text", id: newId(), p: e.p, q: e.q, text: e.text.slice(0, 40), c };
   if (e.op === "animal" && ANIMALS[e.t] && num(e.x, e.y, e.z)) return { op: "animal", id: newId(), t: e.t, x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "ball" && num(e.x, e.y, e.z)) return { op: "ball", id: newId(), t: BALL_TYPES[e.t] ? e.t : "verity", x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
+  if (e.op === "cart" && num(e.x, e.y, e.z)) return { op: "cart", id: newId(), x: e.x, y: e.y, z: e.z, yaw: Number.isFinite(e.yaw) ? e.yaw : 0, o: myId };
   if (e.op === "car" && num(e.x, e.y, e.z, e.yaw)) return { op: "car", id: newId(), x: e.x, y: e.y, z: e.z, yaw: e.yaw, c, ...(e.bus === 1 ? { bus: 1 } : {}) };
   return null;
 }
@@ -5310,7 +5587,7 @@ schemFileEl.addEventListener("change", () => {
   if (file) file.text().then(t => { schemLoad(t, file.name.replace(/\.baseascii$/i, "")); drawSchem(); }, () => addChat("* не удалось прочитать файл"));
 });
 
-function toggleGameMenu() { togglePanel(gameEl, drawGameMenu); }
+function toggleGameMenu() { if (panel !== gameEl) gameScreen = "main"; togglePanel(gameEl, drawGameMenu); }
 
 // Мышь освободилась (Esc, переключение окна) — ставим игру на паузу
 document.addEventListener("pointerlockchange", () => {
@@ -5336,7 +5613,11 @@ gameEl.addEventListener("click", e => {
   if (a === "gfx") { toggleGfx(); drawGameMenu(); }
   if (a === "export") exportWorld();
   if (a === "import") worldFileEl.click();
-  if (a === "exit") leave("");
+  if (a === "exit") saveWorld().finally(() => leave(""));  // свой мир сначала сохраняем
+  if (a === "settings" || a === "help") { gameScreen = a; drawGameMenu(); }
+  if (a === "setback" || a === "helpclose") { gameScreen = "main"; drawGameMenu(); }
+  if (a && applySetting(a)) drawGameMenu();
+  if (a === "saveworld") saveWorld(true);
   if (a === "addfriend") p2pAddGuest();
   if (a === "invite" && lobbyCode) {
     const url = `${location.origin}${location.pathname}?lobby=${lobbyCode}`;
@@ -5480,7 +5761,7 @@ let firing = false, nextShot = 0, reloadEnd = 0, reloadName = null, scoped = fal
 
 function currentWeapon() {
   const n = HOTBAR[slot];
-  return n && n in WEAPONS ? n : null;
+  return n && n in WEAPONS && have(n) ? n : null;  // в выживании оружие сначала надо добыть
 }
 
 function resetWeapons() {
@@ -5808,13 +6089,13 @@ function rocketBoom(pos, own, W) {
 // Состояния, которые нужны другим игрокам (рычаг, задержка повторителя, нота), лежат в самом блоке; кнопки рассылаются сообщением.
 // Направления — как у граней: 0 +x, 1 −x, 2 +y, 3 −y, 4 +z, 5 −z (пара получается через ^ 1)
 const RSD = FACE_DIR;
-const RS_NEEDS_FLOOR = new Set(["rs_dust", "rs_plate", "rs_repeater", "rs_comparator"]);
+const RS_NEEDS_FLOOR = new Set(["rs_dust", "rs_plate", "rs_repeater", "rs_comparator", "rs_rail", "rs_prail"]);
 const rsAt = (x, y, z) => blocks.get(key(x, y, z))?.userData.edit;
 const dirIndex = v => { const a = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)], i = a.indexOf(Math.max(...a)); return i === 0 ? (v.x > 0 ? 0 : 1) : i === 1 ? (v.y > 0 ? 2 : 3) : (v.z > 0 ? 4 : 5); };
 
 // Проводит ли блок сигнал сквозь себя: сплошной блок, не источник сигнала и не стекло
 const rsConductor = e => !!e && e.op === "block" && (!e.k || e.k === "flat" || (e.k in BLOCK_TEX && !["ice", "slime", "neon", "lava"].includes(e.k)) || e.k === "rs_lamp" || e.k === "rs_note" || e.k === "rs_dispenser");
-const rsSolid = e => !!e && e.op === "block" && !(e.k in LOW_TOP) && !["rs_torch", "rs_lever", "rs_button", "rs_dust", "rs_plate", "rs_repeater", "rs_comparator", "rs_head", "door"].includes(e.k);
+const rsSolid = e => !!e && e.op === "block" && !(e.k in LOW_TOP) && !["rs_torch", "rs_lever", "rs_button", "rs_dust", "rs_plate", "rs_repeater", "rs_comparator", "rs_head", "door", "rs_rail", "rs_prail"].includes(e.k);
 
 // --- Модели
 const rsLit = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -5872,7 +6153,9 @@ const rsPlateGeo = on => rsGeo("plate" + on, () => mergeParts([...sbox(0.9, on ?
 const rsDiodeBase = () => [...sbox(1, 0.125, 1, 0, -0.4375, 0, 0x888888), ...sbox(0.92, 0.13, 0.92, 0, -0.435, 0, 0xa2a2a2), ...P(0xcc3030, box(0.1, 0.012, 0.3, 0.42, -0.371, 0)), ...P(0x3e3e3e, box(0.66, 0.012, 0.16, 0, -0.372, 0))];
 const rsTorchMini = (x, z, lit, big) => [...P(0x4a2a2a, box(0.16, 0.014, 0.16, x, -0.371, z)), ...sbox(0.09, big ? 0.28 : 0.2, 0.09, x, big ? -0.23 : -0.27, z, 0x6b3f1a),
   ...sbox(0.15, 0.13, 0.15, x, big ? -0.07 : -0.13, z, lit ? 0xff3a1a : 0x4a1a1a), ...P(lit ? 0xffd070 : 0x2a1010, box(0.08, 0.15, 0.08, x, big ? -0.07 : -0.13, z))];
-const rsRepeaterGeo = (d, lit) => rsGeo(`rep${d}${lit}`, () => mergeParts([...rsDiodeBase(), ...rsTorchMini(-0.3, 0, lit), ...rsTorchMini(0.35 - d * 0.1, 0, lit)]));
+// Запертый повторитель — поперёк лежит серая планка, как в майнкрафте
+const rsRepeaterGeo = (d, lit, lock) => rsGeo(`rep${d}${lit}${lock ? "L" : ""}`, () => mergeParts([...rsDiodeBase(), ...rsTorchMini(-0.3, 0, lit), ...rsTorchMini(0.35 - d * 0.1, 0, lit),
+  ...(lock ? sbox(0.14, 0.08, 0.8, 0.35 - d * 0.1, -0.34, 0, 0x4a4a4a) : [])]));
 const rsComparatorGeo = (m, lit) => rsGeo(`cmp${m}${lit}`, () => mergeParts([...rsDiodeBase(), ...rsTorchMini(-0.3, 0.26, lit), ...rsTorchMini(-0.3, -0.26, lit), ...rsTorchMini(0.28, 0, lit || !!m, true)]));
 const rsBlockGeo = () => rsGeo("rsblock", () => mergeParts(rsCube(0x7a0e0e, 0xc41c1c, 0xff4a3a)));
 const rsLampGeo = on => rsGeo("lamp" + on, () => {
@@ -5911,6 +6194,7 @@ function rsBuild(e) {
   else if (k === "rs_head") { geo = rsHeadGeo(!!e.s); mat = rsDull(); }
   else if (k === "rs_observer") { geo = rsObserverGeo(false); mat = rsDull(); }
   else if (k === "rs_dispenser") { geo = rsDispenserGeo(); mat = rsDull(); }
+  else if (k === "rs_rail" || k === "rs_prail") geo = railGeo(railShape(e), k, false);
   else { geo = rsNoteGeo(); mat = rsDull(); }  // нотный блок
   const m = new THREE.Mesh(geo, mat);
   m.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
@@ -6033,7 +6317,7 @@ function rsPaint(r, force) {
   const { e, s, m } = r;
   if (!m) return;
   const sig = r.k === "rs_dust" ? s.lvl + s.conn.join("") : r.k === "rs_lamp" ? s.lit && s.out : r.k === "rs_torch" ? s.lit : r.k === "rs_lever" ? e.on : r.k === "rs_button" ? rsTickN < s.until :
-    r.k === "rs_plate" ? s.pw : r.k === "rs_repeater" ? s.out : r.k === "rs_comparator" ? s.out > 0 : r.k === "rs_observer" ? rsTickN >= s.start && rsTickN < s.until : r.k === "rs_piston" || r.k === "rs_sticky" ? s.ext : "";
+    r.k === "rs_plate" ? s.pw : r.k === "rs_repeater" ? s.out + "" + !!s.lock : r.k === "rs_comparator" ? s.out > 0 : r.k === "rs_observer" ? rsTickN >= s.start && rsTickN < s.until : r.k === "rs_piston" || r.k === "rs_sticky" ? s.ext : isRail(r) ? (s.shape || []).join("") + !!s.pw : "";
   if (!force && s.sig === sig) return;
   s.sig = sig;
   if (r.k === "rs_dust") { m.geometry = rsDustGeo(s.conn); m.material = rsDustMats[s.lvl]; }
@@ -6042,7 +6326,8 @@ function rsPaint(r, force) {
   else if (r.k === "rs_lever") m.geometry = rsLeverGeo(!!e.on, e.a ?? 3);
   else if (r.k === "rs_button") m.geometry = rsButtonGeo(rsTickN < s.until, e.a ?? 3);
   else if (r.k === "rs_plate") m.geometry = rsPlateGeo(s.pw);
-  else if (r.k === "rs_repeater") m.geometry = rsRepeaterGeo(e.d || 1, !!s.out);
+  else if (r.k === "rs_repeater") m.geometry = rsRepeaterGeo(e.d || 1, !!s.out, !!s.lock);
+  else if (isRail(r)) m.geometry = railGeo(s.shape || railShape(e), r.k, !!s.pw);
   else if (r.k === "rs_comparator") m.geometry = rsComparatorGeo(e.m || 0, s.out > 0);
   else if (r.k === "rs_observer") m.geometry = rsObserverGeo(rsTickN >= s.start && rsTickN < s.until);
   else if (r.k === "rs_piston" || r.k === "rs_sticky") m.geometry = rsPistonGeo(r.k === "rs_sticky", s.ext);
@@ -6067,6 +6352,7 @@ function rsShift(e, d) {  // блок e сдвигается на клетку �
   removeSolid(blocks.get(key(e.x, e.y, e.z)));
   const n = { ...e, x: e.x + RSD[d][0], y: e.y + RSD[d][1], z: e.z + RSD[d][2] };
   edit(n);
+  slideFrom(blocks.get(key(n.x, n.y, n.z)), -RSD[d][0], -RSD[d][1], -RSD[d][2]);  // модель доедет из старой клетки
   return n;
 }
 function rsExtend(r) {
@@ -6075,6 +6361,7 @@ function rsExtend(r) {
   // мягкие предметы (пыль, факелы, рычаги…) поршень просто ломает
   for (let i = list.length - 1; i >= 0; i--) rsShift(list[i], d);
   edit({ op: "block", x: e.x + RSD[d][0], y: e.y + RSD[d][1], z: e.z + RSD[d][2], c: 0, k: "rs_head", f: d, s: r.k === "rs_sticky" ? 1 : 0, tr: true });
+  slideFrom(blocks.get(key(e.x + RSD[d][0], e.y + RSD[d][1], e.z + RSD[d][2])), -RSD[d][0], -RSD[d][1], -RSD[d][2]);
   s.ext = true;
   return true;
 }
@@ -6090,18 +6377,16 @@ function rsRetract(r) {
 }
 
 // --- Звук нотного блока
-let rsAudio = null;
 function rsPlayNote(n) {
   try {
-    rsAudio ??= new (window.AudioContext || window.webkitAudioContext)();
-    const o = rsAudio.createOscillator(), g = rsAudio.createGain();
+    const ac = audio(), o = ac.createOscillator(), g = ac.createGain();
     o.type = "triangle";
     o.frequency.value = 185 * 2 ** (n / 12);
-    g.gain.setValueAtTime(0.25, rsAudio.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, rsAudio.currentTime + 0.5);
-    o.connect(g).connect(rsAudio.destination);
+    g.gain.setValueAtTime(0.25, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.5);
+    o.connect(g).connect(audioOut);
     o.start();
-    o.stop(rsAudio.currentTime + 0.5);
+    o.stop(ac.currentTime + 0.5);
   } catch {}
 }
 // Раздатчик стреляет стрелой вперёд: каждый у себя проверяет, не попали ли в него
@@ -6148,6 +6433,10 @@ function rsTick() {
       case "rs_repeater": {
         const input = rsRead(x, y, z, e.f ^ 1) > 0;
         while (s.ev.length && s.ev[0].at <= rsTickN) s.out = s.ev.shift().v ? 15 : 0;
+        // Запирание: в бок смотрит работающий повторитель или компаратор — выход замирает, вход не слушаем
+        const side = e.f < 2 ? 4 : 0;
+        s.lock = [side, side ^ 1].some(k => { const n = rsAround(r, k); return (n?.k === "rs_repeater" || n?.k === "rs_comparator") && n.e.f === (k ^ 1) && n.s.out > 0; });
+        if (s.lock) { s.ev.length = 0; s.pin = s.out ? 1 : 0; break; }
         if (input !== !!s.pin) { s.pin = input ? 1 : 0; s.ev.push({ at: rsTickN + (e.d || 1), v: input }); }
         break;
       }
@@ -6171,6 +6460,11 @@ function rsTick() {
         if (p !== s.pw) s.pend = { at: rsTickN, v: p };  // сразу, без задержки
         s.pw = p;
         if (s.pend && s.pend.at <= rsTickN) { const v = s.pend.v; s.pend = null; if (v && !s.ext) rsExtend(r); else if (!v && s.ext) rsRetract(r); }
+        break;
+      }
+      case "rs_rail": case "rs_prail": {
+        s.shape = railShape(e);
+        if (r.k === "rs_prail") s.pw = rsPowered(x, y, z);
         break;
       }
       case "rs_dispenser": {
@@ -6245,6 +6539,7 @@ function rsPlace(item, hit) {
   if (item.mode === "iron") { e.c = 12; e.i = 1; e.r = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4; e.open = false; }
   if (item.k === "rs_lever") e.on = false;
   if (item.k === "rs_repeater") e.d = 1;
+  if (item.k === "rs_rail" || item.k === "rs_prail") { const v = camDir(); e.r = Math.abs(v.x) > Math.abs(v.z) ? 1 : 0; }  // без соседей — вдоль взгляда
   share(e);
 }
 
@@ -6684,6 +6979,513 @@ function updateWeapons(dt) {
   if (nitroBtn.style.display !== nitroShow) nitroBtn.style.display = nitroShow;
 }
 
+// ---------- Свои миры (одиночная игра): лежат в браузере (IndexedDB) и сохраняются сами ----------
+let worldLoading = false, saveTimer = 0, savedAt = [0, 0, 0];
+const worldDB = (() => {
+  let p = null;
+  return () => p ??= new Promise((ok, fail) => {
+    const r = indexedDB.open("baseplate", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("meta", { keyPath: "id" }); r.result.createObjectStore("data"); };
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => { p = null; fail(r.error); };
+  });
+})();
+// Одна операция с хранилищем: fn получает таблицу и возвращает запрос; ответ приходит, когда запись завершена
+async function idb(store, mode, fn) {
+  const db = await worldDB();
+  return new Promise((ok, fail) => {
+    const tx = db.transaction(store, mode), req = fn(tx.objectStore(store));
+    tx.oncomplete = () => ok(req?.result);
+    tx.onerror = tx.onabort = () => fail(tx.error);
+  });
+}
+const listWorlds = () => idb("meta", "readonly", s => s.getAll()).then(l => l.sort((a, b) => b.updated - a.updated));
+// Всё, что построено в мире (как экспорт .baseAscii): земля под плитой восстанавливается из ям сама
+const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr)), ...[...dug].map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
+function saveWorld(manual) {
+  if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
+  const edits = worldEdits();
+  const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color };
+  Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
+  worldDirty = false;
+  savedAt = [px, feet, pz];
+  return idb("data", "readwrite", s => s.put(data, currentWorld.id))
+    .then(() => idb("meta", "readwrite", s => s.put({ ...currentWorld })))
+    .then(() => manual && addChat("* мир сохранён"), err => addChat(`* не удалось сохранить мир: ${err?.message || err}`));
+}
+// Сам: раз в 30 секунд, если что-то изменилось или игрок ушёл с места, и когда вкладку сворачивают или закрывают
+function autosave(dt) {
+  if (!currentWorld || worldLoading) return;
+  saveTimer += dt;
+  if (saveTimer < 30) return;
+  saveTimer = 0;
+  if (worldDirty || Math.hypot(px - savedAt[0], feet - savedAt[1], pz - savedAt[2]) > 2) saveWorld();
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveWorld(); });
+addEventListener("pagehide", () => saveWorld());
+
+// Предметы мира появляются кусками, чтобы большая карта не подвесила игру
+function loadEdits(list, done) {
+  let i = 0;
+  (function step() {
+    const end = Math.min(list.length, i + 1500);
+    for (; i < end; i++) {
+      const e = list[i];
+      if (e?.op === "animal" || e?.op === "ball") e.o = myId;  // животных и шарики водит тот, кто играет в мире
+      if (validEdit(e)) try { edit(e); } catch (err) { console.warn("предмет мира не встал", e, err); }
+    }
+    if (i < list.length) setTimeout(step, 0); else done?.();
+  })();
+}
+async function playWorld(meta) {
+  let data = null;
+  try { data = await idb("data", "readonly", s => s.get(meta.id)); } catch { return showNote("не удалось открыть мир"); }
+  currentWorld = meta;
+  gameMode = meta.mode;
+  bag = meta.res ? { ...(data?.bag || {}) } : null;
+  if (Array.isArray(data?.bar)) data.bar.forEach((n, i) => { if (i < BAR_SIZE) HOTBAR[i] = n && ITEMS.includes(n) ? n : null; });
+  if (Number.isInteger(data?.color) && COLORS[data.color]) color = data.color;
+  startGame();
+  const list = data?.edits || [];
+  if (list.length > 3000) addChat(`* загрузка мира: ${list.length} предметов…`);
+  worldLoading = true;
+  loadEdits(list, () => {
+    worldLoading = false;
+    const p = data?.player;
+    if (p && [p.x, p.f, p.z].every(Number.isFinite)) {
+      px = p.x; feet = p.f; pz = p.z; vy = 0;
+      yaw = Number.isFinite(p.yaw) ? p.yaw : 0; pitch = Number.isFinite(p.pitch) ? p.pitch : 0;
+      if (gameMode === "survival" && p.hp > 0) hp = Math.min(MAX_HP, p.hp);
+      drawHp();
+    }
+    savedAt = [px, feet, pz];
+    worldDirty = false;
+    if (list.length > 3000) addChat("* мир загружен");
+  });
+}
+// Виды нового мира: [режим, выживание с добычей, природа]
+const WORLD_KINDS = { creative: ["creative", false, false], "creative-nature": ["creative", false, true], survival: ["survival", true, true], hp: ["survival", false, false] };
+async function createWorld(kind) {
+  const [mode, resources, nature] = WORLD_KINDS[kind] || WORLD_KINDS.creative;
+  const n = (await listWorlds().catch(() => [])).length + 1;
+  const name = await ask("НАЗВАНИЕ МИРА", `Мир ${n}`, 24);
+  if (!name) return;
+  const now = Date.now();
+  currentWorld = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), name, mode, res: resources, nature, created: now, updated: now, count: 0, seed: Math.floor(Math.random() * 1e9) };
+  gameMode = mode;
+  bag = resources ? {} : null;
+  if (bag) HOTBAR.fill(null);  // в выживании начинаем с пустыми руками, как в майнкрафте
+  startGame();
+  if (nature) {
+    worldLoading = true;
+    loadEdits(generateNature(currentWorld.seed), () => { worldLoading = false; saveWorld(); });
+  } else saveWorld();
+}
+const deleteWorld = id => Promise.all([idb("meta", "readwrite", s => s.delete(id)), idb("data", "readwrite", s => s.delete(id))]);
+const renameWorld = (meta, name) => idb("meta", "readwrite", s => s.put({ ...meta, name }));
+
+// Природа для нового мира: холмы из земли с травой, песчаные пятна, камни, деревья и животные.
+// Создаётся один раз, дальше это обычные блоки мира (их можно ломать, они сохраняются)
+function generateNature(seed) {
+  const hash = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7 + (seed % 1000) * 0.731) * 43758.5453; return v - Math.floor(v); };
+  const smooth = t => t * t * (3 - 2 * t);
+  // Гладкий шум: случайные значения в узлах сетки g×g, между узлами — плавный переход
+  const noise = (x, z, g) => {
+    const i = Math.floor(x / g), j = Math.floor(z / g), fx = smooth(x / g - i), fz = smooth(z / g - j);
+    const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
+    return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
+  };
+  let s = seed >>> 0;
+  const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const R = 48, cx = SIZE / 2, cz = SIZE / 2, list = [], top = new Map(), taken = new Set();
+  const put = (x, y, z, k) => { const kk = key(x, y, z); if (taken.has(kk)) return; taken.add(kk); list.push({ op: "block", x, y, z, c: 0, k }); };
+  for (let x = cx - R; x < cx + R; x++) for (let z = cz - R; z < cz + R; z++) {
+    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
+    if (d > R) continue;
+    const fade = Math.min(1, Math.max(0, (d - 7) / 10)) * Math.min(1, (R - d) / 8);  // у точки появления ровно, к краю холмы сходят на нет
+    const h = Math.max(0, Math.floor((noise(x, z, 22) * 0.75 + noise(x, z, 7) * 0.25) * 8 * fade - 1.5));
+    const sandy = noise(x + 900, z - 400, 16) > 0.7;
+    for (let y = 0; y < h; y++) put(x, y, z, sandy ? "sand" : y === h - 1 ? "grass" : y < h - 3 ? "stone" : "dirt");
+    top.set(x + "," + z, { h, sandy, d });
+  }
+  // Деревья: ствол 4–6 блоков, крона из листвы
+  for (let n = 0, tries = 0; n < 34 && tries < 400; tries++) {
+    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
+    if (!t || t.sandy || t.d < 10 || t.d > R - 4) continue;
+    const y0 = t.h, hgt = 4 + Math.floor(rnd() * 3);
+    for (let y = y0; y < y0 + hgt; y++) put(x, y, z, "wood");
+    for (let dy = -2; dy <= 1; dy++) {
+      const r = dy >= 0 ? 1 : 2;
+      for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+        if (Math.abs(dx) === r && Math.abs(dz) === r && (dy === 1 || rnd() < 0.5)) continue;  // углы кроны срезаны
+        if (dx || dz || dy > 0) put(x + dx, y0 + hgt + dy, z + dz, "leaves");
+      }
+    }
+    n++;
+  }
+  // Валуны из камня
+  for (let n = 0; n < 10; n++) {
+    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
+    if (!t || t.d < 10) continue;
+    for (let dx = 0; dx < 2; dx++) for (let dz = 0; dz < 2; dz++) if (rnd() < 0.8) { put(x + dx, t.h, z + dz, "stone"); if (rnd() < 0.4) put(x + dx, t.h + 1, z + dz, "stone"); }
+  }
+  // Животные пасутся на траве
+  const kinds = ["pig", "cow", "sheep", "chicken"];
+  for (let n = 0, tries = 0; n < 12 && tries < 200; tries++) {
+    const x = Math.floor(cx - R + rnd() * 2 * R), z = Math.floor(cz - R + rnd() * 2 * R), t = top.get(x + "," + z);
+    if (!t || t.d < 9 || taken.has(key(x, t.h, z))) continue;
+    list.push({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[n % kinds.length], x: x + 0.5, y: t.h, z: z + 0.5, yaw: +(rnd() * 6.28).toFixed(2), o: myId });
+    n++;
+  }
+  return list;
+}
+
+// ---------- Выживание: вещи считаются, блоки добываются и ломаются не сразу, остальное крафтится ----------
+const have = name => !bag || (bag[name] || 0) > 0;
+const NON_CONSUMABLE = new Set(["Огниво"]);
+function give(name, n = 1, quiet) {
+  if (!bag || !name || !ITEMS.includes(name)) return;
+  bag[name] = (bag[name] || 0) + n;
+  if (!HOTBAR.includes(name)) { const i = HOTBAR.indexOf(null); if (i >= 0) HOTBAR[i] = name; }  // новое — сразу в пустой слот
+  if (!quiet) { sfx("pickup"); toast(`+${n} ${name}`); }
+  worldDirty = true;
+  drawHotbar();
+}
+function take(name, n = 1) {
+  if (!bag) return;
+  bag[name] = Math.max(0, (bag[name] || 0) - n);
+  if (!bag[name]) delete bag[name];
+  worldDirty = true;
+  drawHotbar();
+}
+// Что выпадает из сломанного предмета
+const KIND_ITEM = Object.fromEntries([...Object.entries(KINDS).filter(([n, k]) => k && !n.startsWith("Прочн")), ...Object.entries(RS_ITEMS).map(([n, i]) => [n, i.k])].map(([n, k]) => [k, n]));
+function dropFor(e) {
+  if (!e) return null;
+  if (e.op === "plank") return "Доска";
+  if (e.op === "text") return "Текст";
+  if (e.op === "car") return e.bus ? "Автобус" : "Машина";
+  if (e.op === "tank") return "Танк";
+  if (e.op === "plane") return "Самолёт";
+  if (e.op === "cart") return "Вагонетка";
+  if (e.op === "ball") return BALL_TYPES[e.t]?.item ?? null;
+  if (e.op === "animal") return e.t === "sheep" ? "Шерсть" : null;
+  if (e.op !== "block" || e.p) return null;
+  if (!e.k || e.k === "flat") return "Блок";
+  if (e.k === "door") return e.i ? "Железная дверь" : "Дверь";
+  if (e.k === "grass") return "Земля";
+  if (e.k === "leaves") return Math.random() < 0.2 ? "Палка" : Math.random() < 0.35 ? "Листва" : null;
+  if (["glass", "ice", "window", "portal", "rs_head"].includes(e.k)) return null;  // стекло бьётся
+  return KIND_ITEM[e.k] ?? null;
+}
+// Из ямы: сверху земля и песок, глубже камень, ещё глубже руда
+function digDrop(y) {
+  const r = Math.random();
+  if (y < -24 && r < 0.012) return "Алмаз";
+  if (y < -14 && r < 0.03) return "Золото";
+  if (y < -8 && r < 0.07) return "Редстоун";
+  if (y < -5 && r < 0.1) return "Металл";
+  if (y > -3 && r < 0.12) return "Песок";
+  return y > -4 ? "Земля" : "Камень";
+}
+// Сколько секунд ломать рукой
+const HARD = { dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
+  gold: 1.6, diamond: 2.5, obsidian: 6, glass: 0.3, ice: 0.4, netherrack: 0.5, glowstone: 0.4 };
+function hardness(hit) {
+  if (hit.object === plate) return 0.5;
+  const e = hit.object.userData.edit;
+  if (!e) return 0.4;
+  if (isTerr(e)) return e.y > -4 ? 0.5 : 1.2;
+  if (e.op !== "block") return 0.3;
+  if (!e.k || e.k === "flat") return 1;
+  return HARD[e.k] ?? 0.5;
+}
+// Ломание: в творческом — сразу, в выживании — держишь кнопку (палец), пока полоска не заполнится
+let breaking = null;
+const mineEl = Object.assign(document.createElement("pre"), { id: "mine" });
+document.body.append(mineEl);
+function startBreak(screen) {
+  if (!bag) return use("remove", screen);
+  breaking = { screen, prog: 0, id: null, tick: 0 };
+}
+function stopBreak() { breaking = null; mineEl.style.display = "none"; }
+function updateBreaking(dt) {
+  if (!breaking) return;
+  if (!inGame || menuOpen || dead || currentWeapon() || camMode !== "first") return stopBreak();
+  const hit = aim(breaking.screen);
+  const id = !hit ? null : hit.object === plate ? `p${Math.floor(hit.point.x)},${Math.floor(hit.point.z)}` : hit.object.uuid;
+  if (!id) { breaking.prog = 0; mineEl.style.display = "none"; return; }
+  if (id !== breaking.id) { breaking.id = id; breaking.prog = 0; }
+  breaking.prog += dt / hardness(hit);
+  if ((breaking.tick += dt) > 0.22) { breaking.tick = 0; sfx("mine"); burst(hit.point, hit.object.userData.edit?.c ?? 10, 2); }
+  if (breaking.prog >= 1) { use("remove", breaking.screen); breaking.prog = 0; breaking.id = null; }
+  const n = Math.min(10, Math.floor(breaking.prog * 10));
+  mineEl.textContent = "█".repeat(n) + "░".repeat(10 - n);
+  mineEl.style.display = "block";
+}
+// Рецепты: [что получится, сколько, из чего]. Только из предметов, которые есть в игре
+const RECIPES = [
+  ["Доска", 4, { "Дерево": 1 }], ["Палка", 4, { "Доска": 2 }], ["Блок", 4, { "Камень": 4 }], ["Ступеньки", 4, { "Камень": 6 }], ["Рампа", 2, { "Камень": 3 }],
+  ["Бетон", 4, { "Камень": 2, "Песок": 2 }], ["Стекло", 1, { "Песок": 1 }], ["Окно", 2, { "Стекло": 2, "Палка": 1 }], ["Плитка", 4, { "Камень": 4, "Песок": 1 }],
+  ["Дверь", 1, { "Доска": 6 }], ["Стул", 1, { "Доска": 3, "Палка": 2 }], ["Стол", 1, { "Доска": 4, "Палка": 2 }], ["Скамейка", 1, { "Доска": 3, "Палка": 2 }],
+  ["Кровать", 1, { "Шерсть": 3, "Доска": 3 }], ["Бочка", 1, { "Доска": 7 }], ["Текст", 3, { "Доска": 6, "Палка": 1 }], ["Трава", 1, { "Земля": 1, "Листва": 1 }],
+  ["Слизь", 1, { "Листва": 4 }], ["Решётка", 4, { "Металл": 2 }], ["Лампа", 1, { "Металл": 1, "Стекло": 1 }], ["Фонарь", 1, { "Металл": 3, "Стекло": 1 }],
+  ["Нож", 1, { "Металл": 1, "Палка": 1 }], ["Меч", 1, { "Металл": 2, "Палка": 1 }], ["Топор", 1, { "Металл": 3, "Палка": 2 }], ["Бита", 1, { "Доска": 3 }],
+  ["Огниво", 1, { "Металл": 1, "Камень": 1 }], ["ТНТ", 1, { "Песок": 4, "Редстоун": 2 }], ["Трамплин", 1, { "Слизь": 2, "Доска": 3 }],
+  ["Факел редстоуна", 1, { "Редстоун": 1, "Палка": 1 }], ["Рычаг", 1, { "Камень": 1, "Палка": 1 }], ["Кнопка", 1, { "Камень": 1 }], ["Нажимная плита", 1, { "Камень": 2 }],
+  ["Повторитель", 1, { "Камень": 3, "Редстоун": 1, "Факел редстоуна": 2 }], ["Компаратор", 1, { "Камень": 3, "Факел редстоуна": 3, "Золото": 1 }],
+  ["Блок редстоуна", 1, { "Редстоун": 9 }], ["Редстоун", 9, { "Блок редстоуна": 1 }], ["Лампа редстоуна", 1, { "Редстоун": 4, "Стекло": 1 }],
+  ["Поршень", 1, { "Доска": 3, "Камень": 4, "Металл": 1, "Редстоун": 1 }], ["Липкий поршень", 1, { "Поршень": 1, "Слизь": 1 }],
+  ["Наблюдатель", 1, { "Камень": 6, "Редстоун": 2 }], ["Раздатчик", 1, { "Камень": 7, "Редстоун": 1 }], ["Нотный блок", 1, { "Доска": 8, "Редстоун": 1 }],
+  ["Железная дверь", 1, { "Металл": 6 }], ["Рельсы", 16, { "Металл": 6, "Палка": 1 }], ["Энергорельсы", 6, { "Золото": 6, "Палка": 1, "Редстоун": 1 }],
+  ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
+].filter(([r, , ing]) => ITEMS.includes(r) && Object.keys(ing).every(n => ITEMS.includes(n)));
+const canCraft = ([, , ing]) => !!bag && Object.entries(ing).every(([n, k]) => (bag[n] || 0) >= k);
+function craft(i) {
+  const r = RECIPES[i];
+  if (!r || !canCraft(r)) return sfx("click");
+  for (const [n, k] of Object.entries(r[2])) take(n, k);
+  give(r[0], r[1], true);
+  sfx("craft");
+  toast(`+${r[1]} ${r[0]}`);
+  drawInventory();
+}
+function craftHtml() {
+  wantIcons(RECIPES.map(r => r[0]));
+  // Сначала то, что можно сделать прямо сейчас
+  const order = RECIPES.map((r, i) => i).sort((a, b) => canCraft(RECIPES[b]) - canCraft(RECIPES[a]));
+  return `<div class="crafts">${order.map(i => {
+    const [res, n, ing] = RECIPES[i];
+    const need = Object.entries(ing).map(([k, c]) => `<span class="${(bag[k] || 0) >= c ? "" : "miss"}">${k} ${bag[k] || 0}/${c}</span>`).join(", ");
+    return `<div class="craft${canCraft(RECIPES[i]) ? " ok" : ""}" data-craft="${i}">${iconImg(res)}<div><b>${res}${n > 1 ? " ×" + n : ""}</b><br>${need}</div></div>`;
+  }).join("")}</div>`;
+}
+const survTabs = () => ({ "Вещи": Object.keys(bag).filter(n => bag[n] > 0).sort((a, b) => ITEMS.indexOf(a) - ITEMS.indexOf(b)), "Крафт": [] });
+
+// Подобрал, скрафтил: короткая надпись над хотбаром
+const toastEl = Object.assign(document.createElement("pre"), { id: "toast" });
+document.body.append(toastEl);
+let toastLines = [], toastTimer = 0;
+function toast(t) {
+  toastLines.push(t);
+  if (toastLines.length > 3) toastLines.shift();
+  toastEl.textContent = toastLines.join("\n");
+  toastEl.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastLines = []; toastEl.style.display = "none"; }, 1600);
+}
+
+// ---------- Частицы: осколки сломанного блока ----------
+const partGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12), partMats = new Map(), parts = [];
+function burst(p, c, n = 10) {
+  let mat = partMats.get(c);
+  if (!mat) { const [r, g, b] = (COLORS[c] || COLORS[10]).rgb; partMats.set(c, mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, g / 255, b / 255) })); }
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(partGeo, mat);
+    m.position.set(p.x + (Math.random() - 0.5) * 0.5, p.y + Math.random() * 0.4, p.z + (Math.random() - 0.5) * 0.5);
+    m.userData.v = new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4);
+    m.userData.life = 0.45 + Math.random() * 0.4;
+    scene.add(m);
+    parts.push(m);
+  }
+  while (parts.length > 160) scene.remove(parts.shift());
+}
+function updateParticles(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const m = parts[i], u = m.userData;
+    u.life -= dt;
+    u.v.y -= 16 * dt;
+    m.position.addScaledVector(u.v, dt);
+    m.rotation.x += dt * 6; m.rotation.y += dt * 4;
+    if (u.life <= 0) { scene.remove(m); parts.splice(i, 1); }
+  }
+}
+
+// ---------- Шаги и приземление ----------
+let stepDist = 0, stepX = 0, stepZ = 0, wasOnGround = true, fallVy = 0;
+function updateSteps() {
+  const moved = Math.hypot(px - stepX, pz - stepZ);
+  stepX = px; stepZ = pz;
+  if (camMode !== "first" || flying || dead) { wasOnGround = true; return; }
+  if (onGround && !wasOnGround && fallVy < -6) sfx("land");
+  if (!onGround) fallVy = Math.min(fallVy, vy); else fallVy = 0;
+  wasOnGround = onGround;
+  if (!onGround || moved > 2) return;  // телепорт — не шаг
+  stepDist += moved;
+  if (stepDist > (crouching ? 1.1 : 1.7)) { stepDist = 0; sfx("step"); }
+}
+
+// ---------- Поршень двигает блоки плавно: модель едет из старой клетки в новую за один тик ----------
+const sliding = new Set();
+function slideFrom(mesh, dx, dy, dz) {
+  if (!mesh) return;
+  const u = mesh.userData;
+  u.slide = { base: mesh.position.clone(), from: new THREE.Vector3(dx, dy, dz), t: 0 };
+  if (u.mergeable) { scene.add(mesh); if (u.chunk) dirtyChunks.add(u.chunk); }  // пока едет, рисуется сам, а не куском
+  mesh.visible = true;
+  sliding.add(mesh);
+}
+function updateSliding(dt) {
+  for (const m of sliding) {
+    const u = m.userData, s = u.slide;
+    if (!s || u.si < 0) { sliding.delete(m); continue; }  // блок уже убрали
+    s.t = Math.min(1, s.t + dt / 0.12);
+    const k = 1 - s.t;
+    m.position.copy(s.base).addScaledVector(s.from, k);
+    if (u.mergeable) { m.updateMatrix(); m.matrixWorld.copy(m.matrix); }
+    if (s.t < 1) continue;
+    sliding.delete(m);
+    u.slide = null;
+    if (u.mergeable) { scene.remove(m); m.visible = false; if (u.chunk) dirtyChunks.add(u.chunk); }
+  }
+}
+
+// ---------- Рельсы и вагонетка ----------
+const isRail = r => r?.k === "rs_rail" || r?.k === "rs_prail";
+// Куда ведут рельсы в клетке: две стороны из HDIR (0 — +x, 1 — −x, 4 — +z, 5 — −z). Прямо, если можно; энергорельсы не поворачивают
+function railShape(e) {
+  const n = HDIR.filter(d => isRail(rsRec.get(key(e.x + RSD[d][0], e.y, e.z + RSD[d][2]))));
+  if (n.includes(0) && n.includes(1)) return [0, 1];
+  if (n.includes(4) && n.includes(5)) return [4, 5];
+  if (n.length === 0) return e.r === 1 ? [0, 1] : [4, 5];
+  if (n.length === 1 || e.k === "rs_prail") return [n[0], n[0] ^ 1];
+  return [n[0], n[1]];
+}
+// Модель: для каждой стороны — половинка пути от центра к краю (шпалы и два рельса). Прямые — две половинки, поворот — уголок
+const railGeo = (shape, k, on) => rsGeo(`rail${shape.join("")}${k}${on}`, () => {
+  const rail = k === "rs_prail" ? (on ? 0xffd34d : 0xb08a2a) : 0x9a9aa2, parts = [];
+  for (const d of new Set(shape)) {
+    const sx = RSD[d][0], sz = RSD[d][2], ax = sx !== 0;  // ax — путь вдоль x
+    for (const t of [0.12, 0.37]) parts.push(...P(0x6b4a22, ax ? box(0.14, 0.05, 0.84, sx * t, -0.47, 0) : box(0.84, 0.05, 0.14, 0, -0.47, sz * t)));  // шпалы
+    for (const off of [-0.3, 0.3]) parts.push(...P(rail, ax ? box(0.56, 0.05, 0.07, sx * 0.22, -0.43, off) : box(0.07, 0.05, 0.56, off, -0.43, sz * 0.22)));
+    if (k === "rs_prail") parts.push(...P(on ? 0xff3030 : 0x5a1a1a, ax ? box(0.5, 0.02, 0.08, sx * 0.25, -0.44, 0) : box(0.08, 0.02, 0.5, 0, -0.44, sz * 0.25)));
+  }
+  return mergeParts(parts);
+});
+const cartGeo = mergeParts([
+  ...P(0x6f7378, box(0.9, 0.08, 1.2, 0, 0.18, 0), box(0.06, 0.5, 1.2, -0.42, 0.45, 0), box(0.06, 0.5, 1.2, 0.42, 0.45, 0), box(0.9, 0.5, 0.06, 0, 0.45, -0.57), box(0.9, 0.5, 0.06, 0, 0.45, 0.57)),
+  ...P(0x8d9196, box(0.92, 0.04, 0.08, 0, 0.7, -0.57), box(0.92, 0.04, 0.08, 0, 0.7, 0.57), box(0.08, 0.04, 1.2, -0.42, 0.7, 0), box(0.08, 0.04, 1.2, 0.42, 0.7, 0)),
+  ...P(0x2a2a2a, box(0.1, 0.2, 0.2, -0.4, 0.1, -0.35), box(0.1, 0.2, 0.2, 0.4, 0.1, -0.35), box(0.1, 0.2, 0.2, -0.4, 0.1, 0.35), box(0.1, 0.2, 0.2, 0.4, 0.1, 0.35))]);
+const CART_MAX = 10, CART_PUSH = 5;
+// Положение на пути по клетке: от середины входной стороны через центр к середине выходной. t — от 0 до 1
+function cartPoint(c, out) {
+  const [x, y, z] = c.cell, a = c.t < 0.5 ? RSD[c.ent] : RSD[c.ex], k = c.t < 0.5 ? 0.5 - c.t : c.t - 0.5;
+  return out.set(x + 0.5 + a[0] * k, y + 0.06, z + 0.5 + a[2] * k);
+}
+const cartDir = c => { const a = c.t < 0.5 ? RSD[c.ent] : RSD[c.ex], s = c.t < 0.5 ? -1 : 1; return [a[0] * s, a[2] * s]; };  // куда едем сейчас
+function cartInit(m) {
+  const cell = [Math.floor(m.position.x), Math.floor(m.position.y + 0.2), Math.floor(m.position.z)], r = rsRec.get(key(...cell));
+  if (!isRail(r)) return null;
+  const sh = r.s.shape || railShape(r.e);
+  return { cell, ent: sh[0], ex: sh[1], t: 0.5, v: 0, send: 0 };
+}
+const cartTmp = new THREE.Vector3();
+function stepCart(m, dt) {
+  const u = m.userData, c = u.cart ??= cartInit(m);
+  if (!c) return false;
+  const r = rsRec.get(key(...c.cell));
+  if (!isRail(r)) { u.cart = null; return false; }  // рельсы под вагонеткой сломали — она стоит
+  if (r.k === "rs_prail" && r.s.pw && c.v < 0.05) {  // трогаемся: туда, куда смотрит седок, но не в тупик
+    const dead = d => !isRail(rsRec.get(key(c.cell[0] + RSD[d][0], c.cell[1], c.cell[2] + RSD[d][2])));
+    const look = d => -Math.sin(yaw) * RSD[d][0] - Math.cos(yaw) * RSD[d][2];
+    let go = m === drivingCart && look(c.ent) > look(c.ex) ? c.ent : c.ex;
+    if (dead(go)) go = go === c.ex ? c.ent : c.ex;
+    if (go !== c.ex) { [c.ent, c.ex] = [c.ex, c.ent]; c.t = 1 - c.t; }
+  }
+  if (r.k === "rs_prail") c.v = r.s.pw ? Math.min(CART_MAX, Math.max(c.v, 1.5) + 14 * dt) : Math.max(0, c.v - 25 * dt);  // разгон или тормоз
+  else c.v = Math.max(0, c.v - 0.5 * dt);  // трение
+  if (m === drivingCart) {  // седок подталкивает: W — вперёд по взгляду, S — назад
+    const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - stick.y;
+    if (f) {
+      const [dx, dz] = cartDir(c), dot = -Math.sin(yaw) * dx - Math.cos(yaw) * dz, push = f * (dot >= 0 ? 1 : -1);
+      if (push > 0) { if (c.v < CART_PUSH) c.v = Math.min(CART_PUSH, c.v + 4 * dt); }
+      else c.v -= 6 * dt;
+    }
+  }
+  if (c.v < 0) { [c.ent, c.ex] = [c.ex, c.ent]; c.t = 1 - c.t; c.v = -c.v; }  // поехали в обратную сторону
+  c.t += c.v * dt;
+  while (c.t >= 1) {
+    const next = [c.cell[0] + RSD[c.ex][0], c.cell[1], c.cell[2] + RSD[c.ex][2]], nr = rsRec.get(key(...next)), entry = c.ex ^ 1;
+    const sh = isRail(nr) && (nr.s.shape || railShape(nr.e));
+    if (!sh || !sh.includes(entry)) { c.t = 1; c.v = 0; break; }  // рельсы кончились — вагонетка встаёт у края
+    c.cell = next; c.ent = entry; c.ex = sh[0] === entry ? sh[1] : sh[0]; c.t -= 1;
+  }
+  cartPoint(c, cartTmp);
+  const [dx, dz] = cartDir(c);
+  const moved = cartTmp.distanceToSquared(m.position) > 1e-6;
+  m.position.copy(cartTmp);
+  if (dx || dz) m.rotation.y = Math.atan2(dx, dz);
+  const e = u.edit;
+  e.x = +m.position.x.toFixed(2); e.y = +m.position.y.toFixed(2); e.z = +m.position.z.toFixed(2); e.yaw = +m.rotation.y.toFixed(2);
+  if (moved) worldDirty = true;
+  // Без седока вагонетку по сети ведёт тот, кто её поставил: шлём 4 раза в секунду, пока едет
+  if (online && m !== drivingCart && moved && (c.send -= dt) <= 0) { c.send = 0.25; online.sendEdits([e]); }
+  return moved;
+}
+function updateCarts(dt) {
+  const k = Math.min(1, dt * 12);
+  for (const m of carts.values()) {
+    const e = m.userData.edit;
+    if (m === drivingCart || !online || (e.o === myId && !e.rd)) stepCart(m, dt);
+    else if (m.userData.target) {  // чужая вагонетка плавно доезжает до присланной точки
+      const t = m.userData.target;
+      m.position.lerp(cartTmp.set(t.x, t.y, t.z), k);
+      m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
+      m.userData.cart = null;
+    }
+  }
+}
+function nearestCart() {
+  let best = null, bestD = 2.5;
+  for (const m of carts.values()) {
+    const d = Math.hypot(m.position.x - px, m.position.z - pz);
+    if (d < bestD && Math.abs(m.position.y - feet) < 2 && !(m.userData.edit.rd && m.userData.edit.rd !== myId)) { best = m; bestD = d; }
+  }
+  return best;
+}
+function enterCart(m) {
+  drivingCart = m;
+  camMode = "car";
+  m.userData.edit.rd = myId;  // седок ведёт вагонетку и для остальных
+  online?.sendEdits([m.userData.edit]);
+  addChat(TOUCH ? "* W/джойстик — толкать, МАШИНА — выйти" : "* W/S — толкать вагонетку, E — выйти");
+}
+function exitCart() {
+  const m = drivingCart;
+  if (!m) return;
+  drivingCart = null;
+  camMode = "first";
+  delete m.userData.edit.rd;
+  online?.sendEdits([m.userData.edit]);
+  const side = new THREE.Vector3(Math.cos(m.rotation.y), 0, -Math.sin(m.rotation.y)).multiplyScalar(1.1);
+  px = m.position.x + side.x; pz = m.position.z + side.z;
+  feet = Math.max(m.position.y, groundHeight(px, m.position.y + 1, pz));
+  vy = 0;
+}
+function updateCartRide() {
+  const m = drivingCart;
+  if (!m || m.userData.si < 0) { drivingCart = null; camMode = "first"; return; }
+  px = m.position.x; pz = m.position.z; feet = m.position.y + 0.25;
+  camera.position.set(px, feet + 1.25, pz);
+  camera.rotation.set(pitch, yaw, 0);
+}
+
+// Всё новое, что считается каждый кадр
+let fpsFrames = 0, fpsTime = 0;
+function updateGameplay(dt) {
+  updateSteps();
+  updateBreaking(dt);
+  updateParticles(dt);
+  updateSliding(dt);
+  updateCarts(dt);
+  autosave(dt);
+  fpsFrames++;
+  if ((fpsTime += dt) >= 0.5) {
+    if (settings.fps) fpsEl.textContent = `${Math.round(fpsFrames / fpsTime)} FPS`;
+    fpsFrames = 0; fpsTime = 0;
+  }
+}
+
 // ---------- Главный цикл ----------
 
 let last = performance.now();
@@ -6701,6 +7503,7 @@ renderer.setAnimationLoop(now => {
   updateWorld(dt);
   updatePortal(dt);
   updateWeapons(dt);
+  updateGameplay(dt);
   lampTimer += dt;
   if (lampTimer > 0.25) { lampTimer = 0; updateLamps(); }
   // Шлагбаумы поднимаются и опускаются плавно

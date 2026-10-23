@@ -47,6 +47,6 @@ sub1('<script type="module">', '<script>window.HELPER_WORLD_DATA = %s;</script>\
 # картинка-мем внутрь
 meme = base64.b64encode(open(os.path.join(root, "meme.jpg"), "rb").read()).decode()
 sub1('const MEME_SRC = "meme.jpg";', 'const MEME_SRC = "data:image/jpeg;base64,%s";' % meme)
-sub1("<title>ASCII Baseplate</title>", "<title>ASCII Baseplate (офлайн)</title>")
+sub1("<title>Baseplate</title>", "<title>Baseplate (офлайн)</title>")
 open(os.path.join(root, "ascii-offline.html"), "w", encoding="utf8").write(html)
 print("готово: ascii-offline.html,", round(len(html) / 1e6, 2), "МБ")
