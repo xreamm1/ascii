@@ -397,7 +397,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
   "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка",
   "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
-  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы"].filter(Boolean);
+  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы", "Тотем бессмертия"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
 const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
@@ -698,17 +698,32 @@ function recenterHoles() {
   holeData.fill(0);
   for (const k of dug) { const [x, y, z] = k.split(",").map(Number); if (y === -1 && inHoleWin(x, z)) holeData[holeIdx(x, z)] = 255; }
   holesDirty = true;
+  groundData.fill(0);
+  if (gen) for (const ck of gen.loaded.keys()) { const [cx, cz] = ck.split(",").map(Number); fillGround(cx, cz); }
+  groundTex.needsUpdate = true;
 }
 const topDug = (x, z) => dug.size > 0 && dug.has(`${x},-1,${z}`);
 // Плита рисуется с дырами: там, где выкопан верхний слой, пиксели отбрасываются
 plate.material.onBeforeCompile = sh => {
   sh.uniforms.holeTex = { value: holeTex };
   sh.uniforms.holeOrigin = holeOrigin;
+  sh.uniforms.groundTex = { value: groundTex };
+  sh.uniforms.grassMap = { value: BLOCK_TEX.grass };
+  sh.uniforms.sandMap = { value: BLOCK_TEX.sand };
   sh.vertexShader = "varying vec3 vWorldPos;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;");
-  sh.fragmentShader = "varying vec3 vWorldPos;\nuniform sampler2D holeTex;\nuniform vec2 holeOrigin;\n" + sh.fragmentShader.replace("#include <map_fragment>",
+  // В мире с природой плита — земля: трава или песок по биому (карта groundTex), блок 1×1 — как у настоящих блоков.
+  // textureGrad: без него на стыках клеток видны линии (fract ломает выбор уровня mip-карты)
+  sh.fragmentShader = "varying vec3 vWorldPos;\nuniform sampler2D holeTex;\nuniform sampler2D groundTex;\nuniform sampler2D grassMap;\nuniform sampler2D sandMap;\nuniform vec2 holeOrigin;\n" + sh.fragmentShader.replace("#include <map_fragment>",
     `vec2 hUv = (vWorldPos.xz - holeOrigin) / float(${HOLE_N});
-    if (hUv.x >= 0.0 && hUv.x < 1.0 && hUv.y >= 0.0 && hUv.y < 1.0 && texture2D(holeTex, hUv).r > 0.5) discard;
-    #include <map_fragment>`);
+    bool inWin = hUv.x >= 0.0 && hUv.x < 1.0 && hUv.y >= 0.0 && hUv.y < 1.0;
+    if (inWin && texture2D(holeTex, hUv).r > 0.5) discard;
+    #include <map_fragment>
+    float gType = inWin ? texture2D(groundTex, hUv).r * 255.0 : 0.0;
+    if (gType > 0.5) {
+      vec2 gp = vWorldPos.xz, gu = fract(gp);
+      vec4 gc = gType < 1.5 ? textureGrad(grassMap, gu, dFdx(gp), dFdy(gp)) : textureGrad(sandMap, gu, dFdx(gp), dFdy(gp));
+      diffuseColor.rgb = diffuse * gc.rgb * 0.85;  // плита освещена сильнее боков холмов — чуть темнее, чтобы не слепила
+    }`);
 };
 
 // Блок: кирпичи с тёмной рамкой по краю, чтобы были видны грани
@@ -743,6 +758,8 @@ const BLOCK_TEX = {
   ds_gold: dsOre("#f5c932", "#fff08a"),
   ds_red: dsOre("#e02020", "#ff7070"),
   ds_diamond: dsOre("#3fe0d6", "#b8fff9"),
+  cobble: bb("#7b7b7b", [[0, 0, 7, 5, "#8e8e8e"], [8, 1, 7, 6, "#6d6d6d"], [2, 7, 6, 5, "#6d6d6d"], [9, 9, 6, 6, "#8e8e8e"], [0, 13, 5, 3, "#848484"]]),
+  mossy: bb("#7b7b7b", [[0, 0, 7, 5, "#8e8e8e"], [8, 1, 7, 6, "#5f8a4a"], [2, 7, 6, 5, "#6d6d6d"], [9, 9, 6, 6, "#4f7a3c"], [0, 13, 5, 3, "#5f8a4a"]]),
   wood: bb("#8a6235", [[2, 0, 1, 16, "#6f4c28"], [7, 0, 2, 16, "#6f4c28"], [12, 0, 1, 16, "#6f4c28"], [4, 3, 1, 5, "#9b7140"], [10, 9, 1, 5, "#9b7140"]]),
   grass: bb("#6cb350", [[2, 2, 2, 1, "#5fa246"], [9, 5, 3, 1, "#7cc35e"], [4, 10, 2, 1, "#5fa246"], [12, 12, 2, 1, "#7cc35e"], [13, 2, 1, 1, "#5fa246"]]),
   sand: bb("#e6d7a0", [[3, 4, 2, 1, "#d8c88e"], [10, 2, 1, 1, "#d8c88e"], [7, 10, 2, 1, "#efe2b4"], [12, 13, 2, 1, "#d8c88e"]]),
@@ -2007,7 +2024,7 @@ function damage(n, by) {
   lastHurt = performance.now();
   flashEl.style.transition = "none"; flashEl.style.opacity = 0.35;
   requestAnimationFrame(() => { flashEl.style.transition = "opacity 0.4s"; flashEl.style.opacity = 0; });
-  if (hp <= 0) die(by);
+  if (hp <= 0 && !tryTotem()) die(by);
   drawHp();
 }
 
@@ -3144,7 +3161,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Шахматы": "▚▞▚▞", "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Тотем бессмертия": " ▟▙ ", "Шахматы": "▚▞▚▞", "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -3193,6 +3210,7 @@ function iconModel(name, c) {
     m.rotation.y = Math.PI * 0.8;
   }
   else if (name === "Вагонетка") m = new THREE.Mesh(cartGeo, plain());
+  else if (name === TOTEM) m = new THREE.Mesh(totemGeo, plain());
   else if (PICKS[name]) { m = new THREE.Mesh(pickGeos[PICKS[name]], plain()); m.rotation.z = 0.6; }
   else if (ARMOR[name]) m = new THREE.Mesh(ARMOR_GEO[ARMOR[name][0]], armorMats[ARMOR[name][1]]);
   else if (WEAPON_GEO[name]) { m = new THREE.Mesh(WEAPON_GEO[name], weaponMats); m.rotation.y = -Math.PI / 2; }
@@ -3300,7 +3318,7 @@ const INV_TABS = {
   "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
   "Транспорт": ["Машина", "Автобус", "Танк", "Самолёт"],
   "Инструменты": ["Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка", "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки",
-    "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки"],
+    "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Тотем бессмертия"],
   "Прочные": ["Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель"],
 };
 const REDSTONE_ITEMS = ["Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка"];
@@ -5368,19 +5386,19 @@ function buildHell() {
   let sd = 12345;
   const r = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
   const put = (x, y, z, k, rr) => { if (!blocks.has(key(x, y, z))) edit({ op: "block", x, y, z, c: k === "obsidian" ? 9 : k === "portal" ? 7 : 0, k, ...(rr !== undefined ? { r: rr } : {}), t: 3 }); };
-  const H = 28, pools = Array.from({ length: 6 }, () => [HELL_X + Math.floor((r() - 0.5) * 44), HELL_Z + Math.floor((r() - 0.5) * 44), 3 + Math.floor(r() * 3)]);
+  const H = gen ? 0 : 64, pools = Array.from({ length: gen ? 0 : 16 }, () => [HELL_X + Math.floor((r() - 0.5) * 110), HELL_Z + Math.floor((r() - 0.5) * 110), 3 + Math.floor(r() * 6)]);
   for (let x = HELL_X - H; x < HELL_X + H; x++) for (let z = HELL_Z - H; z < HELL_Z + H; z++) {
     const lava = pools.some(([px2, pz2, rad]) => Math.hypot(x - px2, z - pz2) < rad) && Math.hypot(x - HELL_X, z - (HELL_Z + 5)) > 9;
     put(x, 0, z, lava ? "lava" : "netherrack");
     if (x === HELL_X - H || x === HELL_X + H - 1 || z === HELL_Z - H || z === HELL_Z + H - 1) for (let y = 1; y < 4; y++) put(x, y, z, "netherrack");
   }
-  for (let i = 0; i < 26; i++) {  // колонны со светящимся верхом
-    const x = HELL_X + Math.floor((r() - 0.5) * 50), z = HELL_Z + Math.floor((r() - 0.5) * 50), h = 3 + Math.floor(r() * 7);
+  for (let i = 0; i < (gen ? 0 : 90); i++) {  // колонны со светящимся верхом
+    const x = HELL_X + Math.floor((r() - 0.5) * 120), z = HELL_Z + Math.floor((r() - 0.5) * 120), h = 3 + Math.floor(r() * 9);
     if (Math.hypot(x - HELL_X, z - (HELL_Z + 5)) < 8) continue;
     for (let y = 1; y <= h; y++) put(x, y, z, "netherrack");
     put(x, h + 1, z, "glowstone");
   }
-  for (let i = 0; i < 40; i++) put(HELL_X + Math.floor((r() - 0.5) * 54), 14 + Math.floor(r() * 8), HELL_Z + Math.floor((r() - 0.5) * 54), r() < 0.5 ? "glowstone" : "netherrack");
+  for (let i = 0; i < (gen ? 0 : 160); i++) put(HELL_X + Math.floor((r() - 0.5) * 124), 14 + Math.floor(r() * 8), HELL_Z + Math.floor((r() - 0.5) * 124), r() < 0.5 ? "glowstone" : "netherrack");
   // обратный портал в центре
   for (let u = HELL_X - 1; u <= HELL_X + 2; u++) { put(u, 1, HELL_Z, "obsidian"); put(u, 5, HELL_Z, "obsidian"); }
   for (let y = 2; y <= 4; y++) { put(HELL_X - 1, y, HELL_Z, "obsidian"); put(HELL_X + 2, y, HELL_Z, "obsidian"); put(HELL_X, y, HELL_Z, "portal", 0); put(HELL_X + 1, y, HELL_Z, "portal", 0); }
@@ -7188,7 +7206,7 @@ function saveWorld(manual) {
   if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
   const edits = worldEdits();
   const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
-    gen: gen && { removed: [...gen.removed], animals: [...gen.animals], store: Object.fromEntries(gen.store) } };
+    gen: gen && { removed: [...gen.removed], animals: [...gen.animals], store: Object.fromEntries(gen.store), looted: [...gen.looted] } };
   Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
   worldDirty = false;
   savedAt = [px, feet, pz];
@@ -7316,7 +7334,7 @@ function harvest(e) {
   if (needTier(e) > pickTier()) { toast(pickTier() ? "нужна кирка получше" : "нужна кирка"); return null; }
   if (!isTerr(e)) return dropFor(e);
   return { ore_iron: "Металл", ore_gold: "Золото", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Камень",
-    ds_iron: "Металл", ds_gold: "Золото", ds_diamond: "Алмаз", ds_red: "Редстоун", deepslate: "Камень" }[e.k] ?? digDrop(e.y);
+    ds_iron: "Металл", ds_gold: "Золото", ds_diamond: "Алмаз", ds_red: "Редстоун", deepslate: "Камень", cobble: "Камень", mossy: "Камень" }[e.k] ?? digDrop(e.y);
 }
 // Из ямы: сверху земля и песок, глубже камень, ещё глубже руда (для старых миров, где земля без руды)
 function digDrop(y) {
@@ -7329,7 +7347,7 @@ function digDrop(y) {
   return y > -4 ? "Земля" : "Камень";
 }
 // Сколько секунд ломать рукой
-const HARD = { deepslate: 2, ds_iron: 2.6, ds_red: 2.6, ds_gold: 2.8, ds_diamond: 3.4, ore_iron: 1.8, ore_red: 1.8, ore_gold: 2, ore_diamond: 2.6, dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
+const HARD = { cobble: 1.4, mossy: 1.4, deepslate: 2, ds_iron: 2.6, ds_red: 2.6, ds_gold: 2.8, ds_diamond: 3.4, ore_iron: 1.8, ore_red: 1.8, ore_gold: 2, ore_diamond: 2.6, dirt: 0.35, grass: 0.4, sand: 0.35, snow: 0.25, leaves: 0.2, wool: 0.4, wood: 0.8, stone: 1.2, concrete: 1.3, marble: 1.4, tiles: 1.1, clay: 1, metal: 2,
   gold: 1.6, diamond: 2.5, obsidian: 6, glass: 0.3, ice: 0.4, netherrack: 0.5, glowstone: 0.4 };
 function hardness(hit) {
   if (hit.object === plate) return 0.5;
@@ -7736,6 +7754,7 @@ function genColumn(x, z) {
 // Пещеры: извилистые ходы (там, где два шума одновременно около середины) и залы на глубине
 function caveAt(x, y, z) {
   if (!gen || y > -2 || y < -DEPTH + 3) return false;
+  if (dungeonAt(x, y, z) === 1) return true;
   const s = gen.seed, yy = y * 1.5, w = y < -20 ? 0.04 : 0.032;  // глубже ходы шире
   if (Math.abs(noise3(x, yy, z, 16, s + 10) - 0.5) < w && Math.abs(noise3(x, yy, z, 16, s + 11) - 0.5) < w) return true;
   // Огромные залы на глубине 15–70: десятки блоков в ширину, а в высоту не больше ~15 (шум сильно сплющен по вертикали), к краям слоя сходят на нет
@@ -7748,6 +7767,7 @@ function caveAt(x, y, z) {
 // Из чего стенка под землёй: сверху земля, глубже камень с рудой (одинаково у всех игроков — считается по координатам)
 function terrKind(x, y, z) {
   if (y > -4) return "dirt";
+  if (gen && dungeonAt(x, y, z) === 2) return hashN(31, x, y, z) < 0.45 ? "mossy" : "cobble";  // стены данжа
   const h = hashN(9137, x, y, z), deep = y < -Y_SHOW;  // ниже Y 0 — глубинный сланец (с переходом в пару блоков)
   const ds = deep || (y < -Y_SHOW + 3 && hashN(77, x, y, z) < 0.5);
   if (y < -35 && h < 0.004) return ds ? "ds_diamond" : "ore_diamond";
@@ -7776,6 +7796,7 @@ function stepCaves(budget) {
   for (let n = 0; gen.cqi < q.length && n < budget; n++) {
     const [cx, cy, cz] = q[gen.cqi++];
     if (Math.abs(cx - px) > CAVE_R || Math.abs(cz - pz) > CAVE_R || Math.abs(cy - feet) > CAVE_RY) { gen.frontier.add(key(cx, cy, cz)); continue; }
+    if (dungeonAt(cx, cy, cz) === 1) { const d = dungeonInfo(cx, cz); spawnLoot(d.id, d.cx, d.cy, d.cz, false); }  // вошли в данж
     for (const [dx, dy, dz] of FACE_DIR) {
       const nx = cx + dx, ny = cy + dy, nz = cz + dz, k = key(nx, ny, nz);
       if (ny > -1 || ny < -DEPTH - 1 || dug.has(`${nx},${ny},${nz}`) || blocks.has(k)) continue;
@@ -7822,6 +7843,11 @@ function generateChunk(cx, cz) {
     edit({ op: "block", x, y, z, c: 0, k, g: 1 });
     if (blocks.has(kk)) made.push(kk);
   };
+  if (x0 > HELL_BORDER) {  // ад: свой рельеф, без животных и пещер
+    for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) generateHellColumn(x, z, put);
+    gen.loaded.set(cx + "," + cz, made);
+    return;
+  }
   for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) {
     const { h, desert, snow } = genColumn(x, z);
     for (let y = 0; y < h; y++) put(x, y, z, desert ? "sand" : y === h - 1 ? (snow ? "snow" : "grass") : y < h - 3 ? "stone" : "dirt");
@@ -7859,7 +7885,9 @@ function generateChunk(cx, cz) {
       edit({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[Math.floor(hashN(s + 10, cx, n, cz) * 4)], x: x + 0.5, y: h, z: z + 0.5, yaw: n * 2.1, o: myId, ga: 1 });
     }
   }
+  genStructures(cx, cz, put);
   gen.loaded.set(ck, made);
+  fillGround(cx, cz);
   reopenCaves(x0, z0);
 }
 function unloadChunk(ck) {
@@ -7878,7 +7906,7 @@ function unloadChunk(ck) {
 // Раз в кадр: догружаем ближайший недостающий кусок и выгружаем далёкие
 let genTimer = 0, genSkip = false;
 function updateGen(dt) {
-  if (!gen || worldLoading || !inGame || inHell()) return;
+  if (!gen || worldLoading || !inGame) return;
   const pcx = Math.floor(px / GEN), pcz = Math.floor(pz / GEN);
   let best = null, bestD = Infinity;
   for (let dx = -GEN_R; dx <= GEN_R; dx++) for (let dz = -GEN_R; dz <= GEN_R; dz++) {
@@ -7889,7 +7917,7 @@ function updateGen(dt) {
   if (best && !(LOWEND && (genSkip = !genSkip))) generateChunk(...best);  // слабому телефону — кусок через кадр
   // Под землёй туман ближе: дальше CAVE_R пещера ещё не открыта, а в темноте залы выглядят глубже
   const under = feet < -3 && camMode === "first";
-  scene.fog.near = under ? 6 : FOG_NEAR; scene.fog.far = under ? CAVE_R - 4 : FOG_FAR;
+  if (!inHell()) { scene.fog.near = under ? 6 : FOG_NEAR; scene.fog.far = under ? CAVE_R - 4 : FOG_FAR; }  // в аду свой туман
   stepCaves(LOWEND ? CAVE_STEP / 2 : CAVE_STEP);
   if ((genTimer += dt) < 1) return;
   genTimer = 0;
@@ -7905,7 +7933,7 @@ function updateGen(dt) {
 // seed — у лобби и игры без интернета свой (общий для всех игроков), net — природа в сети (без животных: у каждого были бы свои)
 function setInfinite(on, saved, seed, net) {
   gen = on ? { seed: seed ?? currentWorld.seed, net: !!net, removed: new Set(saved?.removed || []), animals: new Set(saved?.animals || []),
-    store: new Map(Object.entries(saved?.store || {})), mouths: new Set(), loaded: new Map(),
+    store: new Map(Object.entries(saved?.store || {})), looted: new Set(saved?.looted || []), mouths: new Set(), loaded: new Map(),
     caveOpen: new Set(), caves: new Map(), frontier: new Set(), cq: [], cqi: 0 } : null;
   HELL_BORDER = on ? 100000 : 1000; HELL_X = on ? 100500 : 1500;
   FOG_FAR = on ? GEN_R * GEN - 6 : 440; FOG_NEAR = on ? FOG_FAR * 0.45 : 170;
@@ -7918,7 +7946,7 @@ function setInfinite(on, saved, seed, net) {
 const PICKS = { "Деревянная кирка": 1, "Каменная кирка": 2, "Железная кирка": 3, "Алмазная кирка": 4 };
 const PICK_SPEED = [1, 2, 3, 4, 6];
 // Какая кирка нужна, чтобы блок добывался (0 — хватит рук). Без нужной ломается втрое дольше и ничего не даёт
-const NEED = { deepslate: 1, ds_iron: 2, ds_red: 3, ds_gold: 3, ds_diamond: 3, stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
+const NEED = { cobble: 1, mossy: 1, deepslate: 1, ds_iron: 2, ds_red: 3, ds_gold: 3, ds_diamond: 3, stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
 const needTier = e => e.op !== "block" || e.t === 2 ? 0 : !e.k ? (e.t ? 0 : 1) : NEED[e.k] || 0;
 const pickTier = () => { const n = HOTBAR[slot]; return PICKS[n] && have(n) ? PICKS[n] : 0; };
 const ARMOR = {  // слот (0 шлем, 1 нагрудник, 2 поножи, 3 ботинки), материал, очки защиты (каждое — минус 4% урона)
@@ -8243,6 +8271,7 @@ function updateDrops(dt) {
   const now = performance.now();
   for (const [id, d] of drops) {
     const s = d.s;
+    if (Math.abs(s.position.x - px) > 48 || Math.abs(s.position.z - pz) > 48) continue;  // далёкие предметы просто лежат — их физику не считаем
     if (s.material === dropFallback) { const tex = dropTexture(d.e.n); if (tex) s.material = new THREE.SpriteMaterial({ map: tex }); }
     const ground = groundHeight(s.position.x, s.position.y, s.position.z) + 0.25;
     if (s.position.y > ground + 0.01 || d.vy > 0) {  // летит: тяжесть и трение воздуха
@@ -8259,6 +8288,88 @@ function updateDrops(dt) {
       share({ op: "unitem", id });
     }
   }
+}
+
+// ---------- Данжи: подземная комната, пирамида в пустыне, разрушенный портал. В каждом — добыча (в одиночной игре) ----------
+// Подземная комната: одна на область 48×48 (не во всех), внутри 7×4×7 пусто, стены из мшистого булыжника; пещеры могут её прорезать
+function dungeonInfo(x, z) {
+  const rx = Math.floor(x / 48), rz = Math.floor(z / 48), s = gen.seed + 20;
+  if (hashN(s, rx, 0, rz) > 0.55) return null;
+  return { cx: rx * 48 + 8 + Math.floor(hashN(s + 1, rx, 0, rz) * 32), cy: -18 - Math.floor(hashN(s + 2, rx, 0, rz) * 26), cz: rz * 48 + 8 + Math.floor(hashN(s + 3, rx, 0, rz) * 32), id: `d${rx},${rz}` };
+}
+function dungeonAt(x, y, z) {  // 0 — не данж, 1 — пустота внутри, 2 — стена
+  const d = dungeonInfo(x, z);
+  if (!d || Math.abs(x - d.cx) > 4 || Math.abs(z - d.cz) > 4 || y < d.cy - 1 || y > d.cy + 4) return 0;
+  return Math.abs(x - d.cx) <= 3 && Math.abs(z - d.cz) <= 3 && y >= d.cy && y <= d.cy + 3 ? 1 : 2;
+}
+// Добыча: детерминирована по месту, чтобы перезагрузка не давала её снова (взятые данжи помнит gen.looted)
+function spawnLoot(id, x, y, z, rich) {
+  if (!gen || gen.net || gen.looted.has(id)) return;
+  gen.looted.add(id);
+  worldDirty = true;
+  const r = i => hashN(gen.seed + 40, id.length + i, x, z), table = [
+    ["Металл", 2 + Math.floor(r(1) * 5)], ["Золото", 1 + Math.floor(r(2) * 3)], ["Редстоун", 2 + Math.floor(r(3) * 6)], ["Рельсы", 8],
+    r(4) < 0.45 ? ["Алмаз", 1 + Math.floor(r(5) * 2)] : null, r(6) < (rich ? 0.6 : 0.25) ? ["Тотем бессмертия", 1] : null,
+    r(7) < 0.3 ? ["Железная кирка", 1] : null, r(8) < 0.25 ? ["Железный нагрудник", 1] : null, ["Обсидиан", r(9) < 0.5 ? 0 : 4]].filter(t => t && t[1] > 0);
+  table.forEach(([n, k], i) => edit({ op: "item", id: `${myId}-${idCount++}`, n, k, x: x + 0.5 + Math.cos(i * 1.7) * 0.8, y: y + 0.6, z: z + 0.5 + Math.sin(i * 1.7) * 0.8, vy: 1 }));
+}
+// Пирамида (в пустыне) и разрушенный портал (где угодно) — прямо в куске природы. put — постановка блока природы этого куска
+function genStructures(cx, cz, put) {
+  const s = gen.seed + 30, x0 = cx * GEN, z0 = cz * GEN, mx = x0 + 8, mz = z0 + 8, col = genColumn(mx, mz);
+  if (Math.hypot(mx - SIZE / 2, mz - SIZE / 2) < 24 || col.h > 1) return;
+  const roll = hashN(s, cx, 0, cz);
+  if (col.desert && roll < 0.12) {  // ступенчатая пирамида 11×11, внутри зал 5×3×5 с добычей, вход с севера
+    for (let l = 0; l < 6; l++) for (let x = mx - 5 + l; x <= mx + 5 - l; x++) for (let z = mz - 5 + l; z <= mz + 5 - l; z++) {
+      const hollow = l < 3 && Math.abs(x - mx) <= 2 && Math.abs(z - mz) <= 2, door = l < 2 && x === mx && z < mz - 2;
+      if (!hollow && !door) put(x, col.h + l, z, l === 2 || (x + z) % 7 === 0 ? "clay" : "sand");
+    }
+    put(mx, col.h, mz, "gold");
+    spawnLoot(`p${cx},${cz}`, mx, col.h + 1, mz, true);
+  } else if (!col.desert && roll < 0.05) {  // разрушенный портал: рамка 4×5 с выпавшими блоками, вокруг адский камень
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
+      const edge = i === 0 || i === 3 || j === 0 || j === 4;
+      if (edge && hashN(s + 1, mx + i, j, mz) > 0.3) put(mx + i, col.h + j, mz, "obsidian");
+    }
+    for (let i = 0; i < 14; i++) put(mx - 3 + Math.floor(hashN(s + 2, cx, i, cz) * 10), col.h, mz - 3 + Math.floor(hashN(s + 3, cx, i, cz) * 7), "netherrack");
+    spawnLoot(`r${cx},${cz}`, mx + 1, col.h + 1, mz + 2, false);
+  }
+}
+
+// ---------- Ад в бесконечном мире: тоже создаётся кусками, без края. Озёра лавы, холмы и пики незерака, светокамень ----------
+function generateHellColumn(x, z, put) {
+  const s = gen.seed + 500, d = Math.hypot(x + 0.5 - HELL_X - 0.5, z + 0.5 - HELL_Z - 6), fade = Math.min(1, Math.max(0, (d - 7) / 10));
+  const n = noise2(x, z, 22, s) * 0.7 + noise2(x, z, 7, s + 1) * 0.3, h = Math.floor(n * 8 * fade - 1.5);  // холмы до ~5: выше — слишком много блоков
+  put(x, 0, z, fade > 0.6 && n < 0.3 ? "lava" : "netherrack");  // в низинах — лава
+  for (let y = 1; y < h; y++) put(x, y, z, "netherrack");
+  if (fade > 0.8 && hashN(s + 3, x, 0, z) < 0.004) { for (let y = Math.max(1, h); y < h + 7; y++) put(x, y, z, "netherrack"); put(x, h + 7, z, "glowstone"); }
+  if (fade > 0.5 && hashN(s + 2, x, 0, z) < 0.012) { const top = 13 + Math.floor(hashN(s + 4, x, 0, z) * 6); put(x, top, z, "glowstone"); put(x, top + 1, z, "glowstone"); }
+}
+
+// ---------- Земля под ногами: в мире с природой плита рисуется травой или песком по биому (вместо плитки) ----------
+const groundData = new Uint8Array(HOLE_N * HOLE_N);  // то же окно, что у карты дыр: 0 — плитка, 1 — трава, 2 — песок
+const groundTex = new THREE.DataTexture(groundData, HOLE_N, HOLE_N, THREE.RedFormat);
+groundTex.minFilter = groundTex.magFilter = THREE.NearestFilter;
+function fillGround(cx, cz) {
+  if (cx * GEN > HELL_BORDER) return;
+  for (let x = cx * GEN; x < cx * GEN + GEN; x++) for (let z = cz * GEN; z < cz * GEN + GEN; z++)
+    if (inHoleWin(x, z)) groundData[holeIdx(x, z)] = genColumn(x, z).desert ? 2 : 1;
+  groundTex.needsUpdate = true;
+}
+
+// ---------- Тотем бессмертия: лежит в хотбаре — смерть отменяется, тотем тратится ----------
+const TOTEM = "Тотем бессмертия";
+const totemGeo = mergeParts([...P(0xf2c230, box(0.24, 0.34, 0.12, 0, 0, 0), box(0.2, 0.2, 0.14, 0, 0.27, 0), box(0.12, 0.2, 0.1, -0.2, 0.05, 0), box(0.12, 0.2, 0.1, 0.2, 0.05, 0)),
+  ...P(0x2fd16b, box(0.05, 0.05, 0.02, -0.05, 0.3, 0.075), box(0.05, 0.05, 0.02, 0.05, 0.3, 0.075)), ...P(0xd89a1c, box(0.1, 0.12, 0.1, -0.06, -0.23, 0), box(0.1, 0.12, 0.1, 0.06, -0.23, 0))]);
+function tryTotem() {
+  if (!HOTBAR.includes(TOTEM) || !have(TOTEM)) return false;
+  take(TOTEM);
+  hp = 40; invulnUntil = performance.now() + 2000;
+  burst(new THREE.Vector3(px, feet + 1, pz), 15, 30);
+  sfx("craft");
+  toast("тотем бессмертия спас тебя!");
+  addChat("* тотем бессмертия спас тебя!");
+  drawHp();
+  return true;
 }
 
 // ---------- Главный цикл ----------
