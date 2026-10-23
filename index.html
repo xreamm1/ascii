@@ -283,6 +283,53 @@
   @media (pointer: coarse) {
     #touch { display: block; }
   }
+
+  #inv.mcui { --mcslot: min(46px, calc((100vw - 44px)/9)); background:#c6c6c6; color:#292929; border:4px solid #252525; box-shadow:inset 3px 3px #fff,inset -3px -3px #555; padding:12px; width:calc(var(--mcslot)*9 + 38px); border-radius:5px; font-size:13px; }
+  #inv.mcui .slot,#inv.mcui .cell { width:var(--mcslot); height:var(--mcslot); background:#8b8b8b; border:2px solid; border-color:#373737 #fff #fff #373737; }
+  #inv.mcui .slot:hover,#inv.mcui .cell:hover,#inv.mcui [data-held] { background:#b8b8b8; }
+  #inv.mcui .slot.sel { outline:2px solid #fff; outline-offset:-3px; }
+  #inv.mcui .slot i { color:white; font-style:normal; position:absolute; right:2px; bottom:0; text-shadow:1px 1px #222; }
+  #inv.mcui .slot b { color:#444; }
+  .mctop { display:flex; align-items:center; gap:8px; min-height:calc(var(--mcslot)*4); margin-bottom:12px; }
+  .mcarm { display:grid; }
+  #inv.mcui .mcarm small { font-size:8px; overflow:hidden; max-width:100%; text-align:center; }
+  #inv.mcui .mcplayer img { height:100%; width:100%; object-fit:contain; }
+  .mcplayer { background:#171717; width:calc(var(--mcslot)*2); height:calc(var(--mcslot)*4); display:flex; align-items:center; }
+  .mcplayer img { width:100%; }
+  .mccraft { flex:1; margin-left:4px; }
+  .mcrow { display:flex; align-items:center; gap:6px; }
+  .mcgrid { display:grid; gap:0; }
+  .mcgrid.g2 { grid-template-columns:repeat(2,var(--mcslot)); }
+  .mcgrid.g3 { grid-template-columns:repeat(3,var(--mcslot)); }
+  #inv.mcui:has(.g3) { width:min(96vw,600px); }
+  .mcarrow { color:#555; font-size:24px; }
+  .mclabel { margin-bottom:6px; }
+  #inv.mcui .mcmain,#inv.mcui .mchot { display:grid; grid-template-columns:repeat(9,var(--mcslot)); gap:0; }
+  #inv.mcui .mcmain { max-height:calc(var(--mcslot)*6); overflow-y:auto; }
+  #inv.mcui .mchot { margin-top:9px; }
+  #inv.mcui .invname,#inv.mcui .invhint { color:#333; }
+  #inv.mcui .gb { color:#333; cursor:pointer; }
+  #inv.mcui .mcbookbtn { background:#799c46; padding:4px; margin-top:8px; display:inline-block; }
+  #inv.mcui .crafts { max-height:210px; overflow:auto; margin:8px 0; background:#ddd; }
+  #inv.mcui .craft { color:#333; }
+  #inv.mcui .craft.ok { background:#bdd39c; }
+  #inv.mcui .miss { color:#9d2424; }
+  .shape { color:#555; margin-left:auto; font-family:monospace; }
+  #inv.mcui .grid { grid-template-columns:repeat(9,var(--mcslot)); gap:0; height:calc(var(--mcslot)*5); max-height:45vh; }
+  .ctabs { display:flex; justify-content:space-between; gap:3px; margin:2px 0; }
+  .ctab { width:var(--mcslot); height:var(--mcslot); display:inline-flex; background:#aaa; border:2px solid; border-color:#eee #555 #555 #eee; cursor:pointer; align-items:center; justify-content:center; }
+  .ctab img { width:88%; }
+  .ctab.on { background:#e7e7e7; }
+  #inv.mcui .invq { background:#eee; color:#222; border:2px inset #ddd; }
+  .ctitle { padding:5px 0; }
+  @media(max-width:500px) { #inv.mcui {padding:8px; font-size:11px;} .mcplayer {width:var(--mcslot);} .mctop {gap:4px;} .mccraft{margin:0;} .mcrow{gap:2px;} .mcarrow{font-size:17px;} }
+
+  .chhead {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .chhead .gt {flex:1;}
+  .bestmove-button {cursor:pointer;font:inherit;font-size:11px;color:#fff;background:#547637;border:1px solid #aac68f;padding:5px 7px;white-space:nowrap;}
+  .bestmove-button:disabled {opacity:.65;cursor:wait;}
+  .bestmove-note {font-size:11px;color:#c5e59e;line-height:1.4;margin:4px 0;}
+  .cboard .sq.besthint {box-shadow:inset 0 0 0 4px #44a8ff;}
 </style>
 <script type="importmap">
   {
@@ -397,7 +444,7 @@ const ITEMS = ["Блок", "Доска", "Текст", "Стекло", "Двер
   "Прочный блок", "Прочная решётка", "Базука и точка", "Прочный щит", "Шарик-закопатель",
   "Редстоун", "Факел редстоуна", "Рычаг", "Кнопка", "Нажимная плита", "Повторитель", "Компаратор", "Блок редстоуна", "Лампа редстоуна", "Поршень", "Липкий поршень", "Наблюдатель", "Раздатчик", "Нотный блок", "Железная дверь", "Рельсы", "Энергорельсы", "Вагонетка",
   "Деревянная кирка", "Каменная кирка", "Железная кирка", "Алмазная кирка",
-  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы", "Тотем бессмертия"].filter(Boolean);
+  "Железный шлем", "Железный нагрудник", "Железные поножи", "Железные ботинки", "Алмазный шлем", "Алмазный нагрудник", "Алмазные поножи", "Алмазные ботинки", "Шахматы", "Тотем бессмертия", "Доски", "Верстак", "Печь", "Уголь", "Кремень", "Железная руда", "Золотая руда", "Рулетка"].filter(Boolean);
 const BAR_SIZE = 9;
 const DEFAULT_BAR = ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Нож", "Пистолет"];
 const HOTBAR = (() => {  // что лежит в слотах: помним между запусками
@@ -591,6 +638,7 @@ const isAdmin = () => isDev || adminGranted;
 let flying = false;     // полёт разработчика
 let currentWorld = null;  // свой мир одиночной игры, который сохраняется (null — сетевая игра)
 let worldDirty = false;    // мир менялся с последнего сохранения
+let inventoryBatch = false;
 let bag = null;            // выживание: { "Камень": 12, … } — вещи считаются; null — всё бесконечно (творческий и сеть)
 let shareN = 0, shareMade = 0;  // сколько правок мира ушло и сколько из них — новые предметы (их тратим из вещей)
 let drivingCart = null;    // меш вагонетки, в которой едет игрок
@@ -748,6 +796,10 @@ const ore = (a, b) => bb("#8c8c8c", [...STONE_SPOTS, ...ORE_SPOTS(a, b)]);
 const DEEP_SPOTS = [[0, 3, 16, 1, "#3d3d45"], [0, 8, 16, 1, "#525260"], [0, 12, 16, 1, "#3d3d45"], [4, 5, 3, 1, "#525260"], [10, 14, 3, 1, "#525260"]];
 const dsOre = (a, b) => bb("#47474f", [...DEEP_SPOTS, ...ORE_SPOTS(a, b)]);
 const BLOCK_TEX = {
+  ore_coal: pixelTex((p,c)=>{c.fillStyle="#767b7e";c.fillRect(0,0,16,16);c.fillStyle="#222528";for(const [x,y] of [[3,3],[10,5],[5,11]])c.fillRect(x,y,3,3);}),
+  planks: pixelTex((p,c) => { c.fillStyle="#bb8b50"; c.fillRect(0,0,16,16); c.fillStyle="#8e633c"; for(const y of [3,7,11,15]) c.fillRect(0,y,16,1); for(const [x,y] of [[5,0],[11,4],[4,8],[10,12]]) c.fillRect(x,y,1,3); }),
+  crafting: pixelTex((p,c) => { c.fillStyle="#ad7845"; c.fillRect(0,0,16,16); c.strokeStyle="#4e3424"; c.lineWidth=1; c.strokeRect(1,1,14,14); for(const x of [5,10]) { c.fillRect(x,2,1,12); c.fillRect(2,x,12,1); } }),
+  furnace: pixelTex((p,c) => { c.fillStyle="#777a7d"; c.fillRect(0,0,16,16); c.fillStyle="#303337"; c.fillRect(3,3,10,3); c.fillRect(3,9,10,5); c.fillStyle="#55585b"; c.fillRect(2,7,12,1); }),
   stone: bb("#8c8c8c", STONE_SPOTS),
   ore_iron: ore("#d9a988", "#f2d2bb"),
   ore_gold: ore("#f5c932", "#fff08a"),
@@ -1145,6 +1197,7 @@ function edit(e, replace = false) {
 
 // Своё изменение: применяем у себя и рассылаем остальным игрокам
 function share(e, replace = false) {
+  if(e.op==="block"&&!e.by&&!e.g&&!e.t)e={...e,by:meId||myId};
   shareN++;
   if (!replace && !e.op.startsWith("un") && e.op !== "dig") shareMade++;
   edit(e, replace);
@@ -1415,6 +1468,7 @@ const TALL = { streetlamp: 3, traffic: 2, sign: 1, fridge: 1, terminal: 1 };
 // Занята ли хоть одна дополнительная клетка предмета (у двери — верхняя)
 const occupiedExtra = e => (e.k === "door" && blocks.has(key(e.x, e.y + 1, e.z))) || extraCells(e).some(c => blocks.has(key(...c)));
 const extraCells = e => {
+  if(e.dim){const cells=[];for(let x=0;x<Math.ceil(e.dim[0]);x++)for(let y=0;y<Math.ceil(e.dim[1]);y++)for(let z=0;z<Math.ceil(e.dim[2]);z++)if(x||y||z)cells.push([e.x+x,e.y+y,e.z+z]);return cells;}
   const up = Array.from({ length: TALL[e.k] || 0 }, (_, i) => [e.x, e.y + 1 + i, e.z]);
   const ex = EXTRA[e.k];
   if (!ex) return up;
@@ -1750,6 +1804,7 @@ let onIce = false, iceVx = 0, iceVz = 0;  // лёд: игрок скользит
 let ignoreJump = false;  // машина не упирается носом в трамплин: она по нему въезжает
 function lowTop(cx, cy, cz, x, z) {
   const e = blocks.get(key(cx, cy, cz))?.userData.edit;
+  if(e?.dim) return x+RADIUS>e.x && x-RADIUS<e.x+e.dim[0] && z+RADIUS>e.z && z-RADIUS<e.z+e.dim[2] ? e.y+e.dim[1] : null;
   if (ignoreJump && e?.k === "jump") return null;
   if (e?.k in LOW_TOP) return cy + LOW_TOP[e.k];
   const dir = (e?.k === "ramp" || e?.k === "stairs" || e?.k === "jump") && RAMP_DIR[e.r];
@@ -1761,6 +1816,10 @@ function lowTop(cx, cy, cz, x, z) {
 
 // Меш блока по его виду: обычный кирпичный, стекло, палка, дверь или рампа
 function blockMesh(e) {
+  if (e.dim) {
+    const m=new THREE.Mesh(boxGeo,e.k==="glass"?glassMaterial(e.c):e.k in BLOCK_TEX?blockMaterial(e.k,e.c):material(e.k==="flat"?plainTex:brickTex,e.c));
+    m.scale.fromArray(e.dim); m.position.set(e.x+e.dim[0]/2,e.y+e.dim[1]/2,e.z+e.dim[2]/2); return m;
+  }
   if (e.k?.startsWith("rs_")) return rsBuild(e);
   if (e.k in GLASSY) {
     const screen = e.k === "tv" ? tvMat : e.k === "terminal" ? kioskMat : glassMaterial(e.c);
@@ -1925,6 +1984,7 @@ function cellBlocks(cx, cy, cz, x, z) {
   const m = blocks.get(key(cx, cy, cz));
   if (!m) return false;
   const e = m.userData.edit;
+  if (e.dim) return false;  // высоту и точные края считает lowTop
   if (e.k === "door" || e.k === "barrier") return !e.open;
   if (RS_THIN.has(e.k)) return false;
   if (e.k === "ramp" || e.k === "stairs" || e.k === "jump" || e.k === "portal" || e.k in LOW_TOP || e.k in DECOR) return false;  // их высоту считает lowTop
@@ -2019,6 +2079,7 @@ function drawHp() {
 function damage(n, by) {
   if (gameMode !== "survival" || dead || isGod() || performance.now() < invulnUntil || n <= 0) return;
   n *= Math.max(0.2, 1 - armorPoints() * 0.04);  // броня: каждое очко — минус 4% урона
+  if(!Number.isFinite(n)||n<=0)return;
   hp -= n;
   sfx("hurt");
   lastHurt = performance.now();
@@ -2764,7 +2825,7 @@ const KINDS = { "Блок": undefined, "Стекло": "glass", "Палка": "s
   "Бургер": "burger", "Пицца": "pizza", "Крылышки": "wings", "Шлагбаум": "barrier", "Лампа": "lamp", "Решётка": "grate", "Бочка": "barrel", "Кровать": "bed", "Диван": "sofa",
   "Поднос": "tray", "Стакан": "cup", "Картошка фри": "fries", "Прилавок": "counter", "Касса": "register", "Терминал": "terminal", "Витрина": "showcase", "Плита": "stove",
   "Холодильник": "fridge", "Урна": "bin", "Скамейка": "bench", "Фонарь": "streetlamp", "Светофор": "traffic", "Конус": "cone", "Знак": "sign", "Окно": "window",
-  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Шахматы": "chess", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
+  "Телевизор": "tv", "Раковина": "sink", "Камень": "stone", "Дерево": "wood", "Трава": "grass", "Песок": "sand", "Лёд": "ice", "Лава": "lava", "Металл": "metal", "Бетон": "concrete", "Листва": "leaves", "Золото": "gold", "Алмаз": "diamond", "Неон": "neon", "Слизь": "slime", "Плитка": "tiles", "Снег": "snow", "Обсидиан": "obsidian", "Мрамор": "marble", "Земля": "dirt", "Шерсть": "wool", "Терракота": "clay", "Трамплин": "jump", "Вывеска": "vitsign", "Адский камень": "netherrack", "Светокамень": "glowstone", "Портал": "portal", "ТНТ": "tnt", "Железная руда": "ore_iron", "Золотая руда": "ore_gold", "Доски": "planks", "Верстак": "crafting", "Печь": "furnace", "Шахматы": "chess", "Прочный блок": undefined, "Прочная решётка": "grate", "Прочный щит": "shield" };
 
 // Действие игрока: поставить или сломать. Звук и расход вещей (в выживании) — по тому, что реально ушло в мир
 function use(action, screen) {
@@ -2776,6 +2837,9 @@ function use(action, screen) {
 function useInner(action, screen) {
   if (menuOpen || !inGame || camMode === "car" || dead || currentWeapon()) return;
   const hit = aim(screen);
+  if(action==="place"&&HOTBAR[slot]==="Рулетка")return rulerPick(hit);
+  if (action === "place" && hit?.object?.userData.edit?.k === "crafting") return openCrafting(3);
+  if (action === "place" && hit?.object?.userData.edit?.k === "furnace") return openFurnace();
 
   // Убрать блок или доску под прицелом (или отменить начатую доску)
   if (action === "remove") {
@@ -2802,7 +2866,7 @@ function useInner(action, screen) {
         if (gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 25); drawHp(); }  // еда лечит
       }
       if (t.op === "animal" && gameMode === "survival" && !dead) { hp = Math.min(MAX_HP, hp + 20); drawHp(); addChat("* ты съел животное"); }
-      if (bag && !eaten) give(harvest(t));
+      if (bag && !eaten) give(harvest(t),t.dim?Math.ceil(t.dim.reduce((v,x)=>v*x,1)):1);
       burst(hit.point, t.c ?? 11, 10);
       const portal = t.k === "obsidian" ? portalCellsNear(t.x, t.y, t.z) : [];
       share(undo(hit.object.userData.edit));
@@ -2928,11 +2992,11 @@ function selectSlot(n) {
   drawHotbar();
 }
 
-let lastJump = 0;
+let lastJump = -Infinity;
 function jumpTap() {  // два прыжка подряд (до 0,3 с) — включить или выключить полёт
   if (gameMode !== "creative" || online || camMode !== "first") return;
   const now = performance.now();
-  if (now - lastJump < 300) { flying = !flying; vy = 0; lastJump = 0; addChat(flying ? "* полёт: пробел — вверх, Ctrl — вниз, два прыжка — выключить" : "* полёт выключен"); }
+  if (now - lastJump < 300) { flying = !flying; vy = 0; lastJump = -Infinity; addChat(flying ? "* полёт: пробел — вверх, Ctrl — вниз, два прыжка — выключить" : "* полёт выключен"); }
   else lastJump = now;
 }
 addEventListener("keydown", e => {
@@ -3161,7 +3225,7 @@ for (const button of document.querySelectorAll("#touch .button")) {
 
 const hotbar = document.getElementById("hotbar");
 const palette = document.getElementById("palette");
-const ICONS = { "Тотем бессмертия": " ▟▙ ", "Шахматы": "▚▞▚▞", "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
+const ICONS = { "Рулетка":"▣↔", "Уголь": "◆", "Кремень": "◈", "Верстак": "▦", "Печь": "▣", "Доски": "▤", "Тотем бессмертия": " ▟▙ ", "Шахматы": "▚▞▚▞", "Деревянная кирка": "╤═╗ ", "Каменная кирка": "╤═╗ ", "Железная кирка": "╤═╗ ", "Алмазная кирка": "╤═╗ ", "Железный шлем": "▟▙ ", "Алмазный шлем": "▟▙ ", "Железный нагрудник": "▛▜ ", "Алмазный нагрудник": "▛▜ ", "Железные поножи": "▌▐ ", "Алмазные поножи": "▌▐ ", "Железные ботинки": "▖▗ ", "Алмазные ботинки": "▖▗ ", "Рельсы": "╫╫╫ ", "Энергорельсы": "╫◆╫ ", "Вагонетка": "╚══╝", "Шарик-закопатель": " ◖◗ ", "Автобус": "▐▀▀▌", "Редстоун": "─┼─ ", "Факел редстоуна": " ▐▌ ", "Рычаг": " ╱▄▄", "Кнопка": " ▄▄ ", "Нажимная плита": "▁▁▁▁", "Повторитель": "▙▸▟ ", "Компаратор": "▙▴▟ ", "Блок редстоуна": "▓▓▓▓", "Лампа редстоуна": "▐◆◆▌", "Поршень": "█▐▌▌", "Липкий поршень": "█▐▌▒", "Наблюдатель": "▐◉▌▌", "Раздатчик": "▐○▌▌", "Нотный блок": "♪▐▌♪", "Железная дверь": "▐▒▒▌", "Свинья": "◖▓▓▙", "Корова": "▙▓▒▙", "Овца": "◖▒▒▙", "Курица": " ◖▙ ", "Собака": "▙▓▄▙", "Бот-боец": "▐▓▌▄", "Бот-строитель": "▐▓▌▀", "Вывеска": "▐▓▓▌", "Адский камень": "▓▒▓▒", "Светокамень": "◆◆◆◆", "Камень": "▒▒▒▒", "Дерево": "▬▬▬▬", "Трава": "▓▒▓▒", "Песок": "░▒░▒", "Лёд": "░▒░░", "Лава": "▓█▓█", "Металл": "▐█▌▐", "Бетон": "▒▒▒▒", "Листва": "▚▞▚▞", "Золото": "▐▓▌◆", "Алмаз": "▒◆▒◆", "Неон": "████", "Слизь": "▓░▓░", "Плитка": "▚▞▞▚", "Снег": "░░░░", "Обсидиан": "▓▓▓▓", "Мрамор": "░▒▓░", "Земля": "▒░▒▓", "Шерсть": "▚▚▞▞", "Терракота": "▓▒▒▓", "Блок": "████", "Доска": "▄▄▄▄", "Текст": " Aa ", "Стекло": "░░░░", "Дверь": "▐▀▀▌", "Палка": " || ", "Рампа": "▂▄▆█", "Стул": "▌▄▄ ", "Стол": "▀▀▀▀",
   "Ступеньки": "▗▄▟█", "Бургер": "▄▒▒▄", "Пицца": "◥█◤ ", "Крылышки": "/V\\ ", "Шлагбаум": "▮▬▬▬", "Лампа": " ▟▙ ", "Машина": "o██o", "Решётка": "╫╫╫╫", "Бочка": "(▒▒)",
   "Кровать": "▄▄█▌", "Диван": "▐▄▄▌", "Поднос": "▁▁▁▁", "Стакан": " ▜▛ ", "Картошка фри": "▐▌▐▌", "Прилавок": "╤╤╤╤", "Касса": "[$ ]", "Терминал": "▐▛▜▌", "Витрина": "┌┬┬┐",
   "Плита": "◎ ◎ ", "Холодильник": "▐█▌ ", "Урна": "◖▬◗ ", "Скамейка": "╒══╕", "Фонарь": "┌┬┐ ", "Светофор": "▐●▌ ", "Конус": " ◭  ", "Знак": " ⬢  ", "Окно": "╬╬╬╬",
@@ -3210,21 +3274,22 @@ function iconModel(name, c) {
     m.rotation.y = Math.PI * 0.8;
   }
   else if (name === "Вагонетка") m = new THREE.Mesh(cartGeo, plain());
+  else if (name === "Рулетка") m = new THREE.Mesh(mergeParts([...P(0xf1b832, box(.5,.4,.2,0,0,0)),...P(0x3b3d42,box(.28,.2,.22,0,0,0)),...P(0xd8d9d0,box(.7,.08,.12,.4,-.13,0))]),plain());
   else if (name === TOTEM) m = new THREE.Mesh(totemGeo, plain());
   else if (PICKS[name]) { m = new THREE.Mesh(pickGeos[PICKS[name]], plain()); m.rotation.z = 0.6; }
   else if (ARMOR[name]) m = new THREE.Mesh(ARMOR_GEO[ARMOR[name][0]], armorMats[ARMOR[name][1]]);
   else if (WEAPON_GEO[name]) { m = new THREE.Mesh(WEAPON_GEO[name], weaponMats); m.rotation.y = -Math.PI / 2; }
   return m;
 }
-function iconRender(obj) {
+function iconRender(obj, portrait = false) {
   if (!iconR) {
     iconR = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
     iconR.setPixelRatio(1);
     iconR.setSize(ICON_PX, ICON_PX);
     iconR.outputColorSpace = renderer.outputColorSpace;
     iconScene = new THREE.Scene();
-    iconScene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.1 * Math.PI));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4 * Math.PI);
+    iconScene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 0.65 * Math.PI));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8 * Math.PI);
     sun.position.set(2, 3, 1.5);
     iconScene.add(sun);
     iconCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 200);
@@ -3236,8 +3301,9 @@ function iconRender(obj) {
   const box = new THREE.Box3().setFromObject(wrap), center = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 * 1.02;
   obj.position.sub(center);
   wrap.updateMatrixWorld(true);
-  iconCam.left = -r; iconCam.right = r; iconCam.top = r; iconCam.bottom = -r;
-  iconCam.position.set(1, 0.8, 1.2).normalize().multiplyScalar(r * 4);
+  iconR.setSize(ICON_PX, portrait ? ICON_PX*2 : ICON_PX);
+  iconCam.left = portrait ? -r*.55 : -r; iconCam.right = portrait ? r*.55 : r; iconCam.top = r; iconCam.bottom = -r;
+  iconCam.position.set(...(portrait ? [-0.2,0.1,-1] : [1,0.8,1.2])).normalize().multiplyScalar(r * 4);
   iconCam.lookAt(0, 0, 0);
   iconCam.updateProjectionMatrix();
   iconR.setClearColor(0x000000, 0);
@@ -3312,7 +3378,7 @@ addEventListener("wheel", e => {
 
 // ---------- Инвентарь: все предметы по вкладкам, клик кладёт предмет в выбранный слот хотбара ----------
 const INV_TABS = {
-  "Блоки": ["Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Ступеньки", "Шлагбаум", "Решётка", "Окно", "Лампа", "Вывеска", "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота", "Адский камень", "Светокамень", "Трамплин"],
+  "Блоки": ["Доски", "Верстак", "Печь", "Уголь", "Кремень", "Железная руда", "Золотая руда", "Блок", "Доска", "Текст", "Стекло", "Дверь", "Палка", "Рампа", "Ступеньки", "Шлагбаум", "Решётка", "Окно", "Лампа", "Вывеска", "Камень", "Дерево", "Трава", "Песок", "Лёд", "Лава", "Металл", "Бетон", "Листва", "Золото", "Алмаз", "Неон", "Слизь", "Плитка", "Снег", "Обсидиан", "Мрамор", "Земля", "Шерсть", "Терракота", "Адский камень", "Светокамень", "Трамплин"],
   "Мебель": ["Шахматы", "Стул", "Стол", "Бургер", "Пицца", "Крылышки", "Бочка", "Кровать", "Диван", "Поднос", "Стакан", "Картошка фри", "Прилавок", "Касса", "Терминал", "Витрина", "Плита", "Холодильник", "Урна", "Скамейка", "Фонарь", "Светофор", "Конус", "Знак", "Телевизор", "Раковина"],
   "Оружие": ["Нож", "Меч", "Топор", "Бита", "Пистолет", "Дробовик", "МП5", "АК", "АВП", "Базука", "Граната", "Огниво", "ТНТ"],
   "Живое": ["Верити", "Жирити", "Свинья", "Корова", "Овца", "Курица", "Собака", "Бот-боец", "Бот-строитель"],
@@ -3348,35 +3414,188 @@ function invList() {
   if (!q) return tabs[invTab] ?? [];
   return (bag ? tabs["Вещи"] : tabs["Все"]).filter(n => `${n} ${KINDS[n] ?? RS_ITEMS[n]?.k ?? ""}`.toLowerCase().includes(q));
 }
-const invGridHtml = list => list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}${bag ? `<i>${bag[n] || 0}</i>` : ""}</span>`).join("") ||
-  `<span class="none">${bag && !invQuery.trim() ? "пусто — ломай блоки и копай землю" : "ничего не найдено"}</span>`;
-function drawInventory() {
-  const tabs = bag ? survTabs() : invTabs(), q = invQuery.trim();
-  if (!tabs[invTab]) invTab = bag ? "Вещи" : "Блоки";
+// Печь: материал и топливо принадлежат игроку, время плавки не привязано к кадрам.
+const SMELTING = { "Песок":"Стекло", "Булыжник":"Камень", "Дерево":"Уголь", "Железная руда":"Металл", "Золотая руда":"Золото" };
+let furnaceJobs = new Map();
+function finishSmelt(id) {
+ const job=furnaceJobs.get(id);if(!job)return;furnaceJobs.delete(id);
+ job.owner[job.n]=(job.owner[job.n]||0)+job.k;
+ if(bag===job.owner){worldDirty=true;if(!HOTBAR.includes(job.n)){const i=HOTBAR.indexOf(null);if(i>=0)HOTBAR[i]=job.n;}drawHotbar();toast(`Переплавлено: ${job.n} ×${job.k}`);}
+ if(panel===gameEl&&gameScreen==="furnace")drawGameMenu();
+}
+const pendingSmelting=()=>[...furnaceJobs.values()].filter(j=>j.owner===bag).map(({n,k,readyAt})=>({n,k,readyAt}));
+function restoreSmelting(jobs){
+ for(const j of Array.isArray(jobs)?jobs:[]){if(!ITEMS.includes(j.n)||!Number.isInteger(j.k)||j.k<1||j.k>8||!Number.isFinite(j.readyAt))continue;const id=Date.now()+Math.random();furnaceJobs.set(id,{...j,owner:bag});setTimeout(()=>finishSmelt(id),Math.max(0,Math.min(10000,j.readyAt-Date.now())));}
+}
+function openFurnace() {
+  if (!bag) return toast("Печь: песок → стекло, булыжник → камень, руда → слитки");
+  gameScreen = "furnace";
+  togglePanel(gameEl, drawGameMenu);
+}
+function furnaceHtml() {
+  return gtitle("ПЕЧЬ") + glabel("Одна порция: до 8 предметов. Топливо: 1 уголь или 2 доски. Плавка — 10 секунд.") + Object.entries(SMELTING).map(([n,out]) => gbtn(`${n} (${bag?.[n]||0}) → ${out}`, "smelt:"+n)).join("") + glabel(furnaceJobs.size ? "Идёт плавка: " + [...furnaceJobs.values()].map(j=>`${j.n} ×${j.k}`).join(", ") : "Печь свободна") + gbtn("назад","setback");
+}
+function smelt(name) {
+  if (!bag || !SMELTING[name]) return;
+  const k=Math.min(8,bag[name]||0), fuel=(bag["Уголь"]||0)>=1?"Уголь":(bag["Доски"]||0)>=2?"Доски":null;
+  if (!k || !fuel || (name===fuel && (bag[name]||0)<k+(fuel==="Уголь"?1:2))) return toast("Нужны материал и топливо");
+  if (furnaceJobs.size) return toast("Дождись окончания плавки");
+  inventoryBatch=true; take(name,k); take(fuel,fuel==="Уголь"?1:2); inventoryBatch=false; drawHotbar();
+  const owner=bag, id=Date.now(), out=SMELTING[name];
+  furnaceJobs.set(id,{n:out,k,owner,readyAt:Date.now()+10000});
+  worldDirty=true;
+  setTimeout(()=>finishSmelt(id),10000);
+  drawGameMenu();
+}
+
+// ---------- Инвентарь как в майнкрафте ----------
+// Выживание: слева броня и фигурка, справа сетка крафта 2×2 (у верстака 3×3) и результат, ниже 27 ячеек вещей и хотбар.
+// Творческий: вкладки со значками сверху и снизу, поиск, все предметы; клик кладёт предмет в выбранный слот хотбара
+let craftGrid = Array(9).fill(null), craftSize = 2, cursorItem = null, bookOpen = false;  // ячейка сетки — { n, k }
+const TAB_ICON = { "Все": "Блок", "Блоки": "Камень", "Мебель": "Стул", "Оружие": "Меч", "Живое": "Свинья", "Транспорт": "Машина", "Инструменты": "Железная кирка", "Прочные": "Прочный блок", "Редстоун": "Редстоун" };
+// Вернуть то, что лежит в сетке, обратно в вещи (окно закрыли)
+function returnGrid() {
+  inventoryBatch = true;
+  for (let i = 0; i < 9; i++) if (craftGrid[i]) { const c = craftGrid[i]; craftGrid[i] = null; give(c.n, c.k, true); }
+  inventoryBatch = false;
+  cursorItem = null;
+}
+function openCrafting(size) {
+  if (!bag) return toast("крафт — в выживании");
+  craftSize = size;
+  if (panel !== inv) togglePanel(inv, drawInventory); else drawInventory();
+}
+// Что получится из сетки: рецепты с формой (можно и зеркально) или без формы (что угодно где угодно, сколько нужно)
+function gridMatch() {
+  const n = craftSize, cells = Array.from({ length: n * n }, (_, i) => craftGrid[Math.floor(i / n) * 3 + i % n]?.n || null);
+  let r0 = n, r1 = -1, c0 = n, c1 = -1;
+  cells.forEach((v, i) => { if (v) { r0 = Math.min(r0, Math.floor(i / n)); r1 = Math.max(r1, Math.floor(i / n)); c0 = Math.min(c0, i % n); c1 = Math.max(c1, i % n); } });
+  if (r1 < 0) return null;
+  const rows = [];
+  for (let r = r0; r <= r1; r++) rows.push(cells.slice(r * n + c0, r * n + c1 + 1));
+  const counts = {};
+  for (const v of cells) if (v) counts[v] = (counts[v] || 0) + 1;
+  for (const rc of RECIPES) {
+    if (rc.shape) {
+      const h = rc.shape.length, w = Math.max(...rc.shape.map(s => s.length));
+      if (h !== rows.length || w !== rows[0].length) continue;
+      const fits = mir => rows.every((row, r) => row.every((v, c) => { const ch = rc.shape[r][mir ? w - 1 - c : c] || " "; return ch === " " ? !v : v === rc.key[ch]; }));
+      if (fits(false) || fits(true)) return rc;
+    } else {
+      const ks = Object.keys(rc.need);
+      if (Object.keys(counts).length === ks.length && ks.every(k => counts[k] === rc.need[k])) return rc;
+    }
+  }
+  return null;
+}
+// Скрафтить из сетки: из каждой занятой ячейки уходит по одному. all — сколько получится (Shift)
+function craftGridOut(all) {
+  let made = 0, name = gridMatch()?.out;
+  inventoryBatch = true;
+  for (let rc = gridMatch(); rc && made < 64; rc = all ? gridMatch() : null) {
+    for (let i = 0; i < 9; i++) if (craftGrid[i]) { craftGrid[i].k--; if (!craftGrid[i].k) craftGrid[i] = null; }
+    give(rc.out, rc.n, true);
+    made += rc.n;
+  }
+  inventoryBatch = false;
+  drawHotbar();
+  if (made) { sfx("craft"); toast(`+${made} ${name}`); }
+  drawInventory();
+}
+const canCraft = rc => !!bag && Object.entries(recipeNeed(rc)).every(([n, k]) => (bag[n] || 0) >= k);
+const recipeNeed = rc => { if (rc.need) return rc.need; const need = {}; for (const row of rc.shape) for (const ch of row) if (ch !== " ") need[rc.key[ch]] = (need[rc.key[ch]] || 0) + 1; return need; };
+const recipeFits = rc => rc.shape ? (rc.shape.length <= craftSize && Math.max(...rc.shape.map(s => s.length)) <= craftSize) : Object.values(rc.need).reduce((n,k)=>n+k,0)<=craftSize*craftSize;
+// Книга рецептов (зелёная книжка): клик — скрафтить сразу, если всё есть и рецепт помещается в сетку
+function craftFromBook(i) {
+  const rc = RECIPES[i];
+  if (!rc || !canCraft(rc)) return sfx("click");
+  if (!recipeFits(rc)) return toast("этот рецепт — только на верстаке (3×3)");
+  for (const [n, k] of Object.entries(recipeNeed(rc))) take(n, k);
+  give(rc.out, rc.n, true);
+  sfx("craft");
+  toast(`+${rc.n} ${rc.out}`);
+  drawInventory();
+}
+function bookHtml() {
+  const order = RECIPES.map((r, i) => i).sort((a, b) => (canCraft(RECIPES[b]) && recipeFits(RECIPES[b])) - (canCraft(RECIPES[a]) && recipeFits(RECIPES[a])));
+  wantIcons(RECIPES.map(r => r.out));
+  return `<div class="crafts">${order.map(i => {
+    const rc = RECIPES[i], need = recipeNeed(rc), ok = canCraft(rc) && recipeFits(rc);
+    const shape = rc.shape ? `<span class="shape">${rc.shape.map(r => esc(r.padEnd(3).replace(/ /g, "·"))).join("<br>")}</span>` : "";
+    const list = Object.entries(need).map(([k, c]) => `<span class="${(bag[k] || 0) >= c ? "" : "miss"}">${k} ${bag[k] || 0}/${c}</span>`).join(", ");
+    return `<div class="craft${ok ? " ok" : ""}" data-craft="${i}">${iconImg(rc.out)}<div><b>${rc.out}${rc.n > 1 ? " ×" + rc.n : ""}</b>${recipeFits(rc) ? "" : " · верстак"}<br>${list}</div>${shape}</div>`;
+  }).join("")}</div>`;
+}
+// Фигурка игрока в окне: своя модель цвета игрока и надетая броня
+const playerPics = new Map();
+function playerPic() {
+  const k = color + armorCode();
+  if (playerPics.has(k)) return playerPics.get(k);
+  const g = new THREE.Group(), [r, gg, b] = COLORS[color].rgb;
+  g.add(new THREE.Mesh(avatarGeo, new THREE.MeshLambertMaterial({ color: new THREE.Color(r / 255, gg / 255, b / 255) })));
+  const eyes = new THREE.Mesh(avatarEyes, eyesMat); eyes.position.set(0, 1.5, -0.205); g.add(eyes);
+  [...armorCode()].forEach((c, i) => { if (armorMats[c]) g.add(new THREE.Mesh(ARMOR_GEO[i], armorMats[c])); });
+  g.rotation.y = 0.1;
+  const url = iconRender(g, true);
+  playerPics.set(k, url);
+  return url;
+}
+const stackHtml = (n, k, attr) => `<span class="slot" ${attr}>${n ? iconImg(n) : ""}${k > 1 ? `<i>${k}</i>` : ""}</span>`;
+function drawSurvivalInv() {
+  // Вещи, которых нет в хотбаре, — стопками по 64
+  const stacks = [];
+  for (const n of Object.keys(bag).sort((a, b) => ITEMS.indexOf(a) - ITEMS.indexOf(b))) {
+    if (HOTBAR.includes(n) || !(bag[n] > 0)) continue;
+    for (let k = bag[n]; k > 0; k -= 64) stacks.push([n, Math.min(64, k)]);
+  }
+  while (stacks.length < 27 || stacks.length % 9) stacks.push([null, 0]);
+  wantIcons([...stacks.map(s => s[0]), ...craftGrid.map(c => c?.n), ...armor]);
+  const out = gridMatch(), n = craftSize;
+  const grid = Array.from({ length: n * n }, (_, i) => { const j = Math.floor(i / n) * 3 + i % n, c = craftGrid[j]; return stackHtml(c?.n, c?.k, `data-cg="${j}"`); }).join("");
+  const name = cursorItem ? `в руке: ${cursorItem} — клик по сетке кладёт 1 (Shift — все), по хотбару — в слот` : invHover || "клик по вещи — взять в руку";
+  inv.innerHTML = `<div class="mctop">
+  <div class="mcarm">${ARMOR_SLOTS.map((s, i) => `<span class="slot" data-armor="${i}" title="${armor[i] || s}">${armor[i] ? iconImg(armor[i]) : `<small>${s}</small>`}</span>`).join("")}</div>
+  <div class="mcplayer"><img src="${playerPic()}" alt=""></div>
+  <div class="mccraft"><div class="mclabel">${n === 3 ? "Верстак" : "Крафт"}</div>
+    <div class="mcrow"><div class="mcgrid g${n}">${grid}</div><span class="mcarrow">➜</span>${stackHtml(out?.out, out?.n, `data-cout="1" title="Shift — сделать сколько получится"`)}</div>
+    <span class="gb mcbookbtn" data-book="1">${bookOpen ? "скрыть рецепты" : "📗 рецепты"}</span></div>
+</div>
+${bookOpen ? bookHtml() : ""}
+<div class="mcmain">${stacks.map(([s, k]) => stackHtml(s, k, `data-bi="${s || ""}"${s && s === cursorItem ? ' data-held="1"' : ""}`)).join("")}</div>
+<div class="mchot">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
+<div class="invname" id="invname">${esc(name)}</div>
+<div class="invhint">${TOUCH ? "ИНВ — закрыть" : "E — закрыть; правая кнопка по сетке — вернуть"}</div><span class="xbtn">✕</span>`;
+}
+function drawCreativeInv() {
+  const tabs = invTabs(), q = invQuery.trim(), names = Object.keys(tabs), half = Math.ceil(names.length / 2);
+  if (!tabs[invTab]) invTab = "Блоки";
   const list = invList(), focused = document.activeElement?.id === "invq", caret = focused ? document.activeElement.selectionStart : 0;
-  wantIcons([...list, ...armor]);
-  inv.innerHTML = `<div class="invt">ИНВЕНТАРЬ</div>
-<input id="invq" class="invq" placeholder="поиск по названию…" autocomplete="off" spellcheck="false" value="${invQuery.replace(/"/g, "&quot;")}">
-<div class="tabs">${Object.keys(tabs).map(n => `<span class="tab${!q && n === invTab ? " on" : ""}" data-tab="${n}">${n}</span>`).join("")}</div>
-${bag && invTab === "Крафт" && !q ? craftHtml() : `<div class="grid">${invGridHtml(list)}</div>`}
+  wantIcons([...list, ...Object.values(TAB_ICON)]);
+  const tabHtml = t => `<span class="ctab${!q && t === invTab ? " on" : ""}" data-tab="${t}" title="${t}">${iconImg(TAB_ICON[t] || tabs[t][0])}</span>`;
+  inv.innerHTML = `<div class="ctabs">${names.slice(0, half).map(tabHtml).join("")}</div>
+<div class="cpanel"><div class="ctitle">${q ? "Поиск" : invTab}</div>
+<input id="invq" class="invq" placeholder="Поиск предметов…" autocomplete="off" spellcheck="false" value="${invQuery.replace(/"/g, "&quot;")}">
+<div class="grid">${list.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("") || `<span class="none">ничего не найдено</span>`}</div>
+<div class="mchot">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div></div>
+<div class="ctabs">${names.slice(half).map(tabHtml).join("")}</div>
 <div class="invname" id="invname">${invHover || (HOTBAR[slot] ? "в слоте: " + HOTBAR[slot] : "выбери предмет — он ляжет в выбранный слот")}</div>
-<div class="hbs">${HOTBAR.map((_, i) => slotHtml(i)).join("")}</div>
-<div class="hbs armor">${ARMOR_SLOTS.map((n, i) => `<span class="slot" data-armor="${i}" title="${armor[i] || n + " — не надет"}">${armor[i] ? iconImg(armor[i]) : `<small>${n}</small>`}</span>`).join("")}</div>
-<div class="invhint">${TOUCH ? "ИНВЕНТАРЬ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div><span class="xbtn">✕</span>`;
+<div class="invhint">${TOUCH ? "ИНВ — закрыть" : "E — закрыть, правая кнопка по слоту — очистить"}</div><span class="xbtn">✕</span>`;
   const input = inv.querySelector("#invq");
   input.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") input.blur(); });  // буквы идут в поиск, а не в игру
   input.addEventListener("keyup", e => e.stopPropagation());
   input.addEventListener("input", () => {
     invQuery = input.value;
     const grid = inv.querySelector(".grid"), l = invList();
-    if (!grid) return drawInventory();  // была вкладка «Крафт» — перерисовываем окно целиком
     wantIcons(l);
-    grid.innerHTML = invGridHtml(l);
-    for (const t of inv.querySelectorAll(".tab")) t.classList.toggle("on", !invQuery.trim() && t.dataset.tab === invTab);
+    grid.innerHTML = l.map(n => `<span class="cell" data-item="${n}" title="${n}">${iconImg(n)}</span>`).join("") || `<span class="none">ничего не найдено</span>`;
+    inv.querySelector(".ctitle").textContent = invQuery.trim() ? "Поиск" : invTab;
   });
   if (focused) { input.focus(); input.setSelectionRange(caret, caret); }
 }
-
+function drawInventory() {
+  inv.className = bag ? "mcui surv" : "mcui crea";
+  if (bag) drawSurvivalInv(); else drawCreativeInv();
+}
 function drawPalette() {
   palette.innerHTML = `${gtitle("ПАЛИТРА")}<div class="swatches">${COLORS.map((c, i) => `<div class="option${i === color ? " sel" : ""}" data-color="${i}" title="${c.name}" style="background:${rgb(i)}"></div>`).join("")}</div>
 <div class="cname" id="cname">${COLORS[color].name}</div><div class="gx">${TOUCH ? "ЦВЕТ — закрыть" : "F — закрыть"}</div><span class="xbtn">✕</span>`;
@@ -3386,6 +3605,7 @@ palette.addEventListener("mouseover", e => { const o = e.target.closest(".option
 // Палитра и админ-меню открываются одинаково: мышь освобождается, игра ждёт
 let panel = null;  // какая панель открыта
 function togglePanel(el, draw) {
+  if (panel === inv) returnGrid();
   if (panel) panel.style.display = "none";
   panel = panel === el ? null : el;
   menuOpen = !!panel;
@@ -3399,27 +3619,54 @@ function togglePanel(el, draw) {
   }
 }
 function togglePalette() { togglePanel(palette, drawPalette); }
-function toggleInventory() { togglePanel(inv, drawInventory); }
+function toggleInventory() { if (panel !== inv) craftSize = 2; togglePanel(inv, drawInventory); }
 document.addEventListener("click", e => { if (e.target.closest(".xbtn") && panel) togglePanel(panel, () => {}); });  // ✕ в углу окна (на телефоне)
 inv.addEventListener("click", e => {
-  const cr = e.target.closest("[data-craft]");
-  if (cr) return craft(Number(cr.dataset.craft));
-  const ar = e.target.closest("[data-armor]");
-  if (ar) { unwear(Number(ar.dataset.armor)); return drawInventory(); }  // снять броню
-  const tab = e.target.closest(".tab"), cell = e.target.closest(".cell"), sl = e.target.closest(".slot");
+  const t = e.target;
+  if (t.closest("[data-book]")) { bookOpen = !bookOpen; return drawInventory(); }
+  const cr = t.closest("[data-craft]");
+  if (cr) return craftFromBook(Number(cr.dataset.craft));
+  const ar = t.closest("[data-armor]");
+  if (ar) { if (cursorItem && ARMOR[cursorItem]) { wear(cursorItem); cursorItem = null; } else unwear(Number(ar.dataset.armor)); return drawInventory(); }
+  if (t.closest("[data-cout]")) return craftGridOut(e.shiftKey);
+  const cg = t.closest("[data-cg]");
+  if (cg) {  // сетка: с вещью в руке — положить (1 или все с Shift), пустой рукой — вернуть ячейку в вещи
+    const i = Number(cg.dataset.cg), c = craftGrid[i];
+    if (cursorItem && have(cursorItem) && (!c || c.n === cursorItem)) {
+      const k = e.shiftKey ? bag[cursorItem] : 1;
+      const name = cursorItem;
+      inventoryBatch = true;
+      take(name, k);
+      craftGrid[i] = { n: name, k: (c?.k || 0) + k };
+      inventoryBatch = false;
+      if (!have(name)) cursorItem = null;
+    } else if (c) { give(c.n, c.k, true); craftGrid[i] = null; }
+    return drawInventory();
+  }
+  const bi = t.closest("[data-bi]");
+  if (bi) { cursorItem = bi.dataset.bi && cursorItem !== bi.dataset.bi ? bi.dataset.bi : null; return drawInventory(); }
+  const tab = t.closest(".ctab"), cell = t.closest(".cell"), sl = t.closest(".slot[data-slot]");
   if (tab) { invTab = tab.dataset.tab; invQuery = ""; drawInventory(); }
   else if (cell) { HOTBAR[slot] = cell.dataset.item; saveBar(); plankStart = null; drawHotbar(); }
-  else if (sl) selectSlot(Number(sl.dataset.slot));
+  else if (sl) {
+    const i = Number(sl.dataset.slot);
+    if (bag && cursorItem) { HOTBAR[i] = cursorItem; cursorItem = null; drawHotbar(); drawInventory(); }  // положить вещь в слот хотбара
+    else if (bag && !cursorItem && HOTBAR[i]) { cursorItem = HOTBAR[i]; HOTBAR[i] = null; drawHotbar(); drawInventory(); }  // взять из хотбара
+    else selectSlot(i);
+  }
 });
-inv.addEventListener("contextmenu", e => {  // правая кнопка по слоту — очистить его
-  const sl = e.target.closest(".slot");
-  if (!sl) return;
+inv.addEventListener("contextmenu", e => {
   e.preventDefault();
-  HOTBAR[Number(sl.dataset.slot)] = null; saveBar(); drawHotbar();
+  const cg = e.target.closest("[data-cg]");
+  if (cg && craftGrid[cg.dataset.cg]) { const c = craftGrid[cg.dataset.cg]; give(c.n, 1, true); c.k--; if (!c.k) craftGrid[cg.dataset.cg] = null; return drawInventory(); }
+  const sl = e.target.closest(".slot[data-slot]");  // правая кнопка по слоту хотбара — очистить его
+  if (sl) { HOTBAR[Number(sl.dataset.slot)] = null; saveBar(); drawHotbar(); }
 });
 inv.addEventListener("mouseover", e => {
-  const cell = e.target.closest(".cell"), el = document.getElementById("invname");
-  if (cell && el) { invHover = cell.dataset.item; el.textContent = invHover; }
+  const c = e.target.closest("[data-item], [data-bi], [data-cg], [data-slot]"), el = document.getElementById("invname");
+  if (!c || !el || cursorItem) return;
+  const n = c.dataset.item || c.dataset.bi || craftGrid[c.dataset.cg]?.n || HOTBAR[c.dataset.slot];
+  if (n) { invHover = n; el.textContent = n + (bag?.[n] ? ` — ${bag[n]} шт.` : ""); }
 });
 function toggleAdmin() { if (isAdmin()) togglePanel(adminEl, drawAdmin); }
 
@@ -4898,6 +5145,8 @@ function startGame(code, name, me) {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem("bag:" + code)); } catch {}
     bag = saved?.bag && typeof saved.bag === "object" ? saved.bag : {};
+    restoreSmelting(saved?.smelting);
+    armor=Array.isArray(saved?.armor)?Array.from({length:4},(_,i)=>ARMOR[saved.armor[i]]?saved.armor[i]:null):[null,null,null,null];
     HOTBAR.fill(null);
     if (Array.isArray(saved?.bar)) saved.bar.forEach((n, i) => { if (i < BAR_SIZE && ITEMS.includes(n)) HOTBAR[i] = n; });
   }
@@ -5507,9 +5756,11 @@ const gameEl = document.getElementById("game");
 let gameScreen = "main";  // что показывает пауза: "main", "settings" или "help"
 const xbtnHtml = () => `<span class="xbtn">✕</span>`;
 function drawGameMenu() {
+  if(gameScreen==="ruler")return gameEl.innerHTML=rulerHtml()+xbtnHtml();
+  if (gameScreen === "furnace") return gameEl.innerHTML = furnaceHtml() + xbtnHtml();
   if (gameScreen === "settings") return gameEl.innerHTML = settingsHtml(gbtn) + xbtnHtml();
   if (gameScreen === "help") return gameEl.innerHTML = helpHtml(gbtn) + xbtnHtml();
-  gameEl.innerHTML = gtitle("ПАУЗА") + gbtn("продолжить", "resume", "big") + gbtn("настройки", "settings") + gbtn("управление", "help") +
+  gameEl.innerHTML = gtitle("ПАУЗА") + gbtn("продолжить", "resume", "big") + gbtn("настройки", "settings") + gbtn("управление", "help") + gbtn(assistEnabled()?"помощник: включён на 10 минут":"разрешить помощника на 10 минут","assist") +
     (currentWorld ? gbtn("сохранить мир", "saveworld") : "") + gbtn(`графика: ${gfxName()}`, "gfx") + gbtn("экспорт мира", "export") +
     (!online || isDev ? gbtn("импорт мира", "import") : "") +
     (online && lobbyCode !== "P2P" ? gbtn("ссылка-приглашение", "invite") : "") +
@@ -5546,6 +5797,7 @@ const netId = v => typeof v === "string" && v.length > 0 && v.length <= 64;
 const optNum = (...v) => v.every(x => x === undefined || Number.isFinite(x));
 function validEdit(e) {
   if (!e || typeof e !== "object" || !NET_OPS.has(e.op)) return false;
+  if (!dimsValid(e)) return false;
   if (e.c !== undefined && !(Number.isInteger(e.c) && e.c >= 0 && e.c < COLORS.length)) return false;
   switch (e.op) {
     case "block": return [e.x, e.y, e.z].every(netCell) && (e.k === undefined || KIND_SET.has(e.k)) && (e.r === undefined || (Number.isInteger(e.r) && e.r >= 0 && e.r < 4));
@@ -5581,6 +5833,8 @@ function cleanEdit(e) {
     if (Number.isInteger(e.d) && e.d >= 1 && e.d <= 4) out.d = e.d;
     if (e.m === 1) out.m = 1;
     if (Number.isInteger(e.n) && e.n >= 0 && e.n < 25) out.n = e.n;
+    if (e.dim !== undefined) { if(!dimsValid(e))return null; out.dim=[...e.dim]; }
+    if (typeof e.by === "string" && e.by.length<=128) out.by=e.by;
     if (e.p === true && (!online || isDev)) out.p = true;  // прочный блок в сети ставит только разработчик: иначе база отклонит весь кусок импорта
     return out;
   }
@@ -5792,6 +6046,9 @@ function lockMouse() {
 
 gameEl.addEventListener("click", e => {
   const a = e.target.closest(".act")?.dataset.a;
+  if(a==="assist")return toggleAssist();
+  if(a?.startsWith("ruler:"))return rulerAction(a.slice(6));
+  if (a?.startsWith("smelt:")) return smelt(a.slice(6));
   if (a === "resume") toggleGameMenu();
   if (a === "gfx") { toggleGfx(); drawGameMenu(); }
   if (a === "export") exportWorld();
@@ -6517,7 +6774,7 @@ function rsPaint(r, force) {
 }
 
 // --- Поршень
-const rsMovable = e => !!e && e.op === "block" && !e.p && !isTerr(e) && !["obsidian", "portal", "shield", "rs_head", "door", "barrier", "jump"].includes(e.k) && !(rsRec.get(key(e.x, e.y, e.z))?.s.ext);
+const rsMovable = e => !!e && e.op === "block" && !e.dim && !e.p && !isTerr(e) && !["obsidian", "portal", "shield", "rs_head", "door", "barrier", "jump"].includes(e.k) && !(rsRec.get(key(e.x, e.y, e.z))?.s.ext);
 function rsLine(x, y, z, d) {  // что поршень толкает: цепочка блоков до первой пустой клетки, не больше 12
   const list = [];
   for (let i = 0; i < 13; i++) {
@@ -7203,9 +7460,10 @@ const listWorlds = () => idb("meta", "readonly", s => s.getAll()).then(l => l.so
 const worldEdits = () => [...new Set(solids.map(m => m.userData.edit).filter(e => e && !isTerr(e) && !e.tr && !e.g)), ...[...drops.values()].map(d => d.e),
   ...[...dug].filter(k => !gen?.mouths.has(k)).map(k => k.split(",").map(Number)).map(([x, y, z]) => ({ op: "dig", x, y, z }))];
 function saveWorld(manual) {
+  if (typeof craftGrid !== "undefined" && craftGrid.some(Boolean)) returnGrid();
   if (!currentWorld || !inGame || worldLoading) return Promise.resolve();  // пока мир грузится, сохранили бы его половину
   const edits = worldEdits();
-  const data = { edits, player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
+  const data = { edits, smelting: pendingSmelting(), player: { x: px, f: feet, z: pz, yaw, pitch, hp }, bar: [...HOTBAR], bag: bag && { ...bag }, color, armor: [...armor],
     gen: gen && { removed: [...gen.removed], animals: [...gen.animals], store: Object.fromEntries(gen.store), looted: [...gen.looted] } };
   Object.assign(currentWorld, { updated: Date.now(), count: edits.length });
   worldDirty = false;
@@ -7216,7 +7474,7 @@ function saveWorld(manual) {
 }
 // Сам: раз в 30 секунд, если что-то изменилось или игрок ушёл с места, и когда вкладку сворачивают или закрывают
 // Вещи в сетевом выживании — у самого игрока (в браузере), по коду лобби
-const saveLobbyBag = () => { if (!currentWorld && lobbyCode && bag) try { localStorage.setItem("bag:" + lobbyCode, JSON.stringify({ bag, bar: HOTBAR })); } catch {} };
+const saveLobbyBag = () => { if(panel===inv&&craftGrid.some(Boolean))returnGrid(); if (!currentWorld && lobbyCode && bag) try { localStorage.setItem("bag:" + lobbyCode, JSON.stringify({ bag, bar: HOTBAR, armor:[...armor], smelting:pendingSmelting() })); } catch {} };
 addEventListener("pagehide", saveLobbyBag);
 function autosave(dt) {
   saveTimer += dt;
@@ -7248,6 +7506,7 @@ async function playWorld(meta) {
   currentWorld = meta;
   gameMode = meta.mode;
   bag = meta.res ? { ...(data?.bag || {}) } : null;
+  if(bag)restoreSmelting(data?.smelting);
   if (Array.isArray(data?.bar)) data.bar.forEach((n, i) => { if (i < BAR_SIZE) HOTBAR[i] = n && ITEMS.includes(n) ? n : null; });
   if (Number.isInteger(data?.color) && COLORS[data.color]) color = data.color;
   if (Array.isArray(data?.armor)) armor = data.armor.map(n => ARMOR[n] ? n : null);
@@ -7293,21 +7552,21 @@ const renameWorld = (meta, name) => idb("meta", "readwrite", s => s.put({ ...met
 
 // ---------- Выживание: вещи считаются, блоки добываются и ломаются не сразу, остальное крафтится ----------
 const have = name => !bag || (bag[name] || 0) > 0;
-const NON_CONSUMABLE = new Set(["Огниво"]);
+const NON_CONSUMABLE = new Set(["Огниво", "Рулетка"]);
 function give(name, n = 1, quiet) {
   if (!bag || !name || !ITEMS.includes(name)) return;
   bag[name] = (bag[name] || 0) + n;
   if (!HOTBAR.includes(name)) { const i = HOTBAR.indexOf(null); if (i >= 0) HOTBAR[i] = name; }  // новое — сразу в пустой слот
   if (!quiet) { sfx("pickup"); toast(`+${n} ${name}`); }
   worldDirty = true;
-  drawHotbar();
+  if (!inventoryBatch) drawHotbar();
 }
 function take(name, n = 1) {
   if (!bag) return;
   bag[name] = Math.max(0, (bag[name] || 0) - n);
   if (!bag[name]) delete bag[name];
   worldDirty = true;
-  drawHotbar();
+  if (!inventoryBatch) drawHotbar();
 }
 // Что выпадает из сломанного предмета
 const KIND_ITEM = Object.fromEntries([...Object.entries(KINDS).filter(([n, k]) => k && !n.startsWith("Прочн")), ...Object.entries(RS_ITEMS).map(([n, i]) => [n, i.k])].map(([n, k]) => [k, n]));
@@ -7324,6 +7583,8 @@ function dropFor(e) {
   if (e.op !== "block" || e.p) return null;
   if (!e.k || e.k === "flat") return "Блок";
   if (e.k === "door") return e.i ? "Железная дверь" : "Дверь";
+  if (e.k === "sand" && Math.random()<0.1) return "Кремень";
+  if (e.k === "stone") return "Булыжник";
   if (e.k === "grass") return "Земля";
   if (e.k === "leaves") return Math.random() < 0.2 ? "Палка" : Math.random() < 0.35 ? "Листва" : null;
   if (["glass", "ice", "window", "portal", "rs_head"].includes(e.k)) return null;  // стекло бьётся
@@ -7333,12 +7594,13 @@ function dropFor(e) {
 function harvest(e) {
   if (needTier(e) > pickTier()) { toast(pickTier() ? "нужна кирка получше" : "нужна кирка"); return null; }
   if (!isTerr(e)) return dropFor(e);
-  return { ore_iron: "Металл", ore_gold: "Золото", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Камень",
-    ds_iron: "Металл", ds_gold: "Золото", ds_diamond: "Алмаз", ds_red: "Редстоун", deepslate: "Камень", cobble: "Камень", mossy: "Камень" }[e.k] ?? digDrop(e.y);
+  return { ore_coal: "Уголь", ore_iron: "Железная руда", ore_gold: "Золотая руда", ore_diamond: "Алмаз", ore_red: "Редстоун", stone: "Булыжник",
+    ds_iron: "Железная руда", ds_gold: "Золотая руда", ds_diamond: "Алмаз", ds_red: "Редстоун", deepslate: "Глубинный сланец", cobble: "Булыжник", mossy: "Мшистый булыжник" }[e.k] ?? digDrop(e.y);
 }
 // Из ямы: сверху земля и песок, глубже камень, ещё глубже руда (для старых миров, где земля без руды)
 function digDrop(y) {
   const r = Math.random();
+  if(y>-4&&r>.91)return "Кремень";
   if (y < -24 && r < 0.012) return "Алмаз";
   if (y < -14 && r < 0.03) return "Золото";
   if (y < -8 && r < 0.07) return "Редстоун";
@@ -7384,46 +7646,61 @@ function updateBreaking(dt) {
   mineEl.style.display = "block";
 }
 // Рецепты: [что получится, сколько, из чего]. Только из предметов, которые есть в игре
-const RECIPES = [
-  ["Доска", 4, { "Дерево": 1 }], ["Палка", 4, { "Доска": 2 }], ["Блок", 4, { "Камень": 4 }], ["Обсидиан", 1, { "Камень": 8, "Алмаз": 1 }], ["Ступеньки", 4, { "Камень": 6 }], ["Рампа", 2, { "Камень": 3 }],
+const LEGACY_RECIPES = [
+  ["Доски", 4, { "Дерево": 1 }], ["Палка", 4, { "Доски": 2 }], ["Блок", 4, { "Камень": 4 }], ["Обсидиан", 1, { "Камень": 8, "Алмаз": 1 }], ["Ступеньки", 4, { "Камень": 6 }], ["Рампа", 2, { "Камень": 3 }],
   ["Бетон", 4, { "Камень": 2, "Песок": 2 }], ["Стекло", 1, { "Песок": 1 }], ["Окно", 2, { "Стекло": 2, "Палка": 1 }], ["Плитка", 4, { "Камень": 4, "Песок": 1 }],
-  ["Дверь", 1, { "Доска": 6 }], ["Стул", 1, { "Доска": 3, "Палка": 2 }], ["Стол", 1, { "Доска": 4, "Палка": 2 }], ["Скамейка", 1, { "Доска": 3, "Палка": 2 }],
-  ["Кровать", 1, { "Шерсть": 3, "Доска": 3 }], ["Бочка", 1, { "Доска": 7 }], ["Текст", 3, { "Доска": 6, "Палка": 1 }], ["Трава", 1, { "Земля": 1, "Листва": 1 }],
+  ["Дверь", 1, { "Доски": 6 }], ["Стул", 1, { "Доски": 3, "Палка": 2 }], ["Стол", 1, { "Доски": 4, "Палка": 2 }], ["Скамейка", 1, { "Доски": 3, "Палка": 2 }],
+  ["Кровать", 1, { "Шерсть": 3, "Доски": 3 }], ["Бочка", 1, { "Доски": 7 }], ["Текст", 3, { "Доски": 6, "Палка": 1 }], ["Трава", 1, { "Земля": 1, "Листва": 1 }],
   ["Слизь", 1, { "Листва": 4 }], ["Решётка", 4, { "Металл": 2 }], ["Лампа", 1, { "Металл": 1, "Стекло": 1 }], ["Фонарь", 1, { "Металл": 3, "Стекло": 1 }],
-  ["Нож", 1, { "Металл": 1, "Палка": 1 }], ["Меч", 1, { "Металл": 2, "Палка": 1 }], ["Топор", 1, { "Металл": 3, "Палка": 2 }], ["Бита", 1, { "Доска": 3 }],
-  ["Огниво", 1, { "Металл": 1, "Камень": 1 }], ["ТНТ", 1, { "Песок": 4, "Редстоун": 2 }], ["Трамплин", 1, { "Слизь": 2, "Доска": 3 }],
+  ["Нож", 1, { "Металл": 1, "Палка": 1 }], ["Меч", 1, { "Металл": 2, "Палка": 1 }], ["Топор", 1, { "Металл": 3, "Палка": 2 }], ["Бита", 1, { "Доски": 3 }],
+  ["Огниво", 1, { "Металл": 1, "Камень": 1 }], ["ТНТ", 1, { "Песок": 4, "Редстоун": 2 }], ["Трамплин", 1, { "Слизь": 2, "Доски": 3 }],
   ["Факел редстоуна", 1, { "Редстоун": 1, "Палка": 1 }], ["Рычаг", 1, { "Камень": 1, "Палка": 1 }], ["Кнопка", 1, { "Камень": 1 }], ["Нажимная плита", 1, { "Камень": 2 }],
   ["Повторитель", 1, { "Камень": 3, "Редстоун": 1, "Факел редстоуна": 2 }], ["Компаратор", 1, { "Камень": 3, "Факел редстоуна": 3, "Золото": 1 }],
   ["Блок редстоуна", 1, { "Редстоун": 9 }], ["Редстоун", 9, { "Блок редстоуна": 1 }], ["Лампа редстоуна", 1, { "Редстоун": 4, "Стекло": 1 }],
-  ["Поршень", 1, { "Доска": 3, "Камень": 4, "Металл": 1, "Редстоун": 1 }], ["Липкий поршень", 1, { "Поршень": 1, "Слизь": 1 }],
-  ["Наблюдатель", 1, { "Камень": 6, "Редстоун": 2 }], ["Раздатчик", 1, { "Камень": 7, "Редстоун": 1 }], ["Нотный блок", 1, { "Доска": 8, "Редстоун": 1 }],
+  ["Поршень", 1, { "Доски": 3, "Камень": 4, "Металл": 1, "Редстоун": 1 }], ["Липкий поршень", 1, { "Поршень": 1, "Слизь": 1 }],
+  ["Наблюдатель", 1, { "Камень": 6, "Редстоун": 2 }], ["Раздатчик", 1, { "Камень": 7, "Редстоун": 1 }], ["Нотный блок", 1, { "Доски": 8, "Редстоун": 1 }],
   ["Железная дверь", 1, { "Металл": 6 }], ["Рельсы", 16, { "Металл": 6, "Палка": 1 }], ["Энергорельсы", 6, { "Золото": 6, "Палка": 1, "Редстоун": 1 }],
-  ["Шахматы", 1, { "Доска": 4, "Камень": 2 }], ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
-  ["Деревянная кирка", 1, { "Доска": 3, "Палка": 2 }], ["Каменная кирка", 1, { "Камень": 3, "Палка": 2 }], ["Железная кирка", 1, { "Металл": 3, "Палка": 2 }],
+  ["Шахматы", 1, { "Доски": 4, "Камень": 2 }], ["Вагонетка", 1, { "Металл": 5 }], ["Металл", 9, { "Золото": 1 }], ["Машина", 1, { "Металл": 10, "Стекло": 2 }],
+  ["Деревянная кирка", 1, { "Доски": 3, "Палка": 2 }], ["Каменная кирка", 1, { "Камень": 3, "Палка": 2 }], ["Железная кирка", 1, { "Металл": 3, "Палка": 2 }],
   ["Алмазная кирка", 1, { "Алмаз": 3, "Палка": 2 }], ["Железный шлем", 1, { "Металл": 5 }], ["Железный нагрудник", 1, { "Металл": 8 }], ["Железные поножи", 1, { "Металл": 7 }],
   ["Железные ботинки", 1, { "Металл": 4 }], ["Алмазный шлем", 1, { "Алмаз": 5 }], ["Алмазный нагрудник", 1, { "Алмаз": 8 }], ["Алмазные поножи", 1, { "Алмаз": 7 }],
   ["Алмазные ботинки", 1, { "Алмаз": 4 }],
-].filter(([r, , ing]) => ITEMS.includes(r) && Object.keys(ing).every(n => ITEMS.includes(n)));
-const canCraft = ([, , ing]) => !!bag && Object.entries(ing).every(([n, k]) => (bag[n] || 0) >= k);
-function craft(i) {
-  const r = RECIPES[i];
-  if (!r || !canCraft(r)) return sfx("click");
-  for (const [n, k] of Object.entries(r[2])) take(n, k);
-  give(r[0], r[1], true);
-  sfx("craft");
-  toast(`+${r[1]} ${r[0]}`);
-  drawInventory();
+];
+const SHAPED_RECIPES = [];
+const shaped = (out,n,shape,key) => SHAPED_RECIPES.push({out,n,shape,key});
+shaped("Рулетка",1,["II","GI"],{I:"Металл",G:"Золото"});
+shaped("Доски",4,["W"],{W:"Дерево"});
+shaped("Палка",4,["P","P"],{P:"Доски"});
+shaped("Верстак",1,["PP","PP"],{P:"Доски"});
+shaped("Печь",1,["CCC","C C","CCC"],{C:"Булыжник"});
+shaped("Доска",1,["PPP"],{P:"Доски"});
+shaped("Дверь",3,["PP","PP","PP"],{P:"Доски"});
+shaped("Железная дверь",3,["II","II","II"],{I:"Металл"});
+shaped("Кровать",1,["WWW","PPP"],{W:"Шерсть",P:"Доски"});
+shaped("Ступеньки",4,["C  ","CC ","CCC"],{C:"Булыжник"});
+shaped("Рычаг",1,["S","C"],{S:"Палка",C:"Булыжник"});
+shaped("Нажимная плита",1,["CC"],{C:"Камень"});
+shaped("Кнопка",1,["C"],{C:"Камень"});
+shaped("Бочка",1,["P P","PSP","P P"],{P:"Доски",S:"Доска"});
+shaped("Огниво",1,["I "," F"],{I:"Металл",F:"Кремень"});
+shaped("ТНТ",1,["RSR","SRS","RSR"],{R:"Редстоун",S:"Песок"});
+shaped("Рельсы",16,["I I","ISI","I I"],{I:"Металл",S:"Палка"});
+shaped("Энергорельсы",6,["G G","GSG","GRG"],{G:"Золото",S:"Палка",R:"Редстоун"});
+shaped("Вагонетка",1,["I I","III"],{I:"Металл"});
+shaped("Факел редстоуна",1,["R","S"],{R:"Редстоун",S:"Палка"});
+shaped("Повторитель",1,["TRT","CCC"],{T:"Факел редстоуна",R:"Редстоун",C:"Камень"});
+shaped("Компаратор",1,[" T ","TGT","CCC"],{T:"Факел редстоуна",G:"Золото",C:"Камень"});
+shaped("Поршень",1,["PPP","CIC","CRC"],{P:"Доски",C:"Булыжник",I:"Металл",R:"Редстоун"});
+shaped("Липкий поршень",1,["S","P"],{S:"Слизь",P:"Поршень"});
+shaped("Блок редстоуна",1,["RRR","RRR","RRR"],{R:"Редстоун"});
+shaped("Редстоун",9,["R"],{R:"Блок редстоуна"});
+shaped("Нотный блок",1,["PPP","PRP","PPP"],{P:"Доски",R:"Редстоун"});
+for(const [material,prefix] of [["Доски","Деревянная"],["Булыжник","Каменная"],["Металл","Железная"],["Алмаз","Алмазная"]]) shaped(prefix+" кирка",1,["MMM"," S "," S "],{M:material,S:"Палка"});
+for(const [material,prefix] of [["Металл","Железн"],["Алмаз","Алмазн"]]) {
+  for(const [suffix,shape] of [["ый шлем",["MMM","M M"]],["ый нагрудник",["M M","MMM","MMM"]],["ые поножи",["MMM","M M","M M"]],["ые ботинки",["M M","M M"]]]) shaped(prefix+suffix,1,shape,{M:material});
 }
-function craftHtml() {
-  wantIcons(RECIPES.map(r => r[0]));
-  // Сначала то, что можно сделать прямо сейчас
-  const order = RECIPES.map((r, i) => i).sort((a, b) => canCraft(RECIPES[b]) - canCraft(RECIPES[a]));
-  return `<div class="crafts">${order.map(i => {
-    const [res, n, ing] = RECIPES[i];
-    const need = Object.entries(ing).map(([k, c]) => `<span class="${(bag[k] || 0) >= c ? "" : "miss"}">${k} ${bag[k] || 0}/${c}</span>`).join(", ");
-    return `<div class="craft${canCraft(RECIPES[i]) ? " ok" : ""}" data-craft="${i}">${iconImg(res)}<div><b>${res}${n > 1 ? " ×" + n : ""}</b><br>${need}</div></div>`;
-  }).join("")}</div>`;
-}
+const replacedRecipes=new Set([...SHAPED_RECIPES.map(r=>r.out),"Стекло","Обсидиан","Металл"]);
+const RECIPES = [...SHAPED_RECIPES, ...LEGACY_RECIPES.filter(([n])=>!replacedRecipes.has(n)).map(([out,n,need])=>({out,n,need}))].filter(r=>ITEMS.includes(r.out));
 const survTabs = () => ({ "Вещи": Object.keys(bag).filter(n => bag[n] > 0).sort((a, b) => ITEMS.indexOf(a) - ITEMS.indexOf(b)), "Крафт": [] });
 
 // Подобрал, скрафтил: короткая надпись над хотбаром
@@ -7768,7 +8045,8 @@ function caveAt(x, y, z) {
 function terrKind(x, y, z) {
   if (y > -4) return "dirt";
   if (gen && dungeonAt(x, y, z) === 2) return hashN(31, x, y, z) < 0.45 ? "mossy" : "cobble";  // стены данжа
-  const h = hashN(9137, x, y, z), deep = y < -Y_SHOW;  // ниже Y 0 — глубинный сланец (с переходом в пару блоков)
+  const h = hashN(9137, x, y, z), deep = y < -Y_SHOW;
+  if(y > -25 && h > 0.12 && h < 0.145) return "ore_coal";  // ниже Y 0 — глубинный сланец (с переходом в пару блоков)
   const ds = deep || (y < -Y_SHOW + 3 && hashN(77, x, y, z) < 0.5);
   if (y < -35 && h < 0.004) return ds ? "ds_diamond" : "ore_diamond";
   if (y < -20 && h < 0.012) return ds ? "ds_gold" : "ore_gold";
@@ -7946,7 +8224,7 @@ function setInfinite(on, saved, seed, net) {
 const PICKS = { "Деревянная кирка": 1, "Каменная кирка": 2, "Железная кирка": 3, "Алмазная кирка": 4 };
 const PICK_SPEED = [1, 2, 3, 4, 6];
 // Какая кирка нужна, чтобы блок добывался (0 — хватит рук). Без нужной ломается втрое дольше и ничего не даёт
-const NEED = { cobble: 1, mossy: 1, deepslate: 1, ds_iron: 2, ds_red: 3, ds_gold: 3, ds_diamond: 3, stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
+const NEED = { ore_coal:1, crafting:0, furnace:1, cobble: 1, mossy: 1, deepslate: 1, ds_iron: 2, ds_red: 3, ds_gold: 3, ds_diamond: 3, stone: 1, concrete: 1, marble: 1, tiles: 1, clay: 1, netherrack: 1, flat: 1, ramp: 1, stairs: 1, ore_iron: 2, metal: 2, ore_red: 3, ore_gold: 3, gold: 3, ore_diamond: 3, diamond: 3, obsidian: 4 };
 const needTier = e => e.op !== "block" || e.t === 2 ? 0 : !e.k ? (e.t ? 0 : 1) : NEED[e.k] || 0;
 const pickTier = () => { const n = HOTBAR[slot]; return PICKS[n] && have(n) ? PICKS[n] : 0; };
 const ARMOR = {  // слот (0 шлем, 1 нагрудник, 2 поножи, 3 ботинки), материал, очки защиты (каждое — минус 4% урона)
@@ -8081,13 +8359,14 @@ function drawChess() {
   const W = chessName(ch.w, ch.wn, ch.lvl), B = chessName(ch.b, ch.bn, ch.lvl);
   const status = st === "free" ? "Доска свободна" : st === "wait" ? `${W} ждёт соперника` : st === "over" ? ch.res || "Партия окончена" :
     `${W} (белые) — ${B} (чёрные). Ход ${turn === "w" ? "белых" : "чёрных"}${game?.inCheck() ? ", шах!" : ""}${mine === turn ? " — твой ход" : ""}`;
+  const hint=isDev&&chessHint?.fen===fen&&chessHint.boardKey===chessKey?chessHint:null;
   const b = fenBoard(fen), flip = mine === "b";
   const targets = chessSel && game ? game.moves({ square: chessSel, verbose: true }).map(m => m.to) : [];
   const check = game?.inCheck() ? kingSq(b, turn) : null;
   let cells = "";
   for (let i = 0; i < 64; i++) {
     const r = flip ? 7 - (i >> 3) : i >> 3, f = flip ? 7 - (i & 7) : i & 7, sq = "abcdefgh"[f] + (8 - r), pc = b[r][f];
-    const cls = ["sq", (r + f) % 2 ? "d" : "l", sq === chessSel && "sel", targets.includes(sq) && "to", ch.last && st !== "free" && (ch.last.startsWith(sq) || ch.last.slice(2, 4) === sq) && "last", sq === check && "chk"];
+    const cls = ["sq", (r + f) % 2 ? "d" : "l", sq === chessSel && "sel", targets.includes(sq) && "to", ch.last && st !== "free" && (ch.last.startsWith(sq) || ch.last.slice(2, 4) === sq) && "last", sq === check && "chk", hint && (sq===hint.move.slice(0,2)||sq===hint.move.slice(2,4)) && "besthint"];
     cells += `<span class="${cls.filter(Boolean).join(" ")}" data-sq="${sq}">${pc === "." ? "" : `<i class="${pc === pc.toLowerCase() ? "pb" : "pw"}">${glyph(pc)}</i>`}</span>`;
   }
   const absent = id => id && id !== "bot" && id !== me && !others.has(id);
@@ -8102,7 +8381,7 @@ function drawChess() {
   if (st === "play" && mine) btns += gbtn("сдаться", "ch:resign", "warn");
   if ((st === "play" || st === "wait") && !mine && (absent(ch.w) || absent(ch.b))) btns += gbtn("освободить доску (игрок ушёл)", "ch:free", "warn");
   if (st === "over") btns += gbtn("убрать фигуры", "ch:free");
-  chessEl.innerHTML = gtitle("ШАХМАТЫ") + `<div class="cstat">${esc(status)}</div><div class="cboard">${cells}</div>` +
+  chessEl.innerHTML = `<div class="chhead">${gtitle("ШАХМАТЫ")}${isDev?`<button class="act bestmove-button" data-a="ch:best18" ${chessHintLoading?"disabled":""}>${chessHintLoading?"Анализ…":"Лучший ход"}</button>`:""}</div>` + (isDev?`<div class="bestmove-note" role="status">${chessHintLoading?"Stockfish 18: загрузка и анализ…":hint?`Stockfish 18: ${esc(hint.san)} (${hint.move.slice(0,2)} → ${hint.move.slice(2,4)}), глубина ${hint.depth}${hint.score?", оценка "+esc(hint.score)+" для стороны хода":""}`:esc(chessHintError)}</div>`:"") + `<div class="cstat">${esc(status)}</div><div class="cboard">${cells}</div>` +
     (ChessLib ? "" : glabel("загружаю правила шахмат…")) + (chessBusy.size && st === "play" ? glabel("Stockfish думает…") : "") + btns +
     `<div class="gx">${TOUCH ? "" : "Esc — закрыть"}</div>` + xbtnHtml();
   chessThink(e);
@@ -8114,6 +8393,7 @@ chessEl.addEventListener("click", e => {
   if (sqEl) return chessClick(be, sqEl.dataset.sq);
   const a = e.target.closest(".act")?.dataset.a;
   if (!a?.startsWith("ch:")) return;
+  if(a==="ch:best18"){if(isDev)showBestMove18();return;}
   const cmd = a.slice(3), ch = be.ch || {}, me = chessMe(), fresh = { fen: START_FEN, n: 0, t: Date.now() };
   sfx("click");
   chessSel = null;
@@ -8224,6 +8504,65 @@ function fallbackMove(fen, lvl) {
   }
   return pick && { from: pick.from, to: pick.to, promotion: pick.promotion ? "q" : undefined };
 }
+
+// Отдельный Stockfish 18 для подсказки: не конкурирует с движком соперника за UCI-ответы.
+const SF18_ROOT="https://unpkg.com/stockfish@18.0.8/bin/";
+let sf18Ready=null,sf18Worker=null;
+let chessHint=null,chessHintLoading=false,chessHintError="";
+function stockfish18(){
+ if(sf18Ready)return sf18Ready;
+ sf18Ready=new Promise((resolve,reject)=>{
+  const url=URL.createObjectURL(new Blob([`importScripts(${JSON.stringify(SF18_ROOT+"stockfish-18-lite-single.js")});`],{type:"text/javascript"}));
+  const worker=sf18Worker=new Worker(url+"#"+encodeURIComponent(SF18_ROOT+"stockfish-18-lite-single.wasm"));
+  const timer=setTimeout(()=>fail(new Error("Stockfish 18 не загрузился. Проверь интернет и повтори.")),90000);
+  let version=false;
+  function fail(error){clearTimeout(timer);worker.terminate();URL.revokeObjectURL(url);sf18Ready=null;sf18Worker=null;reject(error);}
+  worker.onerror=()=>fail(new Error("Не удалось запустить Stockfish 18"));
+  worker.onmessage=event=>{
+    const line=String(event.data);
+    if(/^id name Stockfish 18\b/.test(line))version=true;
+    if(line==="uciok"){worker.postMessage("setoption name Hash value 16");worker.postMessage("setoption name MultiPV value 1");worker.postMessage("setoption name UCI_AnalyseMode value true");worker.postMessage("isready");}
+    if(line==="readyok"){if(!version)return fail(new Error("Версия движка не Stockfish 18"));clearTimeout(timer);URL.revokeObjectURL(url);resolve(worker);}
+  };
+  worker.postMessage("uci");
+ });
+ return sf18Ready;
+}
+async function analyseBestMove18(fen){
+ const worker=await stockfish18();
+ return new Promise((resolve,reject)=>{
+  let score="",depth=0,pv="";
+  const timer=setTimeout(()=>{worker.postMessage("stop");worker.terminate();sf18Worker=null;sf18Ready=null;reject(new Error("Анализ занял слишком долго. Повтори запрос."));},15000);
+  worker.onmessage=event=>{
+    const line=String(event.data),depthMatch=line.match(/\bdepth (\d+)/),scoreMatch=line.match(/\bscore (cp|mate) (-?\d+)/),pvMatch=line.match(/\bpv (.+)/);
+    if(depthMatch)depth=+depthMatch[1];if(pvMatch)pv=pvMatch[1];
+    if(scoreMatch)score=scoreMatch[1]==="mate"?`мат ${scoreMatch[2]}`:(+scoreMatch[2]/100).toFixed(2);
+    const best=line.match(/^bestmove ([a-h][1-8][a-h][1-8][qrbn]?|\(none\)|0000)/);
+    if(best){clearTimeout(timer);resolve({move:best[1],score,depth,pv});}
+  };
+  worker.postMessage("setoption name Skill Level value 20");
+  worker.postMessage("setoption name UCI_LimitStrength value false");
+  worker.postMessage("position fen "+fen);
+  worker.postMessage("go depth 22 movetime 1600");
+ });
+}
+async function showBestMove18(){
+ if(!isDev||chessHintLoading)return;
+ const e=chessEdit();if(!e)return;
+ const fen=e.ch?.fen||START_FEN,boardKey=chessKey;
+ chessHintLoading=true;chessHintError="";chessHint=null;drawChess();
+ try{
+  await loadChess();const game=new ChessLib(fen);
+  if(game.isGameOver()){chessHintError="Партия окончена";return;}
+  const result=await analyseBestMove18(fen);
+  if(!isDev||chessKey!==boardKey||(chessEdit()?.ch?.fen||START_FEN)!==fen)return;
+  const move=game.move({from:result.move.slice(0,2),to:result.move.slice(2,4),promotion:result.move[4]||"q"});
+  if(!move)throw Error("Движок вернул недопустимый ход");
+  chessHint={...result,fen,boardKey,san:move.san};
+ }catch(error){chessHintError=error.message||"Stockfish 18 недоступен";}
+ finally{chessHintLoading=false;if(panel===chessEl)drawChess();}
+}
+addEventListener("pagehide",()=>sf18Worker?.terminate());
 
 // ---------- Выкинутые предметы: G — один, Shift+G — вся стопка. Лежат на земле, подошёл — подобрал ----------
 const drops = new Map();  // id → { e, sprite, vy, born }
@@ -8372,6 +8711,78 @@ function tryTotem() {
   return true;
 }
 
+// Рулетка: выбор грани в мире, точные размеры и шаг, перемещение по сетке.
+let rulerTarget=null, rulerAxis=0, rulerStep=0.25;
+const rulerMark=new THREE.Box3Helper(new THREE.Box3(),0xffcf40);
+rulerMark.visible=false;scene.add(rulerMark);
+const scalable = e => e?.op==="block" && !e.t && !e.g && !e.p && (!e.k || e.k==="flat" || e.k==="glass" || e.k in BLOCK_TEX) && !["obsidian","crafting","furnace"].includes(e.k);
+const dimsValid = e => e.dim===undefined || (scalable(e) && Array.isArray(e.dim) && e.dim.length===3 && e.dim.every(v=>Number.isFinite(v)&&v>=0.25&&v<=16&&Number.isInteger(v*4)));
+function rulerPick(hit) {
+  const e=hit?.object?.userData.edit;
+  if(!scalable(e))return toast("Выбери поставленный кубический блок");
+  if(online&&!isDev&&e.by!==(meId||myId))return toast("В сети можно менять только свои блоки");
+  rulerTarget={x:e.x,y:e.y,z:e.z};
+  const n=hit.normal||new THREE.Vector3(1,0,0);rulerAxis=Math.abs(n.y)>.5?1:Math.abs(n.z)>.5?2:0;
+  gameScreen="ruler";togglePanel(gameEl,drawGameMenu);rulerHighlight();
+}
+function rulerEdit(){return rulerTarget&&blocks.get(key(rulerTarget.x,rulerTarget.y,rulerTarget.z))?.userData.edit;}
+function rulerHighlight(){const e=rulerEdit();rulerMark.visible=panel===gameEl&&gameScreen==="ruler"&&!!e;if(e){const d=e.dim||[1,1,1];rulerMark.box.min.set(e.x,e.y,e.z);rulerMark.box.max.set(e.x+d[0],e.y+d[1],e.z+d[2]);}}
+function rulerHtml(){
+ const e=rulerEdit();if(!e)return glabel("Блок уже убрали")+gbtn("назад","setback");
+ const d=e.dim||[1,1,1];
+ return gtitle("РУЛЕТКА")+glabel(`Размер: ${d.join(" × ")}. Объём: ${(d[0]*d[1]*d[2]).toFixed(2)}`)+glabel("Выбери ось и потяни ползунок или используй − / +.")+
+ ["X","Y","Z"].map((a,i)=>gbtn(`${rulerAxis===i?"● ":""}${a}: ${d[i]}`,"ruler:axis:"+i,"small")).join("")+
+ `<input aria-label="Размер выбранной оси" data-ruler-range type="range" min="0.25" max="16" step="${rulerStep}" value="${d[rulerAxis]}" style="width:100%">`+
+ gbtn("− уменьшить","ruler:shrink")+gbtn("+ вытянуть","ruler:grow")+
+ gbtn(`шаг: ${rulerStep}`,"ruler:step")+gbtn("сдвинуть −1 по оси","ruler:move:-1")+gbtn("сдвинуть +1 по оси","ruler:move:1")+gbtn("повернуть X ↔ Z","ruler:turn")+gbtn("назад","setback");
+}
+function rulerTransform(next) {
+ const e=rulerEdit();if(!scalable(e)||!dimsValid(next))return false;
+ if(online&&!isDev&&e.by!==(meId||myId))return false;
+ const coords=[[next.x,next.y,next.z],...extraCells(next)];
+ const old=blocks.get(key(e.x,e.y,e.z));
+ if(coords.some(c=>blocks.has(key(...c))&&blocks.get(key(...c))!==old))return toast("Соседний блок мешает"),false;
+ const d=next.dim||[1,1,1];
+ if(next.x<px+RADIUS&&next.x+d[0]>px-RADIUS&&next.z<pz+RADIUS&&next.z+d[2]>pz-RADIUS&&next.y<feet+bodyH&&next.y+d[1]>feet)return toast("Блок пересечёт игрока"),false;
+ const volume=a=>Math.ceil((a.dim||[1,1,1]).reduce((v,x)=>v*x,1));
+ const diff=volume(next)-volume(e),item=dropFor(e);
+ if(bag&&diff>0&&(!item||(bag[item]||0)<diff))return toast(`Нужно ещё ${diff} ${item||"блоков"}`),false;
+ if(next.x===e.x&&next.y===e.y&&next.z===e.z) share(next,true);
+ else {share(undo(e));share(next);}
+ if(bag&&item){if(diff>0)take(item,diff);else if(diff<0)give(item,-diff,true);}
+ rulerTarget={x:next.x,y:next.y,z:next.z};rulerHighlight();return true;
+}
+function rulerAction(a){
+ const e=rulerEdit();if(!e)return;
+ if(a.startsWith("axis:"))rulerAxis=+a.slice(5);
+ else if(a==="step")rulerStep=({.25:.5,.5:1,1:.25})[rulerStep];
+ else {const n={...e,dim:[...(e.dim||[1,1,1])]};
+  if(a==="grow"||a==="shrink")n.dim[rulerAxis]=Math.max(.25,Math.min(16,n.dim[rulerAxis]+(a==="grow"?rulerStep:-rulerStep)));
+  if(a.startsWith("move:"))n[["x","y","z"][rulerAxis]]+=+a.slice(5);
+  if(a==="turn")[n.dim[0],n.dim[2]]=[n.dim[2],n.dim[0]];
+  rulerTransform(n);
+ }drawGameMenu();
+}
+gameEl.addEventListener("change",event=>{if(!event.target.matches('[data-ruler-range]'))return;const e=rulerEdit();if(!e)return;const n={...e,dim:[...(e.dim||[1,1,1])]};n.dim[rulerAxis]=Math.round(+event.target.value*4)/4;rulerTransform(n);drawGameMenu();});
+
+// Добровольное управление текущим клиентом для браузерной проверки. Нет исполнения строк или обхода прав.
+let assistUntil=0;
+const assistEnabled=()=>Date.now()<assistUntil;
+function toggleAssist(){assistUntil=assistEnabled()?0:Date.now()+10*60*1000;toast(assistEnabled()?"Помощник: разрешено на 10 минут":"Помощник отключён");drawGameMenu();}
+const assistGuard=()=>{if(!assistEnabled())throw Error("Разреши помощника в меню паузы (10 минут)");};
+Object.defineProperty(window,"baseplateControl",{value:Object.freeze({
+ version:1,
+ enabled:()=>assistEnabled(),
+ inspect(){assistGuard();return {lobby:lobbyCode,mode:gameMode,position:{x:px,y:feet+Y_SHOW,z:pz},yaw,pitch,hp,bag:bag?{...bag}:null,hotbar:[...HOTBAR],players:[...others].map(([id,p])=>({id,nick:p.nick,x:p.group.position.x,y:p.group.position.y+Y_SHOW,z:p.group.position.z})),target:aim()?.object?.userData.edit?JSON.parse(JSON.stringify(aim().object.userData.edit)):null};},
+ async join(code){assistGuard();if(inGame)throw Error("Сначала выйди в меню");if(!/^[A-Z0-9]{4}$/i.test(code))throw Error("Неверный код лобби");await enterLobby(code.toUpperCase());},
+ look(y,p){assistGuard();if(!Number.isFinite(y)||!Number.isFinite(p))throw Error("Неверный угол");yaw=y;pitch=Math.max(-1.5,Math.min(1.5,p));},
+ async walk(direction,ms=500){assistGuard();const code={forward:"KeyW",back:"KeyS",left:"KeyA",right:"KeyD",jump:"Space"}[direction];if(!code)throw Error("Неверное направление");if(menuOpen||!inGame)throw Error("Закрой меню и войди в мир");keys[code]=true;try{await new Promise(r=>setTimeout(r,Math.max(0,Math.min(2000,Number(ms)||0))));}finally{keys[code]=false;}},
+ select(i){assistGuard();if(!Number.isInteger(i)||i<0||i>=9)throw Error("Слот 0–8");selectSlot(i);},
+ place(){assistGuard();use("place");},
+ async mine(ms=1000){assistGuard();startBreak();try{await new Promise(r=>setTimeout(r,Math.max(0,Math.min(3000,Number(ms)||0))));}finally{stopBreak();}},
+ stop(){assistUntil=0;for(const k in keys)keys[k]=false;stopBreak();}
+})});
+
 // ---------- Главный цикл ----------
 
 let last = performance.now();
@@ -8390,6 +8801,7 @@ const frame = now => {
   updatePortal(dt);
   updateWeapons(dt);
   updateGameplay(dt);
+  rulerHighlight();
   lampTimer += dt;
   if (lampTimer > 0.25) { lampTimer = 0; updateLamps(); }
   // Шлагбаумы поднимаются и опускаются плавно

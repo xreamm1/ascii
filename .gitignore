@@ -1,3 +1,8 @@
 # Правила базы Firebase хранятся только локально, в репозиторий не попадают
 database.rules.json
 firebase.json
+
+node_modules/
+.test-results/
+check.mjs
+_test.html

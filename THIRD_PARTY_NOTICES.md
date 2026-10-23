@@ -74,3 +74,8 @@ https://github.com/nmrugg/stockfish.js (сборка Stockfish 10 для бра�
 ## three.js и Firebase
 
 Грузятся с CDN и в репозитории не лежат (в `ascii-offline.html` three.js вставлен целиком, со своим заголовком лицензии MIT).
+
+
+## Stockfish 18 — developer analysis
+
+The optional developer hint downloads stockfish@18.0.8/bin/stockfish-18-lite-single.js and stockfish-18-lite-single.wasm from UNPKG at runtime. Stockfish.js 18 © 2026 Chess.com, LLC and Stockfish contributors; GNU GPL v3. Engine source: https://github.com/nmrugg/stockfish.js (npm package version 18.0.8); license: https://github.com/nmrugg/stockfish.js/blob/master/Copying.txt. The engine assets are not bundled in this repository or the offline HTML. It runs in a separate Web Worker using UCI commands.

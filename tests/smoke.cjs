@@ -1,0 +1,80 @@
+const fs=require('fs'),path=require('path');
+if(path.basename(__dirname)==='tests')process.chdir(path.resolve(__dirname,'..'));
+const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
+const output=path.resolve('.test-results');fs.mkdirSync(output,{recursive:true});
+(async()=>{
+ const http=require('http');
+ let html;
+ const server=http.createServer((req,res)=>{try{const pathname=decodeURIComponent(req.url.split('?')[0]);if(pathname==='/_test.html'){res.setHeader('Content-Type','text/html');res.end(html);return;}const p=path.resolve('.'+(pathname==='/'?'/index.html':pathname));if(!p.startsWith(process.cwd()+path.sep)){res.writeHead(403).end();return;} res.setHeader('Content-Type',p.endsWith('.js')?'text/javascript':p.endsWith('.png')?'image/png':'text/html');res.end(fs.readFileSync(p));}catch(e){res.writeHead(404).end();}});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ html=fs.readFileSync('index.html','utf8');
+ const api=`window.__test={get bag(){return bag},setBag(v){bag=v},get craftGrid(){return craftGrid},setSize(n){craftSize=n},gridMatch,craftGridOut,returnGrid,RECIPES,recipeNeed,openCrafting,drawInventory,smelt,SMELTING,drawGameMenu,give,take,HOTBAR,inv,edit,share,blocks,solids,validEdit,cleanEdit,startGame,findPortal,lightPortal,rsTick,rsRec,carts,stepCart,updateCarts,settings,applySetting,setFrameLoop,updateGen,get gen(){return gen},createWorld,listWorlds,playWorld,saveWorld,armorPoints,damage,get hp(){return hp},get flying(){return flying},setPos(x,y,z){px=x;feet=y;pz=z;vy=0},get pos(){return [px,feet,pz]},get frame(){return frame},get renderer(){return renderer},rulerPick,rulerTransform,toggleAssist,lowTop,harvest,get furnaceJobs(){return furnaceJobs},gameEl,get gameScreen(){return gameScreen},setDev(v){isDev=v},openChess,loadChess,drawChess,get chessHint(){return chessHint},showBestMove18};`;
+ html=html.replace(/<\/script>\s*<\/body>/,api+'</script></body>');
+ const browser=await chromium.launch({headless:true,...(process.env.TEST_CHROME?{executablePath:process.env.TEST_CHROME}:{}),args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+ const page=await browser.newPage({viewport:{width:1200,height:800}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.stack));
+ const origin='http://127.0.0.1:'+server.address().port;
+ await page.goto(origin+'/_test.html',{waitUntil:'networkidle'});
+ await page.waitForFunction(()=>!!window.__test,{timeout:30000});
+ const result=await page.evaluate(()=>{
+  const t=window.__test; t.startGame();t.setBag({Дерево:3});t.HOTBAR.fill(null);
+  t.craftGrid[0]={n:'Дерево',k:1}; t.setSize(2);
+  const r=t.gridMatch(); if(r?.out!=='Доски'||r.n!==4)throw Error('wood recipe');
+  t.craftGridOut(false);
+  if(t.bag['Доски']!==4)throw Error('wood output');
+  t.craftGrid[0]={n:'Доски',k:1};t.craftGrid[3]={n:'Доски',k:1};
+  if(t.gridMatch()?.out!=='Палка')throw Error('sticks');
+  t.craftGrid[3]=null;t.craftGrid[1]={n:'Доски',k:1};
+  if(t.gridMatch()?.out==='Палка')throw Error('bad shape accepted');
+  t.returnGrid();t.openCrafting(2);
+  return {recipes:t.RECIPES.length,bag:{...t.bag},slots:document.querySelectorAll('.mcmain .slot').length,grid:document.querySelectorAll('[data-cg]').length,preview:document.querySelector('.mcplayer img')?.src.slice(0,24)};
+ });
+ await page.screenshot({path:path.join(output,'inventory-survival.png')});
+ await page.evaluate(()=>{window.__test.setBag(null);window.__test.drawInventory();document.getElementById('inv').style.display='block';});
+ await page.screenshot({path:path.join(output,'inventory-creative.png')});
+ const broad=await page.evaluate(()=>{
+   const t=window.__test, result={};
+   // Сетка 3×3: точная форма, зеркало и невозможность крафта кирки в 2×2.
+   t.setBag({});t.returnGrid();t.setSize(3);
+   for(const i of [0,1,2])t.craftGrid[i]={n:'Доски',k:1};for(const i of [4,7])t.craftGrid[i]={n:'Палка',k:1};
+   if(t.gridMatch()?.out!=='Деревянная кирка')throw Error('pickaxe 3x3');
+   t.setSize(2);if(t.gridMatch()?.out==='Деревянная кирка')throw Error('pickaxe 2x2');t.returnGrid();
+   // Минимальная и увеличенная рамки; разрушение рамы гасит все клетки.
+   const frame=(x,w,h)=>{for(let u=x;u<x+w;u++)for(const y of [0,h-1])t.edit({op:'block',x:u,y,z:50,c:0,k:'obsidian'});for(let y=1;y<h-1;y++)for(const u of [x,x+w-1])t.edit({op:'block',x:u,y,z:50,c:0,k:'obsidian'});};
+   frame(40,6,7);if(t.findPortal(40,0,50)?.inner.length!==20)throw Error('portal size');t.lightPortal({x:40,y:0,z:50});t.share({op:'unblock',x:45,y:3,z:50});if([...t.blocks.values()].some(m=>m.userData.edit.k==='portal'))throw Error('portal broken');result.portal=true;
+   // Масштабирование: клетки, коллизия, отказ при препятствии и сериализация.
+   t.setBag(null);t.share({op:'block',x:10,y:0,z:10,c:0,k:'stone'});
+   const m=t.blocks.get('10,0,10');t.rulerPick({object:m,normal:{x:1,y:0,z:0}});
+   if(!t.rulerTransform({...m.userData.edit,dim:[3,2,1]}))throw Error('resize');
+   if(t.blocks.get('12,1,10')!==t.blocks.get('10,0,10'))throw Error('resize occupancy');
+   if(t.lowTop(12,1,10,12.5,10.5)!==2)throw Error('resize collision');
+   t.edit({op:'block',x:13,y:0,z:10,c:0});
+   if(t.rulerTransform({...t.blocks.get('10,0,10').userData.edit,dim:[4,2,1]}))throw Error('resize overlap accepted');
+   const current=t.blocks.get('10,0,10').userData.edit;
+   if(!t.validEdit(current)||t.cleanEdit(current)?.dim[0]!==3)throw Error('resize serialization');
+   if(t.validEdit({...current,dim:[Infinity,1,1]}))throw Error('bad size');
+   result.scaling=true;
+   let locked=false;try{window.baseplateControl.inspect()}catch(e){locked=true;}if(!locked)throw Error('assistant open by default');
+   t.toggleAssist();if(!window.baseplateControl.inspect().position)throw Error('assistant inspect');window.baseplateControl.stop();result.assistant=true;
+   // Печь списывает точный материал и топливо, а не выдаёт стекло бесплатным крафтом.
+   t.setBag({'Песок':2,'Уголь':1});t.smelt('Песок');
+   if(t.bag['Песок']||t.bag['Уголь']||t.furnaceJobs.size!==1)throw Error('smelting debit');result.smeltingStarted=true;
+   return result;
+ });
+ const hintCheck=await page.evaluate(async()=>{ const t=window.__test; const fen="rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"; t.share({op:"block",x:60,y:0,z:60,c:0,k:"chess",ch:{st:"play",fen,w:"w-player",b:"b-player"}}); t.openChess(t.blocks.get("60,0,60").userData.edit); await t.loadChess();t.drawChess();if(document.querySelector(".bestmove-button"))throw Error("hint visible for normal player"); t.setDev(true);t.drawChess();if(!document.querySelector(".bestmove-button"))throw Error("missing dev hint"); await t.showBestMove18();if(!t.chessHint)throw Error(document.querySelector(".bestmove-note")?.textContent||"no hint"); if(t.chessHint.move!=="d8h4")throw Error("missed mate "+t.chessHint.move);if(t.blocks.get("60,0,60").userData.edit.ch.fen!==fen)throw Error("hint executed a move");const result={move:t.chessHint.move,depth:t.chessHint.depth,highlights:document.querySelectorAll(".besthint").length};t.setDev(false);t.drawChess();if(document.querySelector(".bestmove-button"))throw Error("dev button remained");return result;});
+ console.log(JSON.stringify({hintCheck}));
+ await page.waitForTimeout(10500);
+ const smelted=await page.evaluate(()=>window.__test.bag['Стекло']);if(smelted!==2)throw Error('smelting output '+smelted);
+ await page.setViewportSize({width:390,height:844});
+ await page.evaluate(()=>{const t=window.__test;t.gameEl.style.display='none';t.setBag({'Доски':8});t.openCrafting(2);t.inv.style.display='block';});
+ await page.screenshot({path:path.join(output,'inventory-mobile.png')});
+ console.log(JSON.stringify({broad,smelted}));
+ await page.goto(origin+'/ascii-offline.html',{waitUntil:'networkidle'});
+ await page.waitForFunction(()=>document.querySelector('#menu')?.textContent.includes('BASEPLATE'));
+ const offline=await page.evaluate(async()=>{const {Chess}=await import('chess.js');const g=new Chess();g.move('e4');return {title:document.title,chess:g.fen(),debugInterface:typeof window.__test};});
+ if(offline.debugInterface!=='undefined')throw Error('debug API in production');
+ console.log(JSON.stringify({offline}));
+ console.log(JSON.stringify({result,errors},null,2));
+ await browser.close();server.close();
+ if(errors.length)process.exitCode=1;
+})().catch(e=>{console.error(e);process.exit(1)});
