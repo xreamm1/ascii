@@ -465,10 +465,12 @@ const saveBar = () => { if (bag) return; try { localStorage.setItem("bar", JSON.
 const TOUCH = matchMedia("(pointer: coarse)").matches;  // телефон или планшет
 
 // Настройки игрока (пауза → настройки): помним между запусками
-const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false, uncap: false, shadows: false };
+const SETTINGS_DEF = { mouse: 1, touch: 1, fov: 70, vol: 0.6, swap: false, btn: 1, fps: false, uncap: false, shadows: false, quiet: true, fpsLimit: TOUCH ? 45 : 60 };
 function sanitizeSettings(raw){
- const out={...SETTINGS_DEF},limits={mouse:[.2,3],touch:[.2,3],fov:[50,110],vol:[0,1],btn:[.6,1.6]};
+ const out={...SETTINGS_DEF},limits={mouse:[.2,3],touch:[.2,3],fov:[50,110],vol:[0,1],btn:[.6,1.6],fpsLimit:[30,120]};
  for(const k of Object.keys(out)){if(typeof out[k]==='boolean'){if(typeof raw?.[k]==='boolean')out[k]=raw[k];}else if(Number.isFinite(raw?.[k]))out[k]=Math.min(limits[k][1],Math.max(limits[k][0],raw[k]));}
+ if(![30,45,60,90,120].includes(out.fpsLimit))out.fpsLimit=SETTINGS_DEF.fpsLimit;
+ if(out.uncap)out.quiet=false;
  return out;
 }
 const settings = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem("settings")) || {}; } catch {} return sanitizeSettings(s); })();
@@ -1345,14 +1347,16 @@ function chunkRemove(mesh) {
 }
 // Бюджет — миллисекунды за кадр, а не число кусков: на ходу (новая природа) кусков меняется много, а кадр не должен проседать.
 // Замер на прогулке в 2000 блоков: при «24 куска за кадр» перестройка съедала 3–7 мс каждого кадра
+const chunkOccupancy=new Uint8Array(CH*CH*CH);
 function rebuildChunks(budget = LOWEND ? 2.5 : 5) {
+  if(budget<=0)return;
   const t0 = performance.now();
   for (const c of dirtyChunks) {
     if (performance.now() - t0 > budget) return;
     dirtyChunks.delete(c);
     // Кто закрывает грани внутри куска — в маленьком массиве (быстро), за краем куска — как раньше, по таблице блоков.
     // Строковые ключи на каждую из шести граней каждого блока и были главной ценой перестройки
-    const [ox, oy, oz] = c.o, occ = new Uint8Array(CH * CH * CH);
+    const [ox, oy, oz] = c.o, occ = chunkOccupancy;occ.fill(0);
     for (const m of c.blocks) { const e = m.userData.edit; if (!m.userData.slide && e.k !== "ice" && e.k !== "slime") occ[(e.x - ox) + CH * ((e.y - oy) + CH * (e.z - oz))] = 1; }
     const hidden = (e, f) => {
       const d = FACE_DIR[f], x = e.x + d[0] - ox, y = e.y + d[1] - oy, z = e.z + d[2] - oz;
@@ -3997,7 +4001,7 @@ function toggleGfx() {
   try { localStorage.setItem("gfx2", gfxMode); } catch {}
   QUALITY = LADDERS[gfxMode];
   quality = startQuality();
-  lastQuality = performance.now(); goodSince = 0; frameMs = 16;
+  lastQuality = performance.now();perfState.badSince=perfState.goodSince=0;
   setQuality();
 }
 const gfxName = () => ({ ascii: "ASCII", sharp: "ЧЁТКАЯ", ultra: "УЛЬТРА", "3d": "3D" })[gfxMode];
@@ -4997,6 +5001,7 @@ function placeLabel(label, pos, visible, h = 2) {
   if(label.style.left!==left)label.style.left=left;if(label.style.top!==top)label.style.top=top;
 }
 
+const onlinePosition = new THREE.Vector3();
 function updateOnline(dt) {
   const k = Math.min(1, dt * 12);
   for (const a of others.values()) {
@@ -5013,20 +5018,20 @@ function updateOnline(dt) {
   for (const m of cars.values()) {
     const t = m.userData.target;
     if (!t || m === drivingCar || flung.has(m)) continue;
-    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    m.position.lerp(onlinePosition.set(t.x, t.y, t.z), k);
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
   }
   for (const m of planes.values()) {
     const t = m.userData.target;
     if (!t || m === drivingPlane) continue;
-    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    m.position.lerp(onlinePosition.set(t.x, t.y, t.z), k);
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
     m.rotation.x += ((t.pt || 0) - m.rotation.x) * k; m.rotation.z += ((t.rl || 0) - m.rotation.z) * k;
   }
   for (const m of tanks.values()) {
     const t = m.userData.target;
     if (!t || m === drivingTank) continue;
-    m.position.lerp(new THREE.Vector3(t.x, t.y, t.z), k);
+    m.position.lerp(onlinePosition.set(t.x, t.y, t.z), k);
     const turretAbs = m.userData.turret.rotation.y + m.rotation.y;
     m.rotation.y += Math.atan2(Math.sin(t.yaw - m.rotation.y), Math.cos(t.yaw - m.rotation.y)) * k;
     const nt = turretAbs + Math.atan2(Math.sin((t.tu ?? t.yaw) - turretAbs), Math.cos((t.tu ?? t.yaw) - turretAbs)) * k;
@@ -5887,13 +5892,16 @@ function settingsHtml(btn) {
   }
   if (!TOUCH) h += btn(`мышь: ${settings.swap ? "левая ломает, правая ставит (как в майнкрафте)" : "левая ставит, правая ломает"}`, "setswap");
   return h + btn(`показывать FPS: ${settings.fps ? "да" : "нет"}`, "setfps") + btn(`FPS: ${settings.uncap ? "без ограничения" : "как у экрана"}`, "setuncap") +
+    btn(`тихий режим: ${settings.quiet ? "да" : "нет"}`, "setquiet") + btn(`лимит тихого режима: ${settings.fpsLimit} FPS`, "setfpslimit") +
     btn(`тени: ${settings.shadows ? "да" : "нет (быстрее)"}`, "setshadows") + btn("назад", "setback");
 }
 // Нажали кнопку настроек: меняем, применяем, запоминаем. false — это была не кнопка настроек
 function applySetting(act) {
   if (act === "setswap") settings.swap = !settings.swap;
   else if (act === "setfps") settings.fps = !settings.fps;
-  else if (act === "setuncap") { settings.uncap = !settings.uncap; setFrameLoop(); }
+  else if (act === "setuncap") { settings.uncap = !settings.uncap; if(settings.uncap)settings.quiet=false; setFrameLoop(); }
+  else if(act === "setquiet"){settings.quiet=!settings.quiet;if(settings.quiet)settings.uncap=false;setFrameLoop();}
+  else if(act === "setfpslimit"){const caps=TOUCH?[30,45,60]:[30,45,60,90,120];settings.fpsLimit=caps[(caps.indexOf(settings.fpsLimit)+1)%caps.length];settings.quiet=true;settings.uncap=false;setFrameLoop();}
   else if (act === "setshadows") { settings.shadows = !settings.shadows; applyShadows(); }
   else if (act.startsWith("set-:") || act.startsWith("set+:")) {
     const row = SETTING_ROWS.find(r => r[0] === act.slice(5));
@@ -7943,7 +7951,7 @@ function burst(p, c, n = 10, source) {
   if(!p||![p.x,p.y,p.z].every(Number.isFinite))return;
   const kind=source?.k||((source?.t||p.y<0)?'dirt':'brick');
   const tile=Math.max(0,particleKinds.indexOf(kind)),floor=groundHeight(p.x,source?.op==='block'?source.y-.6:p.y,p.z)+.035;
-  const count=Math.min(PART_LIMIT,Math.max(0,Math.floor(n*(LOWEND ? .75 : 1))));
+  const count=Math.min(PART_LIMIT,Math.max(0,Math.floor(n*(LOWEND ? .75 : 1)/(1+perfState.pressure*.4))));
   if(parts.length+count>PART_LIMIT)parts.splice(0,parts.length+count-PART_LIMIT);
   const rgb=(COLORS[c]||COLORS[0]).rgb,r=rgb[0]/255,g=rgb[1]/255,b=rgb[2]/255;
   for(let i=0;i<count;i++)parts.push({x:p.x+(Math.random()-.5)*.45,y:p.y+(Math.random()-.3)*.4,z:p.z+(Math.random()-.5)*.45,
@@ -8216,7 +8224,6 @@ function updateCartRide() {
 // Всё новое, что считается каждый кадр
 let fpsFrames = 0, fpsTime = 0;
 function updateGameplay(dt) {
-  updateGen(dt);
   updateTool(dt);
   setArmorLook(selfFigure, armorCode());
   updateSteps();
@@ -8299,9 +8306,9 @@ function openCave(x, y, z) {
   gen.cq.push([x, y, z]);
 }
 // Очередь обхода: budget клеток за раз
-function stepCaves(budget) {
+function stepCaves(budget, deadline = Infinity) {
   const q = gen.cq;
-  for (let n = 0; gen.cqi < q.length && n < budget; n++) {
+  for (let n = 0; gen.cqi < q.length && n < budget && performance.now() < deadline; n++) {
     const [cx, cy, cz] = q[gen.cqi++];
     if (Math.abs(cx - px) > CAVE_R || Math.abs(cz - pz) > CAVE_R || Math.abs(cy - feet) > CAVE_RY) { gen.frontier.add(key(cx, cy, cz)); continue; }
     if (dungeonAt(cx, cy, cz) === 1) { const d = dungeonInfo(cx, cz); spawnLoot(d.id, d.cx, d.cy, d.cz, false); }  // вошли в данж
@@ -8342,8 +8349,9 @@ function reopenCaves(x0, z0) {
   }
 }
 // Один кусок природы: холмы, пустыни, снег, деревья, входы в пещеры и (один раз) животные
-function generateChunk(cx, cz) {
+function* generateChunk(cx, cz) {
   const s = gen.seed, x0 = cx * GEN, z0 = cz * GEN, made = [];
+  gen.loaded.set(cx + "," + cz, made);
   const put = (x, y, z, k) => {
     if (x < x0 || x >= x0 + GEN || z < z0 || z >= z0 + GEN) return;  // кроны соседних деревьев ставит их собственный кусок
     const kk = key(x, y, z);
@@ -8352,11 +8360,12 @@ function generateChunk(cx, cz) {
     if (blocks.has(kk)) made.push(kk);
   };
   if (x0 > HELL_BORDER) {  // ад: свой рельеф, без животных и пещер
-    for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) generateHellColumn(x, z, put);
+    for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) { generateHellColumn(x, z, put); yield; }
     gen.loaded.set(cx + "," + cz, made);
     return;
   }
   for (let x = x0; x < x0 + GEN; x++) for (let z = z0; z < z0 + GEN; z++) {
+    yield;
     const { h, desert, snow } = genColumn(x, z);
     for (let y = 0; y < h; y++) put(x, y, z, desert ? "sand" : y === h - 1 ? (snow ? "snow" : "grass") : y < h - 3 ? "stone" : "dirt");
     // Вход в пещеру: на ровном месте, если ход подходит близко к поверхности
@@ -8367,6 +8376,7 @@ function generateChunk(cx, cz) {
   }
   // Деревья (их кроны могут заходить в соседние куски — смотрим и деревья рядом с куском)
   for (let x = x0 - 3; x < x0 + GEN + 3; x++) for (let z = z0 - 3; z < z0 + GEN + 3; z++) {
+    yield;
     if (hashN(s + 3, x, 0, z) > 0.012) continue;
     const { h, desert, snow } = genColumn(x, z);
     if (desert || snow || Math.hypot(x - SIZE / 2, z - SIZE / 2) < 10) continue;
@@ -8393,12 +8403,13 @@ function generateChunk(cx, cz) {
       edit({ op: "animal", id: `${myId}-${idCount++}`, t: kinds[Math.floor(hashN(s + 10, cx, n, cz) * 4)], x: x + 0.5, y: h, z: z + 0.5, yaw: n * 2.1, o: myId, ga: 1 });
     }
   }
-  genStructures(cx, cz, put);
+  yield* genStructures(cx, cz, put);
   gen.loaded.set(ck, made);
   fillGround(cx, cz);
   reopenCaves(x0, z0);
 }
 function unloadChunk(ck) {
+  gen.pending.get(ck)?.return();gen.pending.delete(ck);
   // Животные природы, что сейчас стоят в этом куске, уходят в хранилище (замер: за 2000 блоков ходьбы их набиралось 840, и все бегали каждый кадр)
   const [cx, cz] = ck.split(",").map(Number), keep = [];
   for (const m of [...animals.values()]) {
@@ -8412,37 +8423,45 @@ function unloadChunk(ck) {
   gen.loaded.delete(ck);
 }
 // Раз в кадр: догружаем ближайший недостающий кусок и выгружаем далёкие
-let genTimer = 0, genSkip = false;
-function updateGen(dt) {
-  if (!gen || worldLoading || !inGame) return;
-  const pcx = Math.floor(px / GEN), pcz = Math.floor(pz / GEN);
-  let best = null, bestD = Infinity;
-  for (let dx = -GEN_R; dx <= GEN_R; dx++) for (let dz = -GEN_R; dz <= GEN_R; dz++) {
-    const d = dx * dx + dz * dz;
-    if (d > GEN_R * GEN_R + 1 || d >= bestD || gen.loaded.has((pcx + dx) + "," + (pcz + dz))) continue;
-    best = [pcx + dx, pcz + dz]; bestD = d;
+let genTimer = 0;
+function updateGen(dt, deadline = performance.now() + (LOWEND ? 1.5 : 3)) {
+  if (!gen || worldLoading || !inGame || document.hidden) return;
+  const pcx = Math.floor(px / GEN), pcz = Math.floor(pz / GEN), radius = Math.max(2, GEN_R - perfState.pressure);
+  const far = ck => { const [cx, cz] = ck.split(",").map(Number); return (cx - pcx) ** 2 + (cz - pcz) ** 2 > (radius + 2) ** 2; };
+  // После телепорта сохраняем прогресс: при возвращении кусок достроится, при выгрузке удалится.
+  if(gen.job && far(gen.job.key)){gen.pending.set(gen.job.key,gen.job.steps);gen.job=null;}
+  if(!gen.job && performance.now()<deadline){
+    let best=null,bestD=Infinity;
+    for(let dx=-radius;dx<=radius;dx++)for(let dz=-radius;dz<=radius;dz++){
+      const d=dx*dx+dz*dz,ck=(pcx+dx)+","+(pcz+dz);
+      if(d>radius*radius+1||d>=bestD||(gen.loaded.has(ck)&&!gen.pending.has(ck)))continue;
+      best=[pcx+dx,pcz+dz];bestD=d;
+    }
+    if(best){const ck=best.join(",");gen.job={key:ck,steps:gen.pending.get(ck)||generateChunk(...best)};gen.pending.delete(ck);}
   }
-  if (best && !(LOWEND && (genSkip = !genSkip))) generateChunk(...best);  // слабому телефону — кусок через кадр
-  // Под землёй туман ближе: дальше CAVE_R пещера ещё не открыта, а в темноте залы выглядят глубже
+  let steps=0;
+  while(gen.job && performance.now()<deadline && steps++<64){if(gen.job.steps.next().done)gen.job=null;}
   const under = feet < -3 && camMode === "first";
-  if (!inHell()) { scene.fog.near = under ? 6 : FOG_NEAR; scene.fog.far = under ? CAVE_R - 4 : FOG_FAR; }  // в аду свой туман
-  stepCaves(LOWEND ? CAVE_STEP / 2 : CAVE_STEP);
-  if ((genTimer += dt) < 1) return;
-  genTimer = 0;
-  const far = ck => { const [cx, cz] = ck.split(",").map(Number); return (cx - pcx) ** 2 + (cz - pcz) ** 2 > (GEN_R + 2) ** 2; };
-  for (const ck of [...gen.loaded.keys()]) if (far(ck)) unloadChunk(ck);
-  for (const ck of [...gen.caves.keys()]) if (far(ck)) unloadCaves(ck);
-  // Игрок подошёл к недообойдённым ходам — продолжаем открывать пещеру
-  const near = [];
-  for (const k of gen.frontier) { const [x, y, z] = k.split(",").map(Number); if (Math.abs(x - px) < CAVE_R - 8 && Math.abs(z - pz) < CAVE_R - 8 && Math.abs(y - feet) < CAVE_RY - 4) near.push([x, y, z]); }
-  for (const [x, y, z] of near) { gen.frontier.delete(key(x, y, z)); gen.cq.push([x, y, z]); }
+  if (!inHell()) { scene.fog.near = under ? 6 : FOG_NEAR; scene.fog.far = under ? CAVE_R - 4 : Math.min(FOG_FAR,radius*GEN-6); }
+  stepCaves(LOWEND ? CAVE_STEP / 2 : CAVE_STEP,deadline);
+  genTimer += dt;
+  if(genTimer<1 || performance.now()>=deadline)return;
+  // По одному далёкому куску: массовая выгрузка после телепорта не блокирует кадр.
+  for(const ck of gen.loaded.keys())if(far(ck)){unloadChunk(ck);return;}
+  for(const ck of gen.caves.keys())if(far(ck)){unloadCaves(ck);return;}
+  genTimer=0;
+  for(const k of gen.frontier){
+    if(performance.now()>=deadline)break;
+    const [x,y,z]=k.split(",").map(Number);
+    if(Math.abs(x-px)<CAVE_R-8&&Math.abs(z-pz)<CAVE_R-8&&Math.abs(y-feet)<CAVE_RY-4){gen.frontier.delete(k);gen.cq.push([x,y,z]);}
+  }
 }
 // Бесконечный мир: туман ближе (дальше всё равно ничего не создано — и рисовать меньше), ад уезжает далеко
 // seed — у лобби и игры без интернета свой (общий для всех игроков), net — природа в сети (без животных: у каждого были бы свои)
 function setInfinite(on, saved, seed, net) {
   gen = on ? { seed: seed ?? currentWorld.seed, net: !!net, removed: new Set(saved?.removed || []), animals: new Set(saved?.animals || []),
     store: new Map(Object.entries(saved?.store || {})), looted: new Set(saved?.looted || []), mouths: new Set(), loaded: new Map(),
-    caveOpen: new Set(), caves: new Map(), frontier: new Set(), cq: [], cqi: 0 } : null;
+    caveOpen: new Set(), caves: new Map(), frontier: new Set(), cq: [], cqi: 0, pending: new Map() } : null;
   HELL_BORDER = on ? 100000 : 1000; HELL_X = on ? 100500 : 1500;
   FOG_FAR = on ? GEN_R * GEN - 6 : 440; FOG_NEAR = on ? FOG_FAR * 0.45 : 170;
   FAR = on ? FOG_FAR + 10 : 450;
@@ -9001,7 +9020,7 @@ function spawnLoot(id, x, y, z, rich) {
   table.forEach(([n, k], i) => edit({ op: "item", id: `${myId}-${idCount++}`, n, k, x: x + 0.5 + Math.cos(i * 1.7) * 0.8, y: y + 0.6, z: z + 0.5 + Math.sin(i * 1.7) * 0.8, vy: 1 }));
 }
 // Пирамида (в пустыне) и разрушенный портал (где угодно) — прямо в куске природы. put — постановка блока природы этого куска
-function genStructures(cx, cz, put) {
+function* genStructures(cx, cz, put) {
   const s = gen.seed + 30, x0 = cx * GEN, z0 = cz * GEN, mx = x0 + 8, mz = z0 + 8, col = genColumn(mx, mz);
   if (Math.hypot(mx - SIZE / 2, mz - SIZE / 2) < 24 || col.h > 1) return;
   const roll = hashN(s, cx, 0, cz);
@@ -9009,6 +9028,7 @@ function genStructures(cx, cz, put) {
     for (let l = 0; l < 6; l++) for (let x = mx - 5 + l; x <= mx + 5 - l; x++) for (let z = mz - 5 + l; z <= mz + 5 - l; z++) {
       const hollow = l < 3 && Math.abs(x - mx) <= 2 && Math.abs(z - mz) <= 2, door = l < 2 && x === mx && z < mz - 2;
       if (!hollow && !door) put(x, col.h + l, z, l === 2 || (x + z) % 7 === 0 ? "clay" : "sand");
+      yield;
     }
     put(mx, col.h, mz, "gold");
     spawnLoot(`p${cx},${cz}`, mx, col.h + 1, mz, true);
@@ -9134,9 +9154,37 @@ Object.defineProperty(window,"baseplateControl",{value:Object.freeze({
 // ---------- Главный цикл ----------
 
 let last = performance.now();
-let refreshMs = 100, refreshN = 0, frameAtPrev = 0;  // самый короткий кадр = частота экрана (на 90 Гц слабым телефонам рисуем через кадр)
-let tvTimer = 0, lampTimer = 0, frameNo = 0, goodSince = 0, lastUpgrade = 0, noUpgradeUntil = 0, frameMs = 16, frameAt = last, lastQuality = 0;
+let tvTimer = 0, lampTimer = 0, frameNo = 0, noUpgradeUntil = 0, lastQuality = 0;
+// Считаем работу отдельно от ожидания лимита FPS; один медленный кадр качество не меняет.
+const perfState={cost:6,renderCost:2,cadence:16,pressure:0,badSince:0,goodSince:0,changedAt:0,nextFrame:0};
+const frameInterval=()=>settings.quiet?1000/settings.fpsLimit:0;
+function admitFrame(now){
+  if(document.hidden)return false;
+  const interval=frameInterval();
+  if(interval && now+.25<perfState.nextFrame)return false;
+  if(interval){const next=perfState.nextFrame+interval;perfState.nextFrame=next>now?next:now+interval;}else perfState.nextFrame=now;
+  return true;
+}
+function adaptPerformance(now,cost,cadence){
+  const target=frameInterval()||1000/60;
+  perfState.cost+=(Math.min(cost,200)-perfState.cost)*.08;
+  perfState.cadence+=(Math.min(cadence,200)-perfState.cadence)*.08;
+  const overloaded=perfState.cost>target*.85||perfState.cadence>target*1.45;
+  if(overloaded){perfState.goodSince=0;perfState.badSince ||= now;}
+  else {perfState.badSince=0;if(perfState.cost<target*.55&&perfState.cadence<target*1.2)perfState.goodSince ||= now;else perfState.goodSince=0;}
+  if(now-perfState.changedAt<3000)return;
+  if(perfState.badSince && now-perfState.badSince>1800){
+    if(perfState.pressure<2)perfState.pressure++;
+    else if(quality<worstQuality()){quality++;setQuality();}
+    perfState.changedAt=now;perfState.badSince=0;perfState.goodSince=0;
+  }else if(perfState.goodSince && now-perfState.goodSince>15000){
+    if(quality>bestQuality()){quality--;setQuality();}else if(perfState.pressure>0)perfState.pressure--;
+    perfState.changedAt=now;perfState.goodSince=0;
+  }
+}
 const frame = now => {
+  if(!admitFrame(now))return;
+  const workStart=performance.now(),cadence=now-last;
   labelScreen=renderer.domElement.getBoundingClientRect();
   const dt = Math.max(0, Math.min((now - last) / 1000, 0.1));  // время назад (смена вкладки, часы) не даёт отрицательного шага
   last = now;
@@ -9165,25 +9213,6 @@ const frame = now => {
   tvTimer += dt;
   if (tvs.size && tvTimer > 0.2) { tvTimer = 0; drawTv(now / 1000); tvTex.needsUpdate = true; }
 
-  // Подстраиваем качество. Кадр дольше ~24 мс — символы крупнее. Ровные 60 кадров 8 секунд подряд — пробуем мельче;
-  // если после такой пробы снова тормозит, мелкую сетку не трогаем 2 минуты
-  frameMs += (Math.min(now - frameAt, 100) - frameMs) * 0.05;
-  frameAt = now;
-  if (now > 3000 && document.visibilityState === "visible") {
-    if (frameMs > 30 && quality < worstQuality() && now - lastQuality > 2500) {
-      quality++;
-      if (now - lastUpgrade < 6000) noUpgradeUntil = now + 120000;
-      lastQuality = now; goodSince = 0; frameMs = 16;
-      setQuality();
-    } else if (frameMs < 18.5) {
-      goodSince ||= now;
-      if (now - goodSince > 8000 && quality > bestQuality() && now > noUpgradeUntil && now - lastQuality > 8000) {
-        quality--;
-        lastQuality = lastUpgrade = now; goodSince = 0; frameMs = 16;
-        setQuality();
-      }
-    } else goodSince = 0;
-  }
   // Зум на C: угол обзора плавно сужается, пока клавиша зажата
   if (!keys.KeyC) zoomFov = ZOOM_FOV;
   const fovTarget = nitroOn ? 88 : trollOn("fisheye") ? 140 : trollOn("binoc") ? 12 : trollOn("pulse") ? 75 + Math.sin(performance.now() / 200) * 35 : scoped ? SCOPE_FOV : keys.KeyC && !typing ? zoomFov : FOV;
@@ -9194,30 +9223,36 @@ const frame = now => {
   // Тени обновляем через кадр-два: это почти не заметно, а отрисовка теней — самая дорогая часть кадра
   if (++frameNo % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
-  rebuildChunks();
-  if (++refreshN > 10 && refreshN < 240) refreshMs = Math.min(refreshMs, now - frameAtPrev);
-  frameAtPrev = now;
-  if (LOWEND && is3d() && refreshMs < 13.5 && frameNo % 2) return;  // экран 90 Гц: 45 кадров в секунду вместо рваных 90
+  // Фоновым задачам отдаём остаток кадра с запасом на предыдущую отрисовку.
+  const target=frameInterval()||1000/60;
+  const deadline=workStart+Math.max(0,Math.min(target*.8-perfState.renderCost,performance.now()-workStart+(LOWEND?2:4)));
+  rebuildChunks(Math.max(0,(deadline-performance.now())*.5));
+  updateGen(dt,deadline);
+  const renderStart=performance.now();
   if (is3d()) {  // без символов; со сглаживанием — через цель с MSAA, потом на экран
     if (target3d) { renderer.setRenderTarget(target3d); renderer.render(scene, camera); renderer.setRenderTarget(null); renderer.render(blitScene, asciiCamera); }
     else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
-    return;
+  } else {
+    renderer.setRenderTarget(sceneTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(asciiScene, asciiCamera);
   }
-  renderer.setRenderTarget(sceneTarget);
-  renderer.render(scene, camera);
-  renderer.setRenderTarget(null);
-  renderer.render(asciiScene, asciiCamera);
+  perfState.renderCost+=(performance.now()-renderStart-perfState.renderCost)*.08;
+  adaptPerformance(now,performance.now()-workStart,cadence);
 };
 // Без ограничения FPS (настройки): кадры идут не по сигналу экрана (requestAnimationFrame), а сразу друг за другом через MessageChannel.
-// Монитор всё равно покажет столько кадров, сколько умеет, но кадр готов раньше, а счётчик видит настоящую скорость. В свёрнутой вкладке — обычный режим
+// Монитор всё равно покажет столько кадров, сколько умеет, но кадр готов раньше, а счётчик видит настоящую скорость. В свёрнутой вкладке цикл остановлен
 const loopCh = new MessageChannel();
-let uncapOn = false;
-loopCh.port1.onmessage = () => { if (!uncapOn) return; frame(performance.now()); loopCh.port2.postMessage(0); };
+let uncapOn = false,loopGeneration=0;
+loopCh.port1.onmessage = event => { if (!uncapOn || event.data!==loopGeneration) return; frame(performance.now()); loopCh.port2.postMessage(loopGeneration); };
 function setFrameLoop() {
-  const on = settings.uncap && !document.hidden, was = uncapOn;
+  const on = settings.uncap && !settings.quiet && !document.hidden, was = uncapOn;
+  last=performance.now();perfState.nextFrame=0;perfState.badSince=perfState.goodSince=0;
   uncapOn = on;
-  renderer.setAnimationLoop(on ? null : frame);
-  if (on && !was) loopCh.port2.postMessage(0);  // цепочка одна: повторный вызов вторую не запускает
+  if(on!==was)loopGeneration++;
+  renderer.setAnimationLoop(on || document.hidden ? null : frame);
+  if (on && !was) loopCh.port2.postMessage(loopGeneration);  // цепочка одна: повторный вызов вторую не запускает
 }
 document.addEventListener("visibilitychange", setFrameLoop);
 setFrameLoop();

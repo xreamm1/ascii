@@ -1,6 +1,6 @@
 {
   "name": "baseplate-game",
   "private": true,
-  "scripts": {"test": "node tests/flight.cjs && node tests/chess-review.cjs && node tests/service-worker.cjs && node tests/audit.cjs && node tests/smoke.cjs", "test:textures":"node tests/textures.cjs", "test:audit":"node tests/audit.cjs"},
+  "scripts": {"test": "node tests/performance.cjs && node tests/flight.cjs && node tests/chess-review.cjs && node tests/service-worker.cjs && node tests/audit.cjs && node tests/smoke.cjs", "test:textures":"node tests/textures.cjs", "test:audit":"node tests/audit.cjs"},
   "devDependencies": {"playwright": "1.62.1"}
 }
